@@ -3,7 +3,7 @@
 ###                                  DATA SIMULATION - DRAFT 1 - 28/11/2017                                            ###
 ##########################################################################################################################
 ##########################################################################################################################
-# Variables ----
+# Variables ----                                                                                                                                                
 
 # N individuals, n = 1 .. N
 # G genes, g = 1 .. G
@@ -67,234 +67,545 @@
 # ----
 
 
+
+##########################################################################################################################
+#                                                  NETWORK SIMULATION                                                    #
+##########################################################################################################################
+
+
+rand_network = function(G, P, M){
+ 
+  # Nodes
+  genes = sapply(1:G, function(i){ return(paste0("G",i)) })
+  prot = sapply(1:P, function(i){ return(paste0("P",i)) })
+  met = sapply(1:M, function(i){ return(paste0("M",i)) })
+  
+  g2p = genes[1:P]; names(g2p) = prot
+  protcod = unname(g2p); noncod = setdiff(genes, protcod); NC = G-P
+  
+  ## Topology
+  
+  # Transcription regulation
+  # TF : array for transcription regulation network, target genes (G rows) x transcription regulators (NC + P (=G) columns)
+  TF_sgn = matrix( sample(c(-1:1), size = (G*G), replace = T, prob = c(0.05,0.75, 0.2)), nrow = G, ncol = G, dimnames = list(genes, c(noncod,prot)))
+  # The th parameter for the Hill function of each regulator is sampled from a uniform distribution on discrete numbers between 50 and 100
+  TF_th = matrix( 0, nrow = G, ncol = G, dimnames = list(genes, c(noncod,prot))) ; TF_th[which(TF_sgn!=0)] = sample(50:100, length(which(TF_sgn!=0)), replace = T)
+  # The n parameter for the Hill function of each regulator is sampled from a uniform distribution on discrete numbers between 1 and 4
+  TF_n = matrix( 0, nrow = G, ncol = G, dimnames = list(genes, c(noncod,prot))) ; TF_n[which(TF_sgn!=0)] = sample(1:4, length(which(TF_sgn!=0)), replace = T)
+  
+  # Translation regulation
+  # TLF : array for translation regulation network, target protein-coding genes (P rows) x transcription regulators (NC + P (=G) columns)
+  TLF_sgn = matrix( sample(c(-1:1), size = (P*G), replace = T, prob = c(0.2,0.6, 0.2)), nrow = P, ncol = G, dimnames = list(protcod, c(noncod,prot)))
+  # The th parameter for the Hill function of each regulator is sampled from a uniform distribution on discrete numbers between 50 and 100
+  TLF_th = matrix( 0, nrow = P, ncol = G, dimnames = list(protcod, c(noncod,prot))) ; TLF_th[which(TLF_sgn!=0)] = sample(50:100, length(which(TLF_sgn!=0)), replace = T)
+  # The n parameter for the Hill function of each regulator is sampled from a uniform distribution on discrete numbers between 1 and 4
+  TLF_n = matrix( 0, nrow = P, ncol = G, dimnames = list(protcod, c(noncod,prot))) ; TLF_n[which(TLF_sgn!=0)] = sample(1:4, length(which(TLF_sgn!=0)), replace = T)
+  
+  # RNA decay
+  # DR : array for RNA degradation regulation network, target genes (lenght of 1st dimension = G) X regulators non coding RNAs (NC+Q columns)
+  DR_sgn = matrix( sample(c(-1:1), size = (G*NC), replace = T, prob = c(0.2,0.6, 0.2)), nrow = G, ncol = NC, dimnames = list(genes, noncod))
+  # The th parameter for the Hill function of each regulator is sampled from a uniform distribution on discrete numbers between 50 and 100
+  DR_th = matrix( 0, nrow = G, ncol = NC, dimnames = list(genes, noncod)) ; DR_th[which(DR_sgn!=0)] = sample(50:100, length(which(DR_sgn!=0)), replace = T)
+  # The n parameter for the Hill function of each regulator is sampled from a uniform distribution on discrete numbers between 1 and 4
+  DR_n = matrix( 0, nrow = G, ncol = NC, dimnames = list(genes, noncod)) ; DR_n[which(DR_sgn!=0)] = sample(1:4, length(which(DR_sgn!=0)), replace = T)
+  
+  
+  # Protein decay
+  # DP : array for RNA degradation regulation network, target genes (lenght of 1st dimension = G) X regulators non coding RNAs (NC+Q columns)
+  DP_sgn = matrix( sample(c(-1:1), size = (P*P), replace = T, prob = c(0.2,0.6, 0.2)), nrow = P, ncol = P, dimnames = list(prot, prot))
+  # The th parameter for the Hill function of each regulator is sampled from a uniform distribution on discrete numbers between 50 and 100
+  DP_th = matrix( 0, nrow = P, ncol = P, dimnames = list(prot, prot)) ; DP_th[which(DP_sgn!=0)] = sample(50:100, length(which(DP_sgn!=0)), replace = T)
+  # The n parameter for the Hill function of each regulator is sampled from a uniform distribution on discrete numbers between 1 and 4
+  DP_n = matrix( 0, nrow = P, ncol = P, dimnames = list(prot, prot)) ; DP_n[which(DP_sgn!=0)] = sample(1:4, length(which(DP_sgn!=0)), replace = T)
+  
+
+  # Protein activation
+  # ACT : array for protein activation network, target proteins (P rows) x activators (P + NC + M (= G+M) columns)
+  ACT_sgn = matrix( sample(c(0,1), size = (P*(G+M)), replace = T, prob = c(0.7,0.3)), nrow = P, ncol = NC+P+M, dimnames = list(prot, c(prot,noncod,met)))
+  # The th parameter for the Hill function of each regulator is sampled from a uniform distribution on discrete numbers between 50 and 100
+  ACT_th = matrix( 0, nrow = P, ncol = G+M, dimnames = list(prot, c(prot,noncod,met))) ; ACT_th[which(ACT_sgn!=0)] = sample(50:100, length(which(ACT_sgn!=0)), replace = T)
+  # The n parameter for the Hill function of each regulator is sampled from a uniform distribution on discrete numbers between 1 and 4
+  ACT_n = matrix( 0, nrow = P, ncol = G+M, dimnames = list(prot, c(prot,noncod,met))) ; ACT_n[which(ACT_sgn!=0)] = sample(1:4, length(which(ACT_sgn!=0)), replace = T)
+  
+  # Protein deactivation
+  # DEACT : array for protein deactivation network, target proteins (P rows) x activators (P + NC + M (= G+M) columns)
+  DEACT_sgn = matrix( sample(c(0,1), size = (P*(G+M)), replace = T, prob = c(0.7,0.3)), nrow = P, ncol = NC+P+M, dimnames = list(prot, c(prot,noncod,met)))
+  # The th parameter for the Hill function of each regulator is sampled from a uniform distribution on discrete numbers between 50 and 100
+  DEACT_th = matrix( 0, nrow = P, ncol = G+M, dimnames = list(prot, c(prot,noncod,met))) ; DEACT_th[which(DEACT_sgn!=0)] = sample(50:100, length(which(DEACT_sgn!=0)), replace = T)
+  # The n parameter for the Hill function of each regulator is sampled from a uniform distribution on discrete numbers between 1 and 4
+  DEACT_n = matrix( 0, nrow = P, ncol = G+M, dimnames = list(prot, c(prot,noncod,met))) ; DEACT_n[which(DEACT_sgn!=0)] = sample(1:4, length(which(DEACT_sgn!=0)), replace = T)
+  
+  
+  ## Nodes parameters
+  
+  # Transcription rates
+  # TC rates chosen randomly between 0.01 and 0.1
+  k_TC = runif(G, 0.01, 0.1); names(k_TC) = genes
+  
+  # Translation rates
+  # TL rates chosen randomly between 0.5 and 5
+  k_TL = runif(P, 0.5, 5); names(k_TL) = protcod
+  
+  # RNA decay rates
+  # RNA decay rates chosen randomly between 0.005 and 0.01
+  p0_DR = runif(G, 0.005, 0.01); names(p0_DR) = genes
+  
+  # Protein decay rates
+  # protein decay rates chosen randomly between 0.01 and 0.1
+  p0_DP = runif(P, 0.01, 0.1); names(p0_DP) = prot
+      
+  res = list("genes" = genes, # ----
+             "protcod" = protcod,
+             "noncod" = noncod,
+             "prot" = prot,
+             "met" = met,
+             "g2p" = g2p,
+             "TF_sgn" = TF_sgn,
+             "TF_th" = TF_th,
+             "TF_n" = TF_n,
+             "TLF_sgn" = TLF_sgn,
+             "TLF_th" = TLF_th,
+             "TLF_n" = TLF_n,
+             "DR_sgn" = DR_sgn,
+             "DR_th" = DR_th,
+             "DR_n" = DR_n,
+             "DP_sgn" = DP_sgn,
+             "DP_th" = DP_th,
+             "DP_n" = DP_n,
+             "ACT_sgn" = ACT_sgn,
+             "ACT_th" = ACT_th,
+             "ACT_n" = ACT_n,
+             "DEACT_sgn" = DEACT_sgn,
+             "DEACT_th" = DEACT_th,
+             "DEACT_n" = DEACT_n,
+             "k_TC" = k_TC,
+             "k_TL" = k_TL,
+             "p0_DR" = p0_DR,
+             "p0_DP" = p0_DP
+             )
+    # ----
+  
+  return(res)
+}
+
+rand_network_null = function(G, P, M){
+  
+  # Nodes
+  genes = sapply(1:G, function(i){ return(paste0("G",i)) })
+  prot = sapply(1:P, function(i){ return(paste0("P",i)) })
+  met = sapply(1:M, function(i){ return(paste0("M",i)) })
+  
+  g2p = genes[1:P]; names(g2p) = prot
+  protcod = unname(g2p); noncod = setdiff(genes, protcod); NC = G-P
+  
+  ## Topology
+  
+  # Transcription regulation
+  # TF : array for transcription regulation network, target genes (G rows) x transcription regulators (NC + P (=G) columns)
+  TF_sgn = matrix( 0, nrow = G, ncol = G, dimnames = list(genes, c(noncod,prot)))
+  TF_th = matrix( 0, nrow = G, ncol = G, dimnames = list(genes, c(noncod,prot)))
+  TF_n = matrix( 0, nrow = G, ncol = G, dimnames = list(genes, c(noncod,prot)))
+  
+  # Translation regulation
+  # TLF : array for translation regulation network, target protein-coding genes (P rows) x transcription regulators (NC + P (=G) columns)
+  TLF_sgn = matrix( 0, nrow = P, ncol = G, dimnames = list(protcod, c(noncod,prot)))
+  TLF_th = matrix( 0, nrow = P, ncol = G, dimnames = list(protcod, c(noncod,prot)))
+  TLF_n = matrix( 0, nrow = P, ncol = G, dimnames = list(protcod, c(noncod,prot)))
+  
+  # RNA decay
+  # DR : array for RNA degradation regulation network, target genes (lenght of 1st dimension = G) X regulators non coding RNAs (NC+Q columns)
+  DR_sgn = matrix( 0, nrow = G, ncol = NC, dimnames = list(genes, noncod))
+  DR_th = matrix( 0, nrow = G, ncol = NC, dimnames = list(genes, noncod))
+  DR_n = matrix( 0, nrow = G, ncol = NC, dimnames = list(genes, noncod))
+  
+  
+  # Protein decay
+  # DP : array for RNA degradation regulation network, target genes (lenght of 1st dimension = G) X regulators non coding RNAs (NC+Q columns)
+  DP_sgn = matrix( 0, nrow = P, ncol = P, dimnames = list(prot, prot))
+  # The th parameter for the Hill function of each regulator is sampled from a uniform distribution on discrete numbers between 50 and 100
+  DP_th = matrix( 0, nrow = P, ncol = P, dimnames = list(prot, prot))
+  # The n parameter for the Hill function of each regulator is sampled from a uniform distribution on discrete numbers between 1 and 4
+  DP_n = matrix( 0, nrow = P, ncol = P, dimnames = list(prot, prot))
+  
+  
+  # Protein activation
+  # ACT : array for protein activation network, target proteins (P rows) x activators (P + NC + M (= G+M) columns)
+  ACT_sgn = matrix( 0, nrow = P, ncol = NC+P+M, dimnames = list(prot, c(prot,noncod,met)))
+  # The th parameter for the Hill function of each regulator is sampled from a uniform distribution on discrete numbers between 50 and 100
+  ACT_th = matrix( 0, nrow = P, ncol = G+M, dimnames = list(prot, c(prot,noncod,met)))
+  # The n parameter for the Hill function of each regulator is sampled from a uniform distribution on discrete numbers between 1 and 4
+  ACT_n = matrix( 0, nrow = P, ncol = G+M, dimnames = list(prot, c(prot,noncod,met)))
+  
+  # Protein deactivation
+  # DEACT : array for protein deactivation network, target proteins (P rows) x activators (P + NC + M (= G+M) columns)
+  DEACT_sgn = matrix( 0, nrow = P, ncol = NC+P+M, dimnames = list(prot, c(prot,noncod,met)))
+  DEACT_th = matrix( 0, nrow = P, ncol = G+M, dimnames = list(prot, c(prot,noncod,met)))
+  DEACT_n = matrix( 0, nrow = P, ncol = G+M, dimnames = list(prot, c(prot,noncod,met)))
+  
+  
+  ## Nodes parameters
+  
+  # Transcription rates
+  # TC rates chosen randomly between 0.01 and 0.1
+  k_TC = runif(G, 0.01, 0.1); names(k_TC) = genes
+  
+  # Translation rates
+  # TL rates chosen randomly between 0.5 and 5
+  k_TL = runif(P, 0.5, 5); names(k_TL) = protcod
+  
+  # RNA decay rates
+  # RNA decay rates chosen randomly between 0.005 and 0.01
+  p0_DR = runif(G, 0.005, 0.01); names(p0_DR) = genes
+  
+  # Protein decay rates
+  # protein decay rates chosen randomly between 0.01 and 0.1
+  p0_DP = runif(P, 0.01, 0.1); names(p0_DP) = prot
+  
+  res = list("genes" = genes, # ----
+             "protcod" = protcod,
+             "noncod" = noncod,
+             "prot" = prot,
+             "met" = met,
+             "g2p" = g2p,
+             "TF_sgn" = TF_sgn,
+             "TF_th" = TF_th,
+             "TF_n" = TF_n,
+             "TLF_sgn" = TLF_sgn,
+             "TLF_th" = TLF_th,
+             "TLF_n" = TLF_n,
+             "DR_sgn" = DR_sgn,
+             "DR_th" = DR_th,
+             "DR_n" = DR_n,
+             "DP_sgn" = DP_sgn,
+             "DP_th" = DP_th,
+             "DP_n" = DP_n,
+             "ACT_sgn" = ACT_sgn,
+             "ACT_th" = ACT_th,
+             "ACT_n" = ACT_n,
+             "DEACT_sgn" = DEACT_sgn,
+             "DEACT_th" = DEACT_th,
+             "DEACT_n" = DEACT_n,
+             "k_TC" = k_TC,
+             "k_TL" = k_TL,
+             "p0_DR" = p0_DR,
+             "p0_DP" = p0_DP
+  )
+  # ----
+  
+  return(res)
+}
+
+##########################################################################################################################
+#                                                INDIVIDUALS SIMULATION                                                  #
+##########################################################################################################################
+
+
+rand_cohort = function(network, N){
+
+  G = length(network$genes)
+  P = length(network$prot)
+  M = length(network$met)
+  
+  # Individuals
+  ind = sapply(1:N, function(i){ return(paste0("ind",i)) })
+
+  # Genotype effects
+  
+  # QTL_TC : matrix of genotype effect on transcription (TF binding) for each individual, effects (G rows) x individuals (N columns)
+  QTL_TC = matrix(rnorm(G * N , mean = 1, sd = 0.05), nrow = G, ncol = N); rownames(QTL_TC) = network$genes; colnames(QTL_TC) = ind
+
+  # QTL_TL : matrix of genotype effect on translation (TLF binding) for each individual, effects (P rows) x individuals (N columns)
+  QTL_TL = matrix(rnorm(P * N , mean = 1, sd = 0.05), nrow = P, ncol = N); rownames(QTL_TL) = network$protcod; colnames(QTL_TL) = ind
+  
+  # QTL_DR : matrix of genotype effect on mRNA degradation for each individual, effects (G rows) x individuals (N columns)
+  QTL_DR = matrix(rnorm(G * N , mean = 1, sd = 0.05), nrow = G, ncol = N); rownames(QTL_DR) = network$genes; colnames(QTL_DR) = ind
+  
+  rna_0 = matrix(sample(0:500, G*N, replace = T), nrow = G, ncol = N); rownames(rna_0) = network$genes; colnames(rna_0) = ind
+  prot_tot_0 = matrix(sample(0:500, P*N, replace = T), nrow = P, ncol = N); rownames(prot_tot_0) = network$prot; colnames(prot_tot_0) = ind
+  prot_A_0 = matrix(sample(0:500, P*N, replace = T), nrow = P, ncol = N); rownames(prot_A_0) = network$prot; colnames(prot_A_0) = ind
+  prot_NA_0 = matrix(sample(0:500, P*N, replace = T), nrow = P, ncol = N); rownames(prot_NA_0) = network$prot; colnames(prot_NA_0) = ind
+  met_tot_0 = matrix(sample(0:500, M*N, replace = T), nrow = M, ncol = N); rownames(met_tot_0) = network$met; colnames(met_tot_0) = ind
+  
+  res = list("ind" = ind,
+             "QTL_TC" = QTL_TC,
+             "QTL_TL" = QTL_TL,
+             "QTL_DR" = QTL_DR,
+             "rna_0" = rna_0,
+             "prot_tot_0" = prot_tot_0,
+             "prot_A_0" = prot_A_0,
+             "prot_NA_0" = prot_NA_0,
+             "met_tot_0" = met_tot_0)
+  return(res)
+}
+
+
+
 ##########################################################################################################################
 #                                                       MAIN CODE                                                        #
 ##########################################################################################################################
 
+simu = function(network, cohort, tmax){
 
-## Initialization ----
-
-t = 1
-
-# Vector creation
-rna = matrix(NA, nrow = G, ncol = N); rownames(rna) = genes; colnames(rna) = ind
-prot_tot = matrix(NA, nrow = P, ncol = N); rownames(prot_tot) = prot; colnames(prot_tot) = ind
-prot_A = matrix(NA, nrow = P, ncol = N); rownames(prot_A) = prot; colnames(prot_A) = ind
-prot_NA = matrix(NA, nrow = P, ncol = N); rownames(prot_NA) = prot; colnames(prot_NA) = ind
-met_tot = matrix(NA, nrow = M, ncol = N); rownames(met_tot) = met; colnames(met_tot) = ind
-
-l_TC = matrix(NA, nrow = G, ncol = N, dimnames = list(genes, ind))
-l_TL = matrix(NA, nrow = P, ncol = N, dimnames = list(protcod, ind))
-p_DR = matrix(NA, nrow = G, ncol = N, dimnames = list(genes, ind))
-p_DP = matrix(NA, nrow = P, ncol = N, dimnames = list(prot, ind))
-p_act = matrix(NA, nrow = P, ncol = N, dimnames = list(prot, ind))
-p_deact = matrix(NA, nrow = P, ncol = N, dimnames = list(prot, ind))
-
-
-# Initial values
-# Are the initial values the same for all individuals???
-rna_prev = matrix(rna_0[genes, ind], nrow = G, ncol = N); rownames(rna_prev) = genes; colnames(rna_prev) = ind
-prot_A_prev = matrix(prot_A_0[prot, ind], nrow = P, ncol = N); rownames(prot_A_prev) = prot; colnames(prot_A_prev) = ind
-prot_NA_prev = matrix(prot_NA_0[prot, ind], nrow = P, ncol = N); rownames(prot_NA_prev) = prot; colnames(prot_NA_prev) = ind
-prot_tot_prev = matrix(prot_A_prev[prot, ind] + prot_NA_prev[prot, ind], nrow = P, ncol = N); rownames(prot_tot_prev) = prot; colnames(prot_tot_prev) = ind
-met_tot_prev = matrix(met_tot_0[met, ind], nrow = M, ncol = N); rownames(met_tot_prev) = met; colnames(met_tot_prev) = ind
-
-
-# For visualization
-
-time_rna = vector("list", G); names(time_rna) = genes
-time_prot_tot = vector("list", P); names(time_prot_tot) = prot
-time_prot_A = vector("list", P); names(time_prot_A) = prot
-time_prot_NA = vector("list", P); names(time_prot_NA) = prot
-time_met_tot = vector("list", M); names(time_met_tot) = met
-
-# Add t = 0
-for(g in genes){ time_rna[[g]] = cbind(time_rna[[g]],rna_prev[g,]) }
-for(p in prot){ 
-  time_prot_tot[[p]] = cbind(time_prot_tot[[p]], prot_tot_prev[p,])
-  time_prot_A[[p]] = cbind(time_prot_A[[p]], prot_A_prev[p,])
-  time_prot_NA[[p]] = cbind(time_prot_NA[[p]], prot_NA_prev[p,])
-}
-for(m in met){ time_met_tot[[m]] = cbind(time_met_tot[[m]], met_tot_prev[m,]) }
-
-# Main loop -----
-
-while(t<tmax){
+  # ----
+  ind = network$ind
+  genes = network$genes
+  protcod = network$protcod
+  noncod = network$noncod
+  prot = network$prot
+  met = network$met
+  g2p = network$g2p
+  TF_sgn = network$TF_sgn
+  TF_th = network$TF_th
+  TF_n = network$TF_n
+  TLF_sgn = network$TLF_sgn
+  TLF_th = network$TLF_th
+  TLF_n = network$TLF_n
+  DR_sgn = network$DR_sgn
+  DR_th = network$DR_th
+  DR_n = network$DR_n
+  DP_sgn = network$DP_sgn
+  DP_th = network$DP_th
+  DP_n = network$DP_n
+  ACT_sgn = network$ACT_sgn
+  ACT_th = network$ACT_th
+  ACT_n = network$ACT_n
+  DEACT_sgn = network$DEACT_sgn
+  DEACT_th = network$DEACT_th
+  DEACT_n = network$DEACT_n
+  k_TC = network$k_TC
+  k_TL = network$k_TL
+  p0_DR = network$p0_DR
+  p0_DP = network$p0_DP
   
-  mol_prev = rbind(rna_prev[noncod,ind], prot_A_prev[,ind], met_tot_prev[,ind]); rownames(mol_prev) = c(noncod,prot,met)
+  ind = cohort$ind
+  QTL_TC = cohort$QTL_TC
+  QTL_TL = cohort$QTL_TL
+  QTL_DR = cohort$QTL_DR
+  # ----
   
-  ## 1: Update rates and probabilites ----
+  ## Initialization ----
   
-  # Transcription rate
-  l_TC[genes, ind] = k_TC[genes] * t(sapply(genes, function(g){
-    #reg = names(which(TF[g,,'sgn']!=0))
-    reg = names(which(setNames(TF[g,,'sgn'], colnames(TF))!=0))
-    if(length(reg) == 0) return(matrix(1,ncol=N,dimnames = list(NULL, ind)))
-    r_A = mol_prev[reg,]
-    sgn_r = TF[g,reg,'sgn']
-    th_r = t(t(matrix(TF[g,reg,'th'], nrow = length(reg), ncol = N, dimnames = list(reg,ind))) * QTL_TC[g,])
-    n_r = TF[g,reg,'n']
-    temp = matrix(1+sgn_r*(r_A^n_r)/(th_r^n_r+r_A^n_r), ncol=N); colnames(temp) = ind 
-    res = apply(temp, 2, prod)
-    
-    return(res)
-  }))
+  t = 1
   
-  print(l_TC['G1',])
+  N= length(ind)
+  G = length(genes)
+  P = length(prot)
+  NC = length(noncod)
+  M = length(met)
   
-  # Translation rate 
-  l_TL[protcod, ind] = rna_prev[protcod,] * k_TL[protcod] * t(sapply(protcod, function(g){
-    reg = names(which(TLF[g,,'sgn']!=0))
-    if(length(reg) == 0) return(matrix(1,ncol=N,dimnames = list(NULL, ind)))
-    r_A = mol_prev[reg,]
-    sgn_r = TLF[g,reg,'sgn']
-    th_r = t(t(matrix(TLF[g,reg,'th'], nrow = length(reg), ncol = N, dimnames = list(reg,ind))) * QTL_TL[g,])
-    n_r = TLF[g,reg,'n']
-    temp = matrix(1+sgn_r*(r_A^n_r)/(th_r^n_r+r_A^n_r), ncol=N); colnames(temp) = ind 
-    res = apply(temp, 2, prod)
-    
-    return(res)
-  }))
+  # Vector creation
+  rna = matrix(NA, nrow = G, ncol = N); rownames(rna) = genes; colnames(rna) = ind
+  prot_tot = matrix(NA, nrow = P, ncol = N); rownames(prot_tot) = prot; colnames(prot_tot) = ind
+  prot_A = matrix(NA, nrow = P, ncol = N); rownames(prot_A) = prot; colnames(prot_A) = ind
+  prot_NA = matrix(NA, nrow = P, ncol = N); rownames(prot_NA) = prot; colnames(prot_NA) = ind
+  met_tot = matrix(NA, nrow = M, ncol = N); rownames(met_tot) = met; colnames(met_tot) = ind
+  
+  l_TC = matrix(NA, nrow = G, ncol = N, dimnames = list(genes, ind))
+  l_TL = matrix(NA, nrow = P, ncol = N, dimnames = list(protcod, ind))
+  p_DR = matrix(NA, nrow = G, ncol = N, dimnames = list(genes, ind))
+  p_DP = matrix(NA, nrow = P, ncol = N, dimnames = list(prot, ind))
+  p_act = matrix(NA, nrow = P, ncol = N, dimnames = list(prot, ind))
+  p_deact = matrix(NA, nrow = P, ncol = N, dimnames = list(prot, ind))
   
   
-  # RNA degradation rate
-  p_DR[genes, ind] = p0_DR[genes] * QTL_DR[genes, ind] * t(sapply(genes, function(g){
-    reg = names(which(setNames(DR[g,,'sgn'], colnames(DR))!=0))
-    if(length(reg) == 0) return(matrix(1,ncol=N,dimnames = list(NULL, ind)))
-    r_A = mol_prev[reg,]
-    th_r = matrix(DR[g,reg,'th'], nrow = length(reg), ncol = N, dimnames = list(reg,ind))
-    n_r = DR[g,reg,'n']
-    temp = matrix(1+(r_A^n_r)/(th_r^n_r+r_A^n_r), ncol=N); colnames(temp) = ind 
-    res = apply(temp, 2, prod)
-    
-    return(res)
-  }))
+  # Initial values
+  # Are the initial values the same for all individuals???
+  rna_prev = matrix(cohort$rna_0[genes, ind], nrow = G, ncol = N); rownames(rna_prev) = genes; colnames(rna_prev) = ind
+  prot_A_prev = matrix(cohort$prot_A_0[prot, ind], nrow = P, ncol = N); rownames(prot_A_prev) = prot; colnames(prot_A_prev) = ind
+  prot_NA_prev = matrix(cohort$prot_NA_0[prot, ind], nrow = P, ncol = N); rownames(prot_NA_prev) = prot; colnames(prot_NA_prev) = ind
+  prot_tot_prev = matrix(prot_A_prev[prot, ind] + prot_NA_prev[prot, ind], nrow = P, ncol = N); rownames(prot_tot_prev) = prot; colnames(prot_tot_prev) = ind
+  met_tot_prev = matrix(cohort$met_tot_0[met, ind], nrow = M, ncol = N); rownames(met_tot_prev) = met; colnames(met_tot_prev) = ind
   
   
-  # protein degradation rate
-  p_DP[prot, ind] = p0_DP[prot] * t(sapply(prot, function(g){
-    reg = names(which(setNames(DP[g,,'sgn'], colnames(DP))!=0))
-    if(length(reg) == 0) return(matrix(1,ncol=N,dimnames = list(NULL, ind)))
-    r_A = mol_prev[reg,]
-    th_r = matrix(DP[g,reg,'th'], nrow = length(reg), ncol = N, dimnames = list(reg,ind))
-    n_r = DP[g,reg,'n']
-    temp = matrix(1+(r_A^n_r)/(th_r^n_r+r_A^n_r), ncol=N); colnames(temp) = ind 
-    res = apply(temp, 2, prod)
-    
-    return(res)
-  }))
+  # For visualization
   
-  # protein activation rate
-  p_act[prot, ind] = t(sapply(prot, function(g){
-    reg = names(which(setNames(ACT[g,,'sgn'], colnames(ACT))!=0))
-    if(length(reg) == 0) return(matrix(1,ncol=N,dimnames = list(NULL, ind)))
-    r_A = mol_prev[reg,]
-    th_r = matrix(ACT[g,reg,'th'], nrow = length(reg), ncol = N, dimnames = list(reg,ind))
-    n_r = ACT[g,reg,'n']
-    temp = matrix(1+(r_A^n_r)/(th_r^n_r+r_A^n_r), ncol=N); colnames(temp) = ind 
-    res = apply(temp, 2, prod)
-    
-    return(res)
-  }))
+  time_rna = vector("list", G); names(time_rna) = genes
+  time_prot_tot = vector("list", P); names(time_prot_tot) = prot
+  time_prot_A = vector("list", P); names(time_prot_A) = prot
+  time_prot_NA = vector("list", P); names(time_prot_NA) = prot
+  time_met_tot = vector("list", M); names(time_met_tot) = met
   
-  # protein deactivation rate
-  p_deact[prot, ind] = t(sapply(prot, function(g){
-    reg = names(which(setNames(DEACT[g,,'sgn'], colnames(DEACT))!=0))
-    if(length(reg) == 0) return(matrix(0,ncol=N,dimnames = list(NULL, ind)))
-    r_A = mol_prev[reg,]
-    th_r = matrix(DEACT[g,reg,'th'], nrow = length(reg), ncol = N, dimnames = list(reg,ind))
-    n_r = DEACT[g,reg,'n']
-    temp = matrix(1+(r_A^n_r)/(th_r^n_r+r_A^n_r), ncol=N); colnames(temp) = ind 
-    res = apply(temp, 2, prod)
-    
-    return(res)
-  }))
-  
-  
-  
-  
-  ## 2: Compute new molecule abundances ----
-  
-  # Update RNA abundance
-  #    Gene transcription follows a Poisson law, and each RNA molecule at time t-1 has a probability p_DR of being degraded
-  rna[genes, ind] = rna_prev[genes, ind] + rpois(length(l_TC), l_TC) - rbinom(N*G, rna_prev, p_DR)
-  
-  
-  # Update protein abundance 
-  
-  # Activation or degradation of inactive proteins
-  # Each inactive protein has 3 possible fates:
-  #      - Stay inactive with a probability of (1-proba_activation)*(1-proba_degradation)
-  #      - Become active with a probability of proba_activation*(1-proba_degradation)
-  #      - Be degraded with a probability of proba_degradation
-  probs = rbind( as.vector((1-p_act)*(1-p_DP)), as.vector(p_act*(1-p_DP)) ,as.vector(p_DP) ) # order of the columns: Prot1 for ind1, Prot2 for ind1, ... , ProtP for ind1, Prot1 for ind2, etc
-  # For each protein type in each individuals these fates are sampled using a multinomial distribution
-  temp = sapply(1:(N*P), function(i){rmultinom(1,prot_NA_prev[i],probs[,i])})
-  Xa = temp[2,] # proteins inactive at time t-1 that are activated
-  Xdna = temp[3,] # proteins inactive at time t-1 that are degraded
-  
-  # Each active protein has 3 possible fates:
-  #      - Stay active with a probability of (1-proba_deactivation)*(1-proba_degradation)
-  #      - Become inactive with a probability of proba_deactivation*(1-proba_degradation)
-  #      - Be degraded with a probability of proba_degradation
-  probs = rbind( as.vector((1-p_deact)*(1-p_DP)), as.vector(p_deact*(1-p_DP)) ,as.vector(p_DP) ) # order of the columns: Prot1 for ind1, Prot2 for ind1, ... , ProtP for ind1, Prot1 for ind2, etc
-  # For each protein type in each individuals these fates are sampled using a multinomial distribution
-  temp = sapply(1:(N*P), function(i){rmultinom(1,prot_A_prev[i],probs[,i])})
-  Xna = temp[2,] # proteins active at time t-1 that are deactivated
-  Xda = temp[3,] # proteins active at time t-1 that are degraded
-  
-  
-  # Update inactive protein abundance
-  prot_NA[prot, ind] = rpois(length(l_TL), l_TL) + prot_NA_prev[prot, ind] - Xa - Xdna + Xna
-  
-  # Update active protein abundance
-  prot_A[prot, ind] = prot_A_prev[prot, ind] - Xna - Xda + Xa
-  
-  # Update total protein abundance
-  prot_tot[prot, ind] = prot_NA[prot, ind] + prot_A[prot, ind]
-  
-  
-  
-  ## Update the '_prev' matrices ----
-  rna_prev = rna
-  prot_tot_prev = prot_tot
-  prot_NA_prev = prot_NA
-  prot_A_prev = prot_A
-  
-  ## Store values for visualization
-  for(g in genes){ time_rna[[g]] = cbind(time_rna[[g]],rna[g,]) }
+  # Add t = 0
+  for(g in genes){ time_rna[[g]] = cbind(time_rna[[g]],rna_prev[g,]) }
   for(p in prot){ 
-    time_prot_tot[[p]] = cbind(time_prot_tot[[p]], prot_tot[p,])
-    time_prot_A[[p]] = cbind(time_prot_A[[p]], prot_A[p,])
-    time_prot_NA[[p]] = cbind(time_prot_NA[[p]], prot_NA[p,])
-    }
-  for(m in met){ time_met_tot[[m]] = cbind(time_met_tot[[m]], met_tot[m,]) }
+    time_prot_tot[[p]] = cbind(time_prot_tot[[p]], prot_tot_prev[p,])
+    time_prot_A[[p]] = cbind(time_prot_A[[p]], prot_A_prev[p,])
+    time_prot_NA[[p]] = cbind(time_prot_NA[[p]], prot_NA_prev[p,])
+  }
+  for(m in met){ time_met_tot[[m]] = cbind(time_met_tot[[m]], met_tot_prev[m,]) }
   
-  t = t + 1
-}
+  # Main loop -----
+  
+  while(t<tmax){
+    
+    mol_prev = rbind(rna_prev[noncod,ind], prot_A_prev[,ind], met_tot_prev[,ind]); rownames(mol_prev) = c(noncod,prot,met)
+    
+    ## 1: Update rates and probabilites ----
+    
+    # Transcription rate
+    l_TC[genes, ind] = k_TC[genes] * t(sapply(genes, function(g){
+      reg = mol_prev[colnames(TF_n),]^TF_n[g,]
+      theta = t(QTL_TC[g,] * matrix(TF_th[g,], nrow = N, ncol = ncol(TF_th), byrow = T)) ^ TF_n[g,]
+      temp = 1 + TF_sgn[g,] * (reg/(reg + theta)); rownames(temp) = colnames(TF_sgn); colnames(temp) = ind
+      return(apply(temp, 2, prod))
+    }))
+    
+    
+    # Translation rate 
+      l_TL[protcod, ind] = rna_prev[protcod,] * k_TL[protcod] * t(sapply(protcod, function(g){
+        reg = mol_prev[colnames(TLF_n),]^TLF_n[g,]
+        theta = t(QTL_TL[g,] * matrix(TLF_th[g,], nrow = N, ncol = ncol(TLF_th), byrow = T)) ^ TLF_n[g,]
+        temp = 1 + TLF_sgn[g,] * (reg/(reg + theta)); rownames(temp) = colnames(TLF_sgn); colnames(temp) = ind
+        return(apply(temp, 2, prod))
+      }))
+    
+    
+    # RNA degradation rate
+      p_DR[genes, ind] = p0_DR[genes] * QTL_DR[genes, ind] * t(sapply(genes, function(g){
+        reg = mol_prev[colnames(DR_n),]^DR_n[g,]
+        theta = matrix(DR_th[g,], nrow = ncol(DR_th), ncol = N) ^ DR_n[g,]
+        temp = 1 + DR_sgn[g,] * (reg/(reg + theta)); rownames(temp) = colnames(DR_sgn); colnames(temp) = ind
+        return(apply(temp, 2, prod))
+      }))  
+      
+    
+    
+    # protein degradation rate
+      p_DP[prot, ind] = p0_DP[prot] * t(sapply(prot, function(g){
+        reg = mol_prev[colnames(DP_n),]^DP_n[g,]
+        theta = matrix(DP_th[g,], nrow = ncol(DP_th), ncol = N) ^ DP_n[g,]
+        temp = 1 + DP_sgn[g,] * (reg/(reg + theta)); rownames(temp) = colnames(DP_sgn); colnames(temp) = ind
+        return(apply(temp, 2, prod))
+      }))
+      
+    
+    # protein activation rate
+    p_act[prot, ind] = t(sapply(prot, function(g){
+      reg = mol_prev[colnames(ACT_n),]^ACT_n[g,]
+      theta = matrix(ACT_th[g,], nrow = ncol(ACT_th), ncol = N) ^ ACT_n[g,]
+      temp = ACT_sgn[g,] * (reg/(reg + theta)); rownames(temp) = colnames(ACT_sgn); colnames(temp) = ind
+      return(apply(temp, 2, prod))
+    }))
 
+    
+    # protein deactivation rate
+    p_deact[prot, ind] = t(sapply(prot, function(g){
+      reg = mol_prev[colnames(DEACT_n),]^DEACT_n[g,]
+      theta = matrix(DEACT_th[g,], nrow = ncol(DEACT_th), ncol = N) ^ DEACT_n[g,]
+      temp = DEACT_sgn[g,] * (reg/(reg + theta)); rownames(temp) = colnames(DEACT_sgn); colnames(temp) = ind
+      return(apply(temp, 2, prod))
+    }))
+    
+    
+    
+    
+    ## 2: Compute new molecule abundances ----
+    
+    # Update RNA abundance
+    #    Gene transcription follows a Poisson law, and each RNA molecule at time t-1 has a probability p_DR of being degraded
+    rna[genes, ind] = rna_prev[genes, ind] + rpois(length(l_TC), l_TC) - rbinom(N*G, rna_prev, p_DR)
+    
+    
+    # Update protein abundance 
+    
+    # Activation or degradation of inactive proteins
+    # Each inactive protein has 3 possible fates:
+    #      - Stay inactive with a probability of (1-proba_activation)*(1-proba_degradation)
+    #      - Become active with a probability of proba_activation*(1-proba_degradation)
+    #      - Be degraded with a probability of proba_degradation
+    probs = rbind( as.vector((1-p_act)*(1-p_DP)), as.vector(p_act*(1-p_DP)) ,as.vector(p_DP) ) # order of the columns: Prot1 for ind1, Prot2 for ind1, ... , ProtP for ind1, Prot1 for ind2, etc
+    # For each protein type in each individuals these fates are sampled using a multinomial distribution
+    temp = sapply(1:(N*P), function(i){rmultinom(1,prot_NA_prev[i],probs[,i])})
+    Xa = temp[2,] # proteins inactive at time t-1 that are activated
+    Xdna = temp[3,] # proteins inactive at time t-1 that are degraded
+    
+    # Each active protein has 3 possible fates:
+    #      - Stay active with a probability of (1-proba_deactivation)*(1-proba_degradation)
+    #      - Become inactive with a probability of proba_deactivation*(1-proba_degradation)
+    #      - Be degraded with a probability of proba_degradation
+    probs = rbind( as.vector((1-p_deact)*(1-p_DP)), as.vector(p_deact*(1-p_DP)) ,as.vector(p_DP) ) # order of the columns: Prot1 for ind1, Prot2 for ind1, ... , ProtP for ind1, Prot1 for ind2, etc
+    # For each protein type in each individuals these fates are sampled using a multinomial distribution
+    temp = sapply(1:(N*P), function(i){rmultinom(1,prot_A_prev[i],probs[,i])})
+    Xna = temp[2,] # proteins active at time t-1 that are deactivated
+    Xda = temp[3,] # proteins active at time t-1 that are degraded
+    
+    
+    # Update inactive protein abundance
+    prot_NA[prot, ind] = rpois(length(l_TL), l_TL) + prot_NA_prev[prot, ind] - Xa - Xdna + Xna
+    
+    # Update active protein abundance
+    prot_A[prot, ind] = prot_A_prev[prot, ind] - Xna - Xda + Xa
+    
+    # Update total protein abundance
+    prot_tot[prot, ind] = prot_NA[prot, ind] + prot_A[prot, ind]
+    
+    
+    
+    ## Update the '_prev' matrices ----
+    rna_prev = rna
+    prot_tot_prev = prot_tot
+    prot_NA_prev = prot_NA
+    prot_A_prev = prot_A
+    
+    ## Store values for visualization
+    for(g in genes){ time_rna[[g]] = cbind(time_rna[[g]],rna[g,]) }
+    for(p in prot){ 
+      time_prot_tot[[p]] = cbind(time_prot_tot[[p]], prot_tot[p,])
+      time_prot_A[[p]] = cbind(time_prot_A[[p]], prot_A[p,])
+      time_prot_NA[[p]] = cbind(time_prot_NA[[p]], prot_NA[p,])
+      }
+    for(m in met){ time_met_tot[[m]] = cbind(time_met_tot[[m]], met_tot[m,]) }
+    
+    t = t + 1
+  }
+  
+  res = list("time_rna" = time_rna,
+             "time_prot_tot" = time_prot_tot,
+             "time_prot_A" = time_prot_A,
+             "time_prot_NA" = time_prot_NA,
+             "time_met_tot" = time_met_tot)
+  
+  return(res)
+}
+  
+  
 ##########################################################################################################################
 #                                                       OUTPUT                                                           #
 ##########################################################################################################################
 
-## Visualization ----
-
-cols = c('blue','green', 'red'); names(cols) = ind
-
-# plot genes
-for(g in genes){
-  plot(1:(tmax+1), ylim = c(0,max(unlist(time_rna[[g]]))), type = 'n', main = paste('Gene',g, sep=' '), xlab = 'time', ylab = 'abundance')
-  for(i in ind){
-    lines(time_rna[[g]][i,], col=cols[i])
+visu = function(network, cohort, sim, tmax){
+  
+  cols = c('blue','green', 'red'); names(cols) = cohort$ind
+  
+  # plot genes
+  for(g in network$genes){
+    plot(1:(tmax+1), ylim = c(0,max(unlist(sim$time_rna[[g]]))), type = 'n', main = paste('Gene',g, sep=' '), xlab = 'time', ylab = 'abundance')
+    for(i in cohort$ind){
+      lines(sim$time_rna[[g]][i,], col=cols[i])
+    }
+    legend('topright', col = cols, lty=1, legend = names(cols))
   }
-  legend('topright', col = cols, lty=1, legend = names(cols))
-}
-
-# plot genes
-for(p in prot){
-  plot(1:(tmax+1), ylim = c(0,max(unlist(time_prot_tot[[p]]))), type = 'n', main = paste('Protein',p, sep=' '), xlab = 'time', ylab = 'abundance')
-  for(i in ind){
-    lines(time_prot_tot[[p]][i,], col=cols[i])
+  
+  # plot genes
+  for(p in network$prot){
+    plot(1:(tmax+1), ylim = c(0,max(unlist(sim$time_prot_tot[[p]]))), type = 'n', main = paste('Protein',p, sep=' '), xlab = 'time', ylab = 'abundance')
+    for(i in cohort$ind){
+      lines(sim$time_prot_tot[[p]][i,], col=cols[i])
+    }
+    legend('topright', col = cols, lty=1, legend = names(cols))
   }
-  legend('topright', col = cols, lty=1, legend = names(cols))
-}
+}  
+
+
+
+
+##########################################################################################################################
+#                                                        MAIN                                                            #
+##########################################################################################################################
+
+tmax = 1000  
+
+nw1 = rand_network_null(2,2,1)
+cohort = rand_cohort(nw1,3)
+sim = simu(nw1, cohort, tmax)
+visu(nw1,cohort,sim, tmax)
