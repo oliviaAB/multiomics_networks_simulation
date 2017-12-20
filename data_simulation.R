@@ -425,6 +425,8 @@ simu = function(network, cohort, tmax){
   time_prot_NA = vector("list", P); names(time_prot_NA) = prot
   time_met_tot = vector("list", M); names(time_met_tot) = met
   
+  time_TC_rate = vector("list", G); names(time_TC_rate) = genes
+  
   # Add t = 0
   for(g in genes){ time_rna[[g]] = cbind(time_rna[[g]],rna_prev[g,]) }
   for(p in prot){ 
@@ -481,6 +483,7 @@ simu = function(network, cohort, tmax){
     
     # protein activation rate
     p_act[prot, ind] = t(sapply(prot, function(g){
+      if(sum(ACT_sgn[g,]) == 0){return(matrix(1, nrow = 1, ncol = N, dimnames = list(g, ind)))}
       reg = mol_prev[colnames(ACT_n),]^ACT_n[g,]
       theta = matrix(ACT_th[g,], nrow = ncol(ACT_th), ncol = N) ^ ACT_n[g,]
       temp = ACT_sgn[g,] * (reg/(reg + theta)); rownames(temp) = colnames(ACT_sgn); colnames(temp) = ind
@@ -548,7 +551,10 @@ simu = function(network, cohort, tmax){
     prot_A_prev = prot_A
     
     ## Store values for visualization
-    for(g in genes){ time_rna[[g]] = cbind(time_rna[[g]],rna[g,]) }
+    for(g in genes){ 
+      time_rna[[g]] = cbind(time_rna[[g]],rna[g,])
+      time_TC_rate[[g]] = cbind(time_TC_rate[[g]],l_TC[g,])
+      }
     for(p in prot){ 
       time_prot_tot[[p]] = cbind(time_prot_tot[[p]], prot_tot[p,])
       time_prot_A[[p]] = cbind(time_prot_A[[p]], prot_A[p,])
@@ -563,7 +569,8 @@ simu = function(network, cohort, tmax){
              "time_prot_tot" = time_prot_tot,
              "time_prot_A" = time_prot_A,
              "time_prot_NA" = time_prot_NA,
-             "time_met_tot" = time_met_tot)
+             "time_met_tot" = time_met_tot,
+             "time_TC_rate" = time_TC_rate)
   
   return(res)
 }
@@ -575,7 +582,8 @@ simu = function(network, cohort, tmax){
 
 visu = function(network, cohort, sim, tmax){
   
-  cols = c('blue','green', 'red'); names(cols) = cohort$ind
+  #cols = c('blue','green', 'red'); names(cols) = cohort$ind
+  cols = rainbow(length(cohort$ind)); names(cols) = cohort$ind
   
   # plot genes
   for(g in network$genes){
@@ -586,7 +594,7 @@ visu = function(network, cohort, sim, tmax){
     legend('topright', col = cols, lty=1, legend = names(cols))
   }
   
-  # plot genes
+  # plot proteins
   for(p in network$prot){
     plot(1:(tmax+1), ylim = c(0,max(unlist(sim$time_prot_tot[[p]]))), type = 'n', main = paste('Protein',p, sep=' '), xlab = 'time', ylab = 'abundance')
     for(i in cohort$ind){
@@ -594,6 +602,16 @@ visu = function(network, cohort, sim, tmax){
     }
     legend('topright', col = cols, lty=1, legend = names(cols))
   }
+  
+   # plot transcription rates
+  for(g in network$genes){
+    plot(1:(tmax+1), ylim = c(0,max(unlist(sim$time_TC_rate[[g]]))), type = 'n', main = paste('TC rate - Gene',g, sep=' '), xlab = 'time', ylab = 'Transcription rate')
+    for(i in cohort$ind){
+      lines(sim$time_TC_rate[[g]][i,], col=cols[i])
+    }
+    legend('topright', col = cols, lty=1, legend = names(cols))
+    }
+  
 }  
 
 
@@ -605,7 +623,21 @@ visu = function(network, cohort, sim, tmax){
 
 tmax = 1000  
 
-nw1 = rand_network_null(2,2,1)
+nw1 = rand_network_null(1,1,1)
 cohort = rand_cohort(nw1,3)
 sim = simu(nw1, cohort, tmax)
 visu(nw1,cohort,sim, tmax)
+
+
+# One-gene negative feedback loop
+
+tmax = 1000  
+
+negative_feedback = rand_network_null(1,1,1)
+negative_feedback$TF_sgn[1] = -1
+negative_feedback$TF_th[1] = 10000
+negative_feedback$TF_n[1] = 2
+
+cohort = rand_cohort(negative_feedback,3)
+sim = simu(negative_feedback, cohort, tmax)
+visu(negative_feedback,cohort,sim, tmax)
