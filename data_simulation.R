@@ -66,7 +66,7 @@
 
 # ----
 
-
+source("param.R")
 
 ##########################################################################################################################
 #                                                  NETWORK SIMULATION                                                    #
@@ -87,72 +87,72 @@ rand_network = function(G, P, M){
   
   # Transcription regulation
   # TF : array for transcription regulation network, target genes (G rows) x transcription regulators (NC + P (=G) columns)
-  TF_sgn = matrix( sample(c(-1:1), size = (G*G), replace = T, prob = c(0.05,0.75, 0.2)), nrow = G, ncol = G, dimnames = list(genes, c(noncod,prot)))
+  TF_sgn = matrix( sample(c(-1:1), size = (G*G), replace = T, prob = proba_reg_TF), nrow = G, ncol = G, dimnames = list(genes, c(noncod,prot)))
   # The th parameter for the Hill function of each regulator is sampled from a uniform distribution on discrete numbers between 50 and 100
-  TF_th = matrix( 0, nrow = G, ncol = G, dimnames = list(genes, c(noncod,prot))) ; TF_th[which(TF_sgn!=0)] = sample(50:100, length(which(TF_sgn!=0)), replace = T)
+  TF_th = matrix( 0, nrow = G, ncol = G, dimnames = list(genes, c(noncod,prot))) ; TF_th[which(TF_sgn!=0)] = get(th_sampling)(length(which(TF_sgn!=0)))
   # The n parameter for the Hill function of each regulator is sampled from a uniform distribution on discrete numbers between 1 and 4
-  TF_n = matrix( 0, nrow = G, ncol = G, dimnames = list(genes, c(noncod,prot))) ; TF_n[which(TF_sgn!=0)] = sample(1:4, length(which(TF_sgn!=0)), replace = T)
+  TF_n = matrix( 0, nrow = G, ncol = G, dimnames = list(genes, c(noncod,prot))) ; TF_n[which(TF_sgn!=0)] = get(n_sampling)(length(which(TF_sgn!=0)))
   
   # Translation regulation
   # TLF : array for translation regulation network, target protein-coding genes (P rows) x transcription regulators (NC + P (=G) columns)
-  TLF_sgn = matrix( sample(c(-1:1), size = (P*G), replace = T, prob = c(0.2,0.6, 0.2)), nrow = P, ncol = G, dimnames = list(protcod, c(noncod,prot)))
+  TLF_sgn = matrix( sample(c(-1:1), size = (P*G), replace = T, prob = proba_reg_TLF), nrow = P, ncol = G, dimnames = list(protcod, c(noncod,prot)))
   # The th parameter for the Hill function of each regulator is sampled from a uniform distribution on discrete numbers between 50 and 100
-  TLF_th = matrix( 0, nrow = P, ncol = G, dimnames = list(protcod, c(noncod,prot))) ; TLF_th[which(TLF_sgn!=0)] = sample(50:100, length(which(TLF_sgn!=0)), replace = T)
+  TLF_th = matrix( 0, nrow = P, ncol = G, dimnames = list(protcod, c(noncod,prot))) ; TLF_th[which(TLF_sgn!=0)] = get(th_sampling)(length(which(TLF_sgn!=0)))
   # The n parameter for the Hill function of each regulator is sampled from a uniform distribution on discrete numbers between 1 and 4
-  TLF_n = matrix( 0, nrow = P, ncol = G, dimnames = list(protcod, c(noncod,prot))) ; TLF_n[which(TLF_sgn!=0)] = sample(1:4, length(which(TLF_sgn!=0)), replace = T)
+  TLF_n = matrix( 0, nrow = P, ncol = G, dimnames = list(protcod, c(noncod,prot))) ; TLF_n[which(TLF_sgn!=0)] = get(n_sampling)(length(which(TLF_sgn!=0)))
   
   # RNA decay
   # DR : array for RNA degradation regulation network, target genes (lenght of 1st dimension = G) X regulators non coding RNAs (NC+Q columns)
-  DR_sgn = matrix( sample(c(-1:1), size = (G*NC), replace = T, prob = c(0.2,0.6, 0.2)), nrow = G, ncol = NC, dimnames = list(genes, noncod))
+  DR_sgn = matrix( sample(c(-1:1), size = (G*NC), replace = T, prob = proba_reg_DR), nrow = G, ncol = NC, dimnames = list(genes, noncod))
   # The th parameter for the Hill function of each regulator is sampled from a uniform distribution on discrete numbers between 50 and 100
-  DR_th = matrix( 0, nrow = G, ncol = NC, dimnames = list(genes, noncod)) ; DR_th[which(DR_sgn!=0)] = sample(50:100, length(which(DR_sgn!=0)), replace = T)
+  DR_th = matrix( 0, nrow = G, ncol = NC, dimnames = list(genes, noncod)) ; DR_th[which(DR_sgn!=0)] = get(th_sampling)(length(which(DR_sgn!=0)))
   # The n parameter for the Hill function of each regulator is sampled from a uniform distribution on discrete numbers between 1 and 4
-  DR_n = matrix( 0, nrow = G, ncol = NC, dimnames = list(genes, noncod)) ; DR_n[which(DR_sgn!=0)] = sample(1:4, length(which(DR_sgn!=0)), replace = T)
+  DR_n = matrix( 0, nrow = G, ncol = NC, dimnames = list(genes, noncod)) ; DR_n[which(DR_sgn!=0)] = get(n_sampling)(length(which(DR_sgn!=0)))
   
   
   # Protein decay
   # DP : array for RNA degradation regulation network, target genes (lenght of 1st dimension = G) X regulators non coding RNAs (NC+Q columns)
-  DP_sgn = matrix( sample(c(-1:1), size = (P*P), replace = T, prob = c(0.2,0.6, 0.2)), nrow = P, ncol = P, dimnames = list(prot, prot))
+  DP_sgn = matrix( sample(c(-1:1), size = (P*P), replace = T, prob = proba_reg_DP), nrow = P, ncol = P, dimnames = list(prot, prot))
   # The th parameter for the Hill function of each regulator is sampled from a uniform distribution on discrete numbers between 50 and 100
-  DP_th = matrix( 0, nrow = P, ncol = P, dimnames = list(prot, prot)) ; DP_th[which(DP_sgn!=0)] = sample(50:100, length(which(DP_sgn!=0)), replace = T)
+  DP_th = matrix( 0, nrow = P, ncol = P, dimnames = list(prot, prot)) ; DP_th[which(DP_sgn!=0)] = get(th_sampling)(length(which(DP_sgn!=0)))
   # The n parameter for the Hill function of each regulator is sampled from a uniform distribution on discrete numbers between 1 and 4
-  DP_n = matrix( 0, nrow = P, ncol = P, dimnames = list(prot, prot)) ; DP_n[which(DP_sgn!=0)] = sample(1:4, length(which(DP_sgn!=0)), replace = T)
+  DP_n = matrix( 0, nrow = P, ncol = P, dimnames = list(prot, prot)) ; DP_n[which(DP_sgn!=0)] = get(n_sampling)(length(which(DP_sgn!=0)))
   
 
   # Protein activation
   # ACT : array for protein activation network, target proteins (P rows) x activators (P + NC + M (= G+M) columns)
-  ACT_sgn = matrix( sample(c(0,1), size = (P*(G+M)), replace = T, prob = c(0.7,0.3)), nrow = P, ncol = NC+P+M, dimnames = list(prot, c(prot,noncod,met)))
+  ACT_sgn = matrix( sample(c(0,1), size = (P*(G+M)), replace = T, prob = proba_reg_ACT), nrow = P, ncol = NC+P+M, dimnames = list(prot, c(prot,noncod,met)))
   # The th parameter for the Hill function of each regulator is sampled from a uniform distribution on discrete numbers between 50 and 100
-  ACT_th = matrix( 0, nrow = P, ncol = G+M, dimnames = list(prot, c(prot,noncod,met))) ; ACT_th[which(ACT_sgn!=0)] = sample(50:100, length(which(ACT_sgn!=0)), replace = T)
+  ACT_th = matrix( 0, nrow = P, ncol = G+M, dimnames = list(prot, c(prot,noncod,met))) ; ACT_th[which(ACT_sgn!=0)] = get(th_sampling)(length(which(ACT_sgn!=0)))
   # The n parameter for the Hill function of each regulator is sampled from a uniform distribution on discrete numbers between 1 and 4
-  ACT_n = matrix( 0, nrow = P, ncol = G+M, dimnames = list(prot, c(prot,noncod,met))) ; ACT_n[which(ACT_sgn!=0)] = sample(1:4, length(which(ACT_sgn!=0)), replace = T)
+  ACT_n = matrix( 0, nrow = P, ncol = G+M, dimnames = list(prot, c(prot,noncod,met))) ; ACT_n[which(ACT_sgn!=0)] = get(n_sampling)(length(which(ACT_sgn!=0)))
   
   # Protein deactivation
   # DEACT : array for protein deactivation network, target proteins (P rows) x activators (P + NC + M (= G+M) columns)
-  DEACT_sgn = matrix( sample(c(0,1), size = (P*(G+M)), replace = T, prob = c(0.7,0.3)), nrow = P, ncol = NC+P+M, dimnames = list(prot, c(prot,noncod,met)))
+  DEACT_sgn = matrix( sample(c(0,1), size = (P*(G+M)), replace = T, prob = proba_reg_ACT), nrow = P, ncol = NC+P+M, dimnames = list(prot, c(prot,noncod,met)))
   # The th parameter for the Hill function of each regulator is sampled from a uniform distribution on discrete numbers between 50 and 100
-  DEACT_th = matrix( 0, nrow = P, ncol = G+M, dimnames = list(prot, c(prot,noncod,met))) ; DEACT_th[which(DEACT_sgn!=0)] = sample(50:100, length(which(DEACT_sgn!=0)), replace = T)
+  DEACT_th = matrix( 0, nrow = P, ncol = G+M, dimnames = list(prot, c(prot,noncod,met))) ; DEACT_th[which(DEACT_sgn!=0)] = get(th_sampling)(length(which(DEACT_sgn!=0)))
   # The n parameter for the Hill function of each regulator is sampled from a uniform distribution on discrete numbers between 1 and 4
-  DEACT_n = matrix( 0, nrow = P, ncol = G+M, dimnames = list(prot, c(prot,noncod,met))) ; DEACT_n[which(DEACT_sgn!=0)] = sample(1:4, length(which(DEACT_sgn!=0)), replace = T)
+  DEACT_n = matrix( 0, nrow = P, ncol = G+M, dimnames = list(prot, c(prot,noncod,met))) ; DEACT_n[which(DEACT_sgn!=0)] = get(n_sampling)(length(which(DEACT_sgn!=0)))
   
   
   ## Nodes parameters
   
   # Transcription rates
   # TC rates chosen randomly between 0.01 and 0.1
-  k_TC = runif(G, 0.01, 0.1); names(k_TC) = genes
+  k_TC = get(basal_transcription_rate)(G) ; names(k_TC) = genes
   
   # Translation rates
   # TL rates chosen randomly between 0.5 and 5
-  k_TL = runif(P, 0.5, 5); names(k_TL) = protcod
+  k_TL = get(basal_translation_rate)(P); names(k_TL) = protcod
   
   # RNA decay rates
   # RNA decay rates chosen randomly between 0.005 and 0.01
-  p0_DR = runif(G, 0.005, 0.01); names(p0_DR) = genes
+  p0_DR = get(basal_RNAdecay_rate)(G); names(p0_DR) = genes
   
   # Protein decay rates
   # protein decay rates chosen randomly between 0.01 and 0.1
-  p0_DP = runif(P, 0.01, 0.1); names(p0_DP) = prot
+  p0_DP = get(basal_proteindecay_rate)(P); names(p0_DP) = prot
       
   res = list("genes" = genes, # ----
              "protcod" = protcod,
@@ -247,19 +247,19 @@ rand_network_null = function(G, P, M){
   
   # Transcription rates
   # TC rates chosen randomly between 0.01 and 0.1
-  k_TC = runif(G, 0.01, 0.1); names(k_TC) = genes
+  k_TC = get(basal_transcription_rate)(G) ; names(k_TC) = genes
   
   # Translation rates
   # TL rates chosen randomly between 0.5 and 5
-  k_TL = runif(P, 0.5, 5); names(k_TL) = protcod
+  k_TL = get(basal_translation_rate)(P); names(k_TL) = protcod
   
   # RNA decay rates
   # RNA decay rates chosen randomly between 0.005 and 0.01
-  p0_DR = runif(G, 0.005, 0.01); names(p0_DR) = genes
+  p0_DR = get(basal_RNAdecay_rate)(G); names(p0_DR) = genes
   
   # Protein decay rates
   # protein decay rates chosen randomly between 0.01 and 0.1
-  p0_DP = runif(P, 0.01, 0.1); names(p0_DP) = prot
+  p0_DP = get(basal_proteindecay_rate)(P); names(p0_DP) = prot
   
   res = list("genes" = genes, # ----
              "protcod" = protcod,
@@ -312,19 +312,19 @@ rand_cohort = function(network, N){
   # Genotype effects
   
   # QTL_TC : matrix of genotype effect on transcription (TF binding) for each individual, effects (G rows) x individuals (N columns)
-  QTL_TC = matrix(rnorm(G * N , mean = 1, sd = 0.05), nrow = G, ncol = N); rownames(QTL_TC) = network$genes; colnames(QTL_TC) = ind
+  QTL_TC = matrix(get(qtl_effect_transcription)(G*N), nrow = G, ncol = N); rownames(QTL_TC) = network$genes; colnames(QTL_TC) = ind
 
   # QTL_TL : matrix of genotype effect on translation (TLF binding) for each individual, effects (P rows) x individuals (N columns)
-  QTL_TL = matrix(rnorm(P * N , mean = 1, sd = 0.05), nrow = P, ncol = N); rownames(QTL_TL) = network$protcod; colnames(QTL_TL) = ind
+  QTL_TL = matrix(get(qtl_effect_translation)(P*N), nrow = P, ncol = N); rownames(QTL_TL) = network$protcod; colnames(QTL_TL) = ind
   
   # QTL_DR : matrix of genotype effect on mRNA degradation for each individual, effects (G rows) x individuals (N columns)
-  QTL_DR = matrix(rnorm(G * N , mean = 1, sd = 0.05), nrow = G, ncol = N); rownames(QTL_DR) = network$genes; colnames(QTL_DR) = ind
+  QTL_DR = matrix(get(qtl_effect_RNAdecay)(G*N), nrow = G, ncol = N); rownames(QTL_DR) = network$genes; colnames(QTL_DR) = ind
   
-  rna_0 = matrix(sample(0:500, G*N, replace = T), nrow = G, ncol = N); rownames(rna_0) = network$genes; colnames(rna_0) = ind
-  prot_tot_0 = matrix(sample(0:500, P*N, replace = T), nrow = P, ncol = N); rownames(prot_tot_0) = network$prot; colnames(prot_tot_0) = ind
-  prot_A_0 = matrix(sample(0:500, P*N, replace = T), nrow = P, ncol = N); rownames(prot_A_0) = network$prot; colnames(prot_A_0) = ind
-  prot_NA_0 = matrix(sample(0:500, P*N, replace = T), nrow = P, ncol = N); rownames(prot_NA_0) = network$prot; colnames(prot_NA_0) = ind
-  met_tot_0 = matrix(sample(0:500, M*N, replace = T), nrow = M, ncol = N); rownames(met_tot_0) = network$met; colnames(met_tot_0) = ind
+  rna_0 = matrix(get(initial_abundance)(G,N), nrow = G, ncol = N); rownames(rna_0) = network$genes; colnames(rna_0) = ind
+  prot_tot_0 = matrix(get(initial_abundance)(P,N), nrow = P, ncol = N); rownames(prot_tot_0) = network$prot; colnames(prot_tot_0) = ind
+  prot_A_0 = matrix(get(initial_abundance)(P,N), nrow = P, ncol = N); rownames(prot_A_0) = network$prot; colnames(prot_A_0) = ind
+  prot_NA_0 = matrix(get(initial_abundance)(P,N), nrow = P, ncol = N); rownames(prot_NA_0) = network$prot; colnames(prot_NA_0) = ind
+  met_tot_0 = matrix(get(initial_abundance)(M,N), nrow = M, ncol = N); rownames(met_tot_0) = network$met; colnames(met_tot_0) = ind
   
   res = list("ind" = ind,
              "QTL_TC" = QTL_TC,
