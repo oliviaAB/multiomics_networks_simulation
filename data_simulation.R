@@ -605,7 +605,7 @@ visu = function(network, cohort, sim, tmax){
   
    # plot transcription rates
   for(g in network$genes){
-    plot(1:(tmax+1), ylim = c(0,max(unlist(sim$time_TC_rate[[g]]))), type = 'n', main = paste('TC rate - Gene',g, sep=' '), xlab = 'time', ylab = 'Transcription rate')
+    plot(1:(tmax+1), ylim = c(min(unlist(sim$time_TC_rate[[g]])),max(unlist(sim$time_TC_rate[[g]]))), type = 'n', main = paste('TC rate - Gene',g, sep=' '), xlab = 'time', ylab = 'Transcription rate')
     for(i in cohort$ind){
       lines(sim$time_TC_rate[[g]][i,], col=cols[i])
     }
@@ -623,8 +623,8 @@ visu = function(network, cohort, sim, tmax){
 
 tmax = 1000  
 
-nw1 = rand_network_null(1,1,1)
-cohort = rand_cohort(nw1,3)
+nw1 = rand_network_null(100,80,1)
+cohort = rand_cohort(nw1,50)
 sim = simu(nw1, cohort, tmax)
 visu(nw1,cohort,sim, tmax)
 
@@ -635,7 +635,7 @@ tmax = 1000
 
 negative_feedback = rand_network_null(1,1,1)
 negative_feedback$TF_sgn[1] = -1
-negative_feedback$TF_th[1] = 10000
+negative_feedback$TF_th[1] = 500
 negative_feedback$TF_n[1] = 2
 
 cohort = rand_cohort(negative_feedback,3)
