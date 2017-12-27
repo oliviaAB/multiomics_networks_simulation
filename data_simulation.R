@@ -76,7 +76,7 @@ source("param.R")
 rand_network = function(G, P, M){
  
   # Nodes
-  genes = sapply(1:G, function(i){ return(paste0("G",i)) })
+  genes = sapply(1:G, function(i){ return(paste0("RNA",i)) })
   prot = sapply(1:P, function(i){ return(paste0("P",i)) })
   met = sapply(1:M, function(i){ return(paste0("M",i)) })
   
@@ -191,7 +191,7 @@ rand_network = function(G, P, M){
 rand_network_null = function(G, P, M){
   
   # Nodes
-  genes = sapply(1:G, function(i){ return(paste0("G",i)) })
+  genes = sapply(1:G, function(i){ return(paste0("RNA",i)) })
   prot = sapply(1:P, function(i){ return(paste0("P",i)) })
   met = sapply(1:M, function(i){ return(paste0("M",i)) })
   
@@ -324,6 +324,7 @@ rand_cohort = function(network, N){
   prot_tot_0 = matrix(get(initial_abundance)(P,N), nrow = P, ncol = N); rownames(prot_tot_0) = network$prot; colnames(prot_tot_0) = ind
   prot_A_0 = matrix(get(initial_abundance)(P,N), nrow = P, ncol = N); rownames(prot_A_0) = network$prot; colnames(prot_A_0) = ind
   prot_NA_0 = matrix(get(initial_abundance)(P,N), nrow = P, ncol = N); rownames(prot_NA_0) = network$prot; colnames(prot_NA_0) = ind
+  prot_tot_0 = prot_NA_0 + prot_A_0; rownames(prot_tot_0) = network$prot; colnames(prot_tot_0) = ind
   met_tot_0 = matrix(get(initial_abundance)(M,N), nrow = M, ncol = N); rownames(met_tot_0) = network$met; colnames(met_tot_0) = ind
   
   res = list("ind" = ind,
@@ -438,9 +439,9 @@ simu = function(network, cohort, tmax){
   
   # Main loop -----
   
-  while(t<tmax){
+  while(t<=tmax){
     
-    mol_prev = rbind(rna_prev[noncod,ind], prot_A_prev[,ind], met_tot_prev[,ind]); rownames(mol_prev) = c(noncod,prot,met)
+    mol_prev = rbind(as.matrix(rna_prev[noncod, ind], ncol = length(ind)), as.matrix(prot_A_prev[, ind], ncol = length(ind)), as.matrix(met_tot_prev[, ind], ncol = length(ind))); rownames(mol_prev) = c(noncod,prot,met); colnames(mol_prev) = ind
     
     ## 1: Update rates and probabilites ----
     
@@ -486,7 +487,7 @@ simu = function(network, cohort, tmax){
       if(sum(ACT_sgn[g,]) == 0){return(matrix(1, nrow = 1, ncol = N, dimnames = list(g, ind)))}
       reg = mol_prev[colnames(ACT_n),]^ACT_n[g,]
       theta = matrix(ACT_th[g,], nrow = ncol(ACT_th), ncol = N) ^ ACT_n[g,]
-      temp = ACT_sgn[g,] * (reg/(reg + theta)); rownames(temp) = colnames(ACT_sgn); colnames(temp) = ind
+      temp = ACT_sgn[g,] * (reg/(reg + theta)) + 1 - ACT_sgn[g,]; rownames(temp) = colnames(ACT_sgn); colnames(temp) = ind # + 1 - ACT_sgn[g,] allows to set non-regulators to 1 = neutral in the product of all regulator contributions
       return(apply(temp, 2, prod))
     }))
 
@@ -495,7 +496,7 @@ simu = function(network, cohort, tmax){
     p_deact[prot, ind] = t(sapply(prot, function(g){
       reg = mol_prev[colnames(DEACT_n),]^DEACT_n[g,]
       theta = matrix(DEACT_th[g,], nrow = ncol(DEACT_th), ncol = N) ^ DEACT_n[g,]
-      temp = DEACT_sgn[g,] * (reg/(reg + theta)); rownames(temp) = colnames(DEACT_sgn); colnames(temp) = ind
+      temp = DEACT_sgn[g,] * (reg/(reg + theta)) + 1 - DEACT_sgn[g,]; rownames(temp) = colnames(DEACT_sgn); colnames(temp) = ind
       return(apply(temp, 2, prod))
     }))
     
@@ -507,8 +508,7 @@ simu = function(network, cohort, tmax){
     # Update RNA abundance
     #    Gene transcription follows a Poisson law, and each RNA molecule at time t-1 has a probability p_DR of being degraded
     rna[genes, ind] = rna_prev[genes, ind] + rpois(length(l_TC), l_TC) - rbinom(N*G, rna_prev, p_DR)
-    
-    
+
     # Update protein abundance 
     
     # Activation or degradation of inactive proteins
@@ -565,6 +565,17 @@ simu = function(network, cohort, tmax){
     t = t + 1
   }
   
+  for(g in genes){ 
+    rownames(time_rna[[g]]) = ind
+    rownames(time_TC_rate[[g]]) = ind
+  }
+  for(p in prot){ 
+    rownames(time_prot_tot[[p]]) = ind
+    rownames(time_prot_A[[p]]) = ind
+    rownames(time_prot_NA[[p]]) = ind
+  }
+  for(m in met){ rownames(time_met_tot[[m]]) = ind }
+  
   res = list("time_rna" = time_rna,
              "time_prot_tot" = time_prot_tot,
              "time_prot_A" = time_prot_A,
@@ -614,30 +625,3 @@ visu = function(network, cohort, sim, tmax){
   
 }  
 
-
-
-
-##########################################################################################################################
-#                                                        MAIN                                                            #
-##########################################################################################################################
-
-tmax = 1000  
-
-nw1 = rand_network_null(100,80,1)
-cohort = rand_cohort(nw1,50)
-sim = simu(nw1, cohort, tmax)
-visu(nw1,cohort,sim, tmax)
-
-
-# One-gene negative feedback loop
-
-tmax = 1000  
-
-negative_feedback = rand_network_null(1,1,1)
-negative_feedback$TF_sgn[1] = -1
-negative_feedback$TF_th[1] = 500
-negative_feedback$TF_n[1] = 2
-
-cohort = rand_cohort(negative_feedback,3)
-sim = simu(negative_feedback, cohort, tmax)
-visu(negative_feedback,cohort,sim, tmax)
