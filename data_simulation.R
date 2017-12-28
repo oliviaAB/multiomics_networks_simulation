@@ -68,6 +68,9 @@
 
 source("param.R")
 
+if(!suppressWarnings(require("igraph", quietly = T))){install.packages("igraph")}
+library(igraph)
+
 ##########################################################################################################################
 #                                                  NETWORK SIMULATION                                                    #
 ##########################################################################################################################
@@ -644,3 +647,71 @@ visu = function(network, cohort, sim, tmax){
   
 }  
 
+
+
+##########################################################################################################################
+#                                              NETWORK VISUALIZATION                                                     #
+##########################################################################################################################
+
+
+network_plot = function(nw){
+  G = length(nw$genes)
+  P = length(nw$prot)
+  NC = length(nw$noncod)
+  nwnodes = data.frame("ID" = c(nw$genes, nw$prot), "mol_type" = c(rep(c("RNA","Protein"),c(G,P))))
+  nwedges = data.frame("source" = vector(), "target" = vector(), "reg_type" = vector(), "sign" = vector())
+  
+  # Adding synthesis edges
+  nwedges = rbind(nwedges, data.frame("source" = unname(nw$g2p), "target" = names(nw$g2p), "reg_type" = rep("synthesis",P), "sign" = rep(1,P)))
+  
+  # Adding transcription regulation
+  if(sum(dim(nw$TF_sgn)==0) == 0){
+    nwedges = rbind(nwedges, data.frame("source" = unname(expand.grid(rownames(nw$TF_sgn), colnames(nw$TF_sgn))[,2]), "target" = unname(expand.grid(rownames(nw$TF_sgn), colnames(nw$TF_sgn))[,1]), "reg_type" = rep("transcription", length(nw$TF_sgn)), "sign" = as.vector(nw$TF_sgn)))
+  }
+  
+  # Adding translation regulation
+  if(sum(dim(nw$TLF_sgn)==0) == 0){
+    nwedges = rbind(nwedges, data.frame("source" = unname(expand.grid(rownames(nw$TLF_sgn), colnames(nw$TLF_sgn))[,2]), "target" = unname(expand.grid(rownames(nw$TLF_sgn), colnames(nw$TLF_sgn))[,1]), "reg_type" = rep("translation", length(nw$TLF_sgn)), "sign" = as.vector(nw$TLF_sgn)))
+  }
+  
+  # Adding RNA decay regulation
+  if(sum(dim(nw$DR_sgn)==0) == 0){
+    nwedges = rbind(nwedges, data.frame("source" = unname(expand.grid(rownames(nw$DR_sgn), colnames(nw$DR_sgn))[,2]), "target" = unname(expand.grid(rownames(nw$DR_sgn), colnames(nw$DR_sgn))[,1]), "reg_type" = rep("decay", length(nw$DR_sgn)), "sign" = as.vector(nw$DR_sgn)))
+  }
+  
+  # Adding protein decay regulation
+  if(sum(dim(nw$DP_sgn)==0) == 0){
+    nwedges = rbind(nwedges, data.frame("source" = unname(expand.grid(rownames(nw$DP_sgn), colnames(nw$DP_sgn))[,2]), "target" = unname(expand.grid(rownames(nw$DP_sgn), colnames(nw$DP_sgn))[,1]), "reg_type" = rep("decay", length(nw$DP_sgn)), "sign" = as.vector(nw$DP_sgn)))
+  }
+  
+  # Adding protein activation regulation
+  if(sum(dim(nw$ACT_sgn)==0) == 0){
+    nwedges = rbind(nwedges, data.frame("source" = unname(expand.grid(rownames(nw$ACT_sgn), colnames(nw$ACT_sgn))[,2]), "target" = unname(expand.grid(rownames(nw$ACT_sgn), colnames(nw$ACT_sgn))[,1]), "reg_type" = rep("protein_activation", length(nw$ACT_sgn)), "sign" = as.vector(nw$ACT_sgn)))
+  }
+  
+  # Adding protein inactivation regulation
+  if(sum(dim(nw$DEACT_sgn)==0) == 0){
+    #nwedges = rbind(nwedges, data.frame("source" = unname(expand.grid(rownames(nw$DEACT_sgn), colnames(nw$DEACT_sgn))[,2]), "target" = unname(expand.grid(rownames(nw$DEACT_sgn), colnames(nw$DEACT_sgn))[,1]), "reg_type" = rep("protein_inactivation", length(nw$DEACT_sgn)), "sign" = as.vector(nw$DEACT_sgn)))
+    nwedges = rbind(nwedges, data.frame("source" = unname(expand.grid(rownames(nw$DEACT_sgn), colnames(nw$DEACT_sgn))[,2]), "target" = unname(expand.grid(rownames(nw$DEACT_sgn), colnames(nw$DEACT_sgn))[,1]), "reg_type" = rep("protein_activation", length(nw$DEACT_sgn)), "sign" = (-1*as.vector(nw$DEACT_sgn))))
+  }
+  
+  #Removing null edges
+  nwedges = nwedges[nwedges$sign!=0,]
+  
+  # Plot network
+  col_edges = c("red", "blue"); names(col_edges) = c("1","-1")
+  nwgraph = graph_from_data_frame(d=nwedges, vertices=nwnodes, directed=T) 
+  
+  width_edges = c(2, 2, 2, 1, 1); names(width_edges) = c("synthesis", "transcription", "translation", "decay", "protein_activation")
+  lty_edges = c(1, 2, 2, 1, 3); names(lty_edges) = c("synthesis", "transcription", "translation", "decay", "protein_activation")
+  
+  E(nwgraph)$color = unname(col_edges[as.character(E(nwgraph)$sign)])
+  E(nwgraph)[E(nwgraph)$reg_type == "synthesis"]$color = "black"
+  E(nwgraph)$width = unname(width_edges[E(nwgraph)$reg_type])
+  E(nwgraph)$lty = unname(lty_edges[E(nwgraph)$reg_type])
+  plot(nwgraph, edge.arrow.size = .4, vertex.label.cex = .8, vertex.size = 20, edge.curved =T, vertex.color = "white")
+  
+  #  legend(x = 0, y = -1.1, legend = names(lty_edges), lty = lty_edges, lwd = width_edges, ncol = 3, xjust = 0.5, text.width = 0.5, cex = 1, bty = "n", x.intersp = 0.3, y.intersp = 0.5)
+  legend(x = -2.5, y = 0, legend = c(names(lty_edges),"", "positive regulation", "negative regulation"), lty = c(lty_edges, 1, 1, 1), lwd = c(width_edges, 0, 2, 2), col = c(rep("black",length(lty_edges)),"white","red","blue"), ncol = 1, yjust = 0.5, text.width = 0.5, cex = 1, bty = "n", x.intersp = 0.3, y.intersp = 0.5)
+  
+}

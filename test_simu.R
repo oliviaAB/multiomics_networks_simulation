@@ -364,7 +364,7 @@ for(p in nw1$prot){
 tmax = 500
 nsim = 100
 
-nw1 = rand_network_null(1,1,0)
+nw1 = rand_network(5,3,0)
 cohort = rand_cohort(nw1,1)
 
 G = length(nw1$genes)
