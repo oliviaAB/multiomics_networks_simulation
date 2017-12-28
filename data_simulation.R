@@ -76,10 +76,16 @@ source("param.R")
 rand_network = function(G, P, M){
  
   # Nodes
-  genes = sapply(1:G, function(i){ return(paste0("RNA",i)) })
-  prot = sapply(1:P, function(i){ return(paste0("P",i)) })
-  met = sapply(1:M, function(i){ return(paste0("M",i)) })
-  
+  if(G!=0){
+    genes = sapply(1:G, function(i){ return(paste0("RNA",i)) })
+  } else{ genes = vector()}
+  if(P!=0){
+    prot = sapply(1:P, function(i){ return(paste0("P",i)) })
+  } else{ prot = vector()}
+  if(M!=0){
+    met = sapply(1:M, function(i){ return(paste0("M",i)) })
+  } else{ met = vector()}
+
   g2p = genes[1:P]; names(g2p) = prot
   protcod = unname(g2p); noncod = setdiff(genes, protcod); NC = G-P
   
@@ -191,9 +197,15 @@ rand_network = function(G, P, M){
 rand_network_null = function(G, P, M){
   
   # Nodes
-  genes = sapply(1:G, function(i){ return(paste0("RNA",i)) })
-  prot = sapply(1:P, function(i){ return(paste0("P",i)) })
-  met = sapply(1:M, function(i){ return(paste0("M",i)) })
+  if(G!=0){
+    genes = sapply(1:G, function(i){ return(paste0("RNA",i)) })
+  } else{ genes = vector()}
+  if(P!=0){
+    prot = sapply(1:P, function(i){ return(paste0("P",i)) })
+  } else{ prot = vector()}
+  if(M!=0){
+    met = sapply(1:M, function(i){ return(paste0("M",i)) })
+  } else{ met = vector()}  
   
   g2p = genes[1:P]; names(g2p) = prot
   protcod = unname(g2p); noncod = setdiff(genes, protcod); NC = G-P
@@ -320,12 +332,17 @@ rand_cohort = function(network, N){
   # QTL_DR : matrix of genotype effect on mRNA degradation for each individual, effects (G rows) x individuals (N columns)
   QTL_DR = matrix(get(qtl_effect_RNAdecay)(G*N), nrow = G, ncol = N); rownames(QTL_DR) = network$genes; colnames(QTL_DR) = ind
   
-  rna_0 = matrix(get(initial_abundance)(G,N), nrow = G, ncol = N); rownames(rna_0) = network$genes; colnames(rna_0) = ind
-  prot_tot_0 = matrix(get(initial_abundance)(P,N), nrow = P, ncol = N); rownames(prot_tot_0) = network$prot; colnames(prot_tot_0) = ind
-  prot_A_0 = matrix(get(initial_abundance)(P,N), nrow = P, ncol = N); rownames(prot_A_0) = network$prot; colnames(prot_A_0) = ind
-  prot_NA_0 = matrix(get(initial_abundance)(P,N), nrow = P, ncol = N); rownames(prot_NA_0) = network$prot; colnames(prot_NA_0) = ind
-  prot_tot_0 = prot_NA_0 + prot_A_0; rownames(prot_tot_0) = network$prot; colnames(prot_tot_0) = ind
-  met_tot_0 = matrix(get(initial_abundance)(M,N), nrow = M, ncol = N); rownames(met_tot_0) = network$met; colnames(met_tot_0) = ind
+  if(G!=0){
+    rna_0 = matrix(get(initial_abundance)(G,N), nrow = G, ncol = N); rownames(rna_0) = network$genes; colnames(rna_0) = ind
+  }else{rna_0 = vector()}
+  if(P!=0){
+    prot_A_0 = matrix(get(initial_abundance)(P,N), nrow = P, ncol = N); rownames(prot_A_0) = network$prot; colnames(prot_A_0) = ind
+    prot_NA_0 = matrix(get(initial_abundance)(P,N), nrow = P, ncol = N); rownames(prot_NA_0) = network$prot; colnames(prot_NA_0) = ind
+    prot_tot_0 = prot_NA_0 + prot_A_0; rownames(prot_tot_0) = network$prot; colnames(prot_tot_0) = ind
+  }else{prot_A_0 = vector(); prot_NA_0 = vector(); prot_tot_0 = vector()}
+  if(M!=0){
+    met_tot_0 = matrix(get(initial_abundance)(M,N), nrow = M, ncol = N); rownames(met_tot_0) = network$met; colnames(met_tot_0) = ind
+  }else{met_tot_0 = vector()}
   
   res = list("ind" = ind,
              "QTL_TC" = QTL_TC,
@@ -346,43 +363,43 @@ rand_cohort = function(network, N){
 ##########################################################################################################################
 
 simu = function(network, cohort, tmax){
-
-  # ----
-  ind = network$ind
-  genes = network$genes
-  protcod = network$protcod
-  noncod = network$noncod
-  prot = network$prot
-  met = network$met
-  g2p = network$g2p
-  TF_sgn = network$TF_sgn
-  TF_th = network$TF_th
-  TF_n = network$TF_n
-  TLF_sgn = network$TLF_sgn
-  TLF_th = network$TLF_th
-  TLF_n = network$TLF_n
-  DR_sgn = network$DR_sgn
-  DR_th = network$DR_th
-  DR_n = network$DR_n
-  DP_sgn = network$DP_sgn
-  DP_th = network$DP_th
-  DP_n = network$DP_n
-  ACT_sgn = network$ACT_sgn
-  ACT_th = network$ACT_th
-  ACT_n = network$ACT_n
-  DEACT_sgn = network$DEACT_sgn
-  DEACT_th = network$DEACT_th
-  DEACT_n = network$DEACT_n
-  k_TC = network$k_TC
-  k_TL = network$k_TL
-  p0_DR = network$p0_DR
-  p0_DP = network$p0_DP
-  
-  ind = cohort$ind
-  QTL_TC = cohort$QTL_TC
-  QTL_TL = cohort$QTL_TL
-  QTL_DR = cohort$QTL_DR
-  # ----
+  with(as.list(c(network, cohort)),{
+  # # ----
+  # ind = network$ind
+  # genes = network$genes
+  # protcod = network$protcod
+  # noncod = network$noncod
+  # prot = network$prot
+  # met = network$met
+  # g2p = network$g2p
+  # TF_sgn = network$TF_sgn
+  # TF_th = network$TF_th
+  # TF_n = network$TF_n
+  # TLF_sgn = network$TLF_sgn
+  # TLF_th = network$TLF_th
+  # TLF_n = network$TLF_n
+  # DR_sgn = network$DR_sgn
+  # DR_th = network$DR_th
+  # DR_n = network$DR_n
+  # DP_sgn = network$DP_sgn
+  # DP_th = network$DP_th
+  # DP_n = network$DP_n
+  # ACT_sgn = network$ACT_sgn
+  # ACT_th = network$ACT_th
+  # ACT_n = network$ACT_n
+  # DEACT_sgn = network$DEACT_sgn
+  # DEACT_th = network$DEACT_th
+  # DEACT_n = network$DEACT_n
+  # k_TC = network$k_TC
+  # k_TL = network$k_TL
+  # p0_DR = network$p0_DR
+  # p0_DP = network$p0_DP
+  # 
+  # ind = cohort$ind
+  # QTL_TC = cohort$QTL_TC
+  # QTL_TL = cohort$QTL_TL
+  # QTL_DR = cohort$QTL_DR
+  # # ----
   
   ## Initialization ----
   
@@ -411,11 +428,11 @@ simu = function(network, cohort, tmax){
   
   # Initial values
   # Are the initial values the same for all individuals???
-  rna_prev = matrix(cohort$rna_0[genes, ind], nrow = G, ncol = N); rownames(rna_prev) = genes; colnames(rna_prev) = ind
-  prot_A_prev = matrix(cohort$prot_A_0[prot, ind], nrow = P, ncol = N); rownames(prot_A_prev) = prot; colnames(prot_A_prev) = ind
-  prot_NA_prev = matrix(cohort$prot_NA_0[prot, ind], nrow = P, ncol = N); rownames(prot_NA_prev) = prot; colnames(prot_NA_prev) = ind
+  rna_prev = matrix(rna_0, nrow = G, ncol = N); rownames(rna_prev) = genes; colnames(rna_prev) = ind
+  prot_A_prev = matrix(prot_A_0, nrow = P, ncol = N); rownames(prot_A_prev) = prot; colnames(prot_A_prev) = ind
+  prot_NA_prev = matrix(prot_NA_0, nrow = P, ncol = N); rownames(prot_NA_prev) = prot; colnames(prot_NA_prev) = ind
   prot_tot_prev = matrix(prot_A_prev[prot, ind] + prot_NA_prev[prot, ind], nrow = P, ncol = N); rownames(prot_tot_prev) = prot; colnames(prot_tot_prev) = ind
-  met_tot_prev = matrix(cohort$met_tot_0[met, ind], nrow = M, ncol = N); rownames(met_tot_prev) = met; colnames(met_tot_prev) = ind
+  met_tot_prev = matrix(met_tot_0, nrow = M, ncol = N); rownames(met_tot_prev) = met; colnames(met_tot_prev) = ind
   
   
   # For visualization
@@ -484,7 +501,7 @@ simu = function(network, cohort, tmax){
     
     # protein activation rate
     p_act[prot, ind] = t(sapply(prot, function(g){
-      if(sum(ACT_sgn[g,]) == 0){return(matrix(1, nrow = 1, ncol = N, dimnames = list(g, ind)))}
+      # if(sum(ACT_sgn[g,]) == 0){return(matrix(1, nrow = 1, ncol = N, dimnames = list(g, ind)))}
       reg = mol_prev[colnames(ACT_n),]^ACT_n[g,]
       theta = matrix(ACT_th[g,], nrow = ncol(ACT_th), ncol = N) ^ ACT_n[g,]
       temp = ACT_sgn[g,] * (reg/(reg + theta)) + 1 - ACT_sgn[g,]; rownames(temp) = colnames(ACT_sgn); colnames(temp) = ind # + 1 - ACT_sgn[g,] allows to set non-regulators to 1 = neutral in the product of all regulator contributions
@@ -494,6 +511,7 @@ simu = function(network, cohort, tmax){
     
     # protein deactivation rate
     p_deact[prot, ind] = t(sapply(prot, function(g){
+      if(sum(DEACT_sgn[g,]) == 0){return(matrix(0, nrow = 1, ncol = N, dimnames = list(g, ind)))}
       reg = mol_prev[colnames(DEACT_n),]^DEACT_n[g,]
       theta = matrix(DEACT_th[g,], nrow = ncol(DEACT_th), ncol = N) ^ DEACT_n[g,]
       temp = DEACT_sgn[g,] * (reg/(reg + theta)) + 1 - DEACT_sgn[g,]; rownames(temp) = colnames(DEACT_sgn); colnames(temp) = ind
@@ -582,8 +600,9 @@ simu = function(network, cohort, tmax){
              "time_prot_NA" = time_prot_NA,
              "time_met_tot" = time_met_tot,
              "time_TC_rate" = time_TC_rate)
-  
+
   return(res)
+  })
 }
   
   

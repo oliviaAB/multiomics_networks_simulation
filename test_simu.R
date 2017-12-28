@@ -97,10 +97,12 @@ lines(simSSA_prim$data[,1], (simSSA_prim$data[,"P1_NA"]+simSSA_prim$data[,"P1_A"
 
 source("data_simulation.R")
 library(GillespieSSA)
+if(!suppressWarnings(require("deSolve", quietly = T))){install.packages("deSolve")}
+library(deSolve)
 
-# ---------------------------------------------------------------------- #
-# Transformation sampled network and cohort into GillespieSSA parameters #
-# ---------------------------------------------------------------------- #
+# ------------------------------------------------------------------------- #
+# Transformation of sampled network and cohort into GillespieSSA parameters #
+# ------------------------------------------------------------------------- #
 
 paramSSA = function(network, cohort){
   
@@ -159,6 +161,21 @@ paramSSA = function(network, cohort){
            if(length(sup) == 0){return("0")}
            else{paste(c(p,sup), collapse = "")}})
   ) # ----
+  
+  names(a) = c(
+    # transcription reactions
+    sapply(network$genes, function(g){paste0("TRANSCRIPTION",g)}),
+    # translation reactions
+    sapply(network$prot, function(p){paste0("TRANSLATION",p)}),
+    # RNA decay reactions
+    sapply(network$genes, function(g){paste0("DECAY",g)}),
+    # Protein decay reactions
+    sapply(protNAA, function(p){paste0("DECAY",p)}),
+    # protein activation reactions
+    sapply(protNAA[1:P], function(p){paste0("ACTIVATION",p)}),
+    # protein inactivation reactions
+    sapply(protNAA[(P+1):(2*P)], function(p){paste0("DEACTIVATION",p)})
+    )
   
   # STATE-CHANGE VECTOR ----
   tempTCTL = diag(1, nrow = G+P, ncol = G+P); tempTCTL = rbind(tempTCTL, matrix(0, nrow = P, ncol = G+P))
@@ -242,6 +259,71 @@ paramSSA = function(network, cohort){
 }
 
 
+# -------------------------------------------------------------------- #
+# Transformation of sampled network and cohort into deSolve parameters #
+# -------------------------------------------------------------------- #
+
+# UNFINISHED
+paramDeSolve = function(network, cohort){
+  G = length(network$genes)
+  P = length(network$prot)
+  M = length(network$met)
+  
+  protNAA = c(sapply(network$prot, function(p){paste(p,"NA",sep = "_")}), sapply(network$prot, function(p){paste(p,"A",sep = "_")}))
+  
+  # Initial conditions ----
+  x0 = c(cohort$rna_0[,1], cohort$prot_NA_0[,1], cohort$prot_A_0[,1], cohort$met_tot_0)
+  names(x0) = c(network$genes, protNAA, network$met)
+
+  # Function giving the derivatives for each molecule ----
+  func = function(t, y, parms){
+    with(parms,{
+      protNAA = c(sapply(prot, function(p){paste(p,"NA",sep = "_")}), sapply(prot, function(p){paste(p,"A",sep = "_")}))
+      names(protNAA) = rep(prot,2)
+
+      res = vector(length = (length(genes)+2*length(prot))); names(res) = c(genes, protNAA, met)
+      
+      regnamesTC = colnames(TF_sgn); regnamesTC[grepl("^P", regnamesTC)] = paste0(regnamesTC[grepl("^P", regnamesTC)],"_A")
+      regTC = matrix(y[regnamesTC], nrow = length(genes), ncol = length(regnamesTC), byrow = T)^TF_n
+      tempTC = 1+TF_sgn[genes,]*(regTC/(regTC+(TF_th*QTL_TC[,1])^TF_n))
+      
+      regnamesTL = colnames(TLF_sgn); regnamesTL[grepl("^P", regnamesTL)] = paste0(regnamesTL[grepl("^P", regnamesTL)],"_A")
+      regTL = matrix(y[regnamesTL], nrow = length(protcod), ncol = length(regnamesTL), byrow = T)^TLF_n
+      tempTL = 1+TLF_sgn[protcod,]*(regTL/(regTL+(TLF_th*QTL_TL[,1])^TLF_n))
+      
+      regnamesDR = colnames(DR_sgn); regnamesDR[grepl("^P", regnamesDR)] = paste0(regnamesDR[grepl("^P", regnamesDR)],"_A")
+      regDR = matrix(y[regnamesDR], nrow = length(genes), ncol = length(regnamesDR), byrow = T)^DR_n
+      tempDR = 1+DR_sgn[genes,]*(regDR/(regDR+DR_th^DR_n))
+      
+      regnamesDP = colnames(DP_sgn); regnamesDP[grepl("^P", regnamesDP)] = paste0(regnamesDP[grepl("^P", regnamesDP)],"_A")
+      regDP = matrix(y[regnamesDP], nrow = length(prot), ncol = length(regnamesDP), byrow = T)^DP_n
+      tempDP = 1+DP_sgn[prot,]*(regDP/(regDP+DP_th^DP_n))
+      
+      regnamesACT = colnames(ACT_sgn); regnamesACT[grepl("^P", regnamesACT)] = paste0(regnamesACT[grepl("^P", regnamesACT)],"_A")
+      regACT = matrix(y[regnamesACT], nrow = length(prot), ncol = length(regnamesACT), byrow = T)^ACT_n
+      tempACT = ACT_sgn[prot,]*(regACT/(regACT+ACT_th^ACT_n)) + 1 - ACT_sgn[prot,]
+      
+      regnamesDEACT = colnames(DEACT_sgn); regnamesDEACT[grepl("^P", regnamesDEACT)] = paste0(regnamesDEACT[grepl("^P", regnamesDEACT)],"_A")
+      regDEACT = matrix(y[regnamesDEACT], nrow = length(prot), ncol = length(regnamesDEACT), byrow = T)^DEACT_n
+      tempDEACT = DEACT_sgn[prot,]*(regDEACT/(regDEACT+DEACT_th^DEACT_n)) + 1 - DEACT_sgn[prot,]
+      tempDEACT[apply(DEACT_sgn,1,sum) == 0,] = 0 # proteins whose inactivation is not regulated have an inactivation probability of 0
+      
+      res[genes] = k_TC[genes]*apply(tempTC,1,prod)-y[genes]*p0_DR*QTL_DR[genes,1]*apply(tempDR,1,prod)
+      res[protNAA[1:P]] = y[g2p[prot]]*k_TL[g2p[prot]]*apply(tempTL,1, prod)-y[protNAA[1:P]]*p0_DP*apply(tempDP,1,prod) +
+        y[protNAA[(P+1):(2*P)]]*apply(tempDEACT,1,prod) - y[protNAA[1:P]]*apply(tempACT,1,prod)
+      res[protNAA[(P+1):(2*P)]] = -y[protNAA[(P+1):(2*P)]]*p0_DP*apply(tempDP,1,prod) - y[protNAA[(P+1):(2*P)]]*apply(tempDEACT,1,prod) + y[protNAA[1:P]]*apply(tempACT,1,prod)
+    
+      return(list(res))  
+    })
+  }
+  
+  # Parameters ----
+  parms = c(network, cohort)
+  
+  return(list("y" = x0, "func" = func, "parms" = parms))
+}
+
+
 # ----------------- #
 #  One simulation   #
 # ----------------- # ----
@@ -282,7 +364,7 @@ for(p in nw1$prot){
 tmax = 500
 nsim = 100
 
-nw1 = rand_network_null(5,3,1)
+nw1 = rand_network_null(1,1,0)
 cohort = rand_cohort(nw1,1)
 
 G = length(nw1$genes)
@@ -331,6 +413,17 @@ quant97_5_simSSA = lapply(res_simSSA, function(x){apply(x, 2, quantile, probs = 
 
 
 # ------------------ #
+#      deSolve       #
+# ------------------ #
+
+parDeSolve = paramDeSolve(nw1, cohort)
+
+simODE = ode(parDeSolve$y, 0:tmax, parDeSolve$func, parDeSolve$parms)
+resODE = matrix(NA, nrow = (tmax+1), ncol = (G+P)) ; colnames(resODE) = c(nw1$genes, nw1$prot)
+resODE[,nw1$genes] = simODE[,nw1$genes]
+resODE[,nw1$prot] = sapply(nw1$prot, function(p){apply(simODE[,grepl(p,colnames(simODE))],1,sum)})
+
+# ------------------ #
 #   Visualization    #
 # ------------------ #
 
@@ -344,6 +437,7 @@ for(mol in c(nw1$genes, nw1$prot)){
   lines(0:tmax, quant97_5_sim[[mol]], col = "blue", lty = "dotted")
   lines(0:tmax, quant2_5_simSSA[[mol]], col = "red", lty = "dotted")
   lines(0:tmax, quant97_5_simSSA[[mol]], col = "red", lty = "dotted")
+  lines(0:tmax, resODE[,mol], col = "black")
 }
 
 
