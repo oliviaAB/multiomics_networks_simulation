@@ -19,7 +19,6 @@ visu(nw1,cohort,sim, tmax)
 #                                   One gene, its protein repress its transcription                                      #
 ##########################################################################################################################
 
-if(!suppressWarnings(require("GillespieSSA", quietly = T))){install.packages("GillespieSSA")}
 library(GillespieSSA)
 
 # --------- #
@@ -28,7 +27,7 @@ library(GillespieSSA)
 
 tmax = 1000  
 
-negative_feedback = rand_network_null(1,1,1)
+negative_feedback = rand_network_null(1,1,0)
 negative_feedback$TF_sgn[1] = -1
 negative_feedback$TF_th[1] = 500
 negative_feedback$TF_n[1] = 2
@@ -96,233 +95,6 @@ lines(simSSA_prim$data[,1], (simSSA_prim$data[,"P1_NA"]+simSSA_prim$data[,"P1_A"
 ##########################################################################################################################
 
 source("data_simulation.R")
-library(GillespieSSA)
-if(!suppressWarnings(require("deSolve", quietly = T))){install.packages("deSolve")}
-library(deSolve)
-
-# ------------------------------------------------------------------------- #
-# Transformation of sampled network and cohort into GillespieSSA parameters #
-# ------------------------------------------------------------------------- #
-
-paramSSA = function(network, cohort){
-  
-  G = length(nw1$genes)
-  P = length(nw1$prot)
-  M = length(nw1$met)
-  
-  protNAA = c(sapply(network$prot, function(p){paste(p,"NA",sep = "_")}), sapply(network$prot, function(p){paste(p,"A",sep = "_")}))
-  
-  # INITIAL CONDITIONS ----
-  x0 = c(cohort$rna_0[,1], cohort$prot_NA_0[,1], cohort$prot_A_0[,1], cohort$met_tot_0)
-  names(x0) = c(network$genes, protNAA, network$met)
-  
-  
-  # PROPENSITY FUNCTIONS / REACTION RATES ---- 
-  regulation_law = function(id, reaction, network){
-    reg = names(which(network[[paste0(reaction,"_sgn")]][id,]!=0))
-    reg[grepl('^P',reg)] = paste(reg[grepl('^P',reg)],"A",sep = "_") # consider only active proteins
-    parname = paste0(reaction, id)
-    sup = sapply(reg, function(x){paste(c("*(1+sgn",parname,x,"*(",x,"^n",parname,x,"/(",x,"^n",parname,x,"+th",parname,x,"^n",parname,x,")))"), collapse = "")})
-    return(sup)
-  }
-  
-  regulation_law2 = function(id, reaction, network){
-    reg = names(which(network[[paste0(reaction,"_sgn")]][id,]!=0))
-    reg[grepl('^P',reg)] = paste(reg[grepl('^P',reg)],"A",sep = "_") # consider only active proteins
-    parname = paste0(reaction, id)
-    sup = sapply(reg, function(x){paste(c("*(",x,"^n",parname,x,"/(",x,"^n",parname,x,"+th",parname,x,"^n",parname,x,"))"), collapse = "")})
-    return(sup)
-  }
-  
-  a = c( # ----
-         # transcription reactions
-         sapply(network$genes, function(g){
-           sup = regulation_law(g, 'TF', network)
-           paste(c("k_TC",g,sup), collapse = "")}),
-         # translation reactions
-         sapply(network$prot, function(p){           
-           sup = regulation_law(network$g2p[p], 'TLF', network)
-           paste(c(network$g2p[p],"*k_TL",p,sup), collapse = "")}),
-         # RNA decay reactions
-         sapply(network$genes, function(g){
-           sup = regulation_law(g, 'DR', network)
-           paste(c(g,"*p0_DR",g,sup), collapse = "")}),
-         # Protein decay reactions (for active proteins then for inactive proteins)
-         sapply(protNAA, function(p){
-           sup = regulation_law(sub("_NA|_A","",p), 'DP', network)
-           paste(c(p,"*p0_DP",sub("_NA|_A","",p),sup), collapse = "")}),
-         # Protein activation reactions
-         sapply(protNAA[1:P], function(p){
-           sup = regulation_law2(sub("_NA","",p), 'ACT', network)
-           paste(c(p,sup), collapse = "")}),
-         # Protein inactivation reactions
-         sapply(protNAA[(P+1):(2*P)], function(p){
-           sup = regulation_law2(sub("_A","",p), 'DEACT', network)
-           if(length(sup) == 0){return("0")}
-           else{paste(c(p,sup), collapse = "")}})
-  ) # ----
-  
-  names(a) = c(
-    # transcription reactions
-    sapply(network$genes, function(g){paste0("TRANSCRIPTION",g)}),
-    # translation reactions
-    sapply(network$prot, function(p){paste0("TRANSLATION",p)}),
-    # RNA decay reactions
-    sapply(network$genes, function(g){paste0("DECAY",g)}),
-    # Protein decay reactions
-    sapply(protNAA, function(p){paste0("DECAY",p)}),
-    # protein activation reactions
-    sapply(protNAA[1:P], function(p){paste0("ACTIVATION",p)}),
-    # protein inactivation reactions
-    sapply(protNAA[(P+1):(2*P)], function(p){paste0("DEACTIVATION",p)})
-    )
-  
-  # STATE-CHANGE VECTOR ----
-  tempTCTL = diag(1, nrow = G+P, ncol = G+P); tempTCTL = rbind(tempTCTL, matrix(0, nrow = P, ncol = G+P))
-  tempDRDP = diag(-1, nrow = G+2*P, ncol = G+2*P)
-  tempPos = diag(1, nrow = P, ncol = P); tempNeg = diag(-1, nrow = P, ncol = P)
-  tempACT = rbind(matrix(0, nrow = G, ncol = P), tempNeg, tempPos)
-  tempDEACT = rbind(matrix(0, nrow = G, ncol = P), tempPos, tempNeg)
-  nu = cbind(tempTCTL, tempDRDP, tempACT, tempDEACT); nu = rbind(nu, matrix(0, nrow = M, ncol = ncol(nu))); rownames(nu) = names(x0)
-  
-  # REACTION RATE PARAMETERS ----
-  combnames = function(par, reaction, target, reg){
-    reg[grepl('^P',reg)] = paste(reg[grepl('^P',reg)],"A",sep = "_")
-    comb = expand.grid(target, reg)
-    if(nrow(comb)!=0){sapply(1:nrow(comb), function(i){paste0(par, reaction, comb[i,1], comb[i, 2])})}
-  }
-  
-  parms = c( # ----
-             # Transcription parameters
-             network$k_TC, # Basal transcription rates
-             as.vector(network$TF_sgn), # regulation direction
-             as.vector(network$TF_th*cohort$QTL_TC[,1]), # regulation threshold
-             as.vector(network$TF_n), # regulation power
-             # Translation parameters
-             network$k_TL, # Basal translation rates
-             as.vector(network$TLF_sgn), # regulation direction
-             as.vector(network$TLF_th*cohort$QTL_TL[,1]), # regulation threshold
-             as.vector(network$TLF_n), # regulation power
-             # RNA decay parameters
-             network$p0_DR*cohort$QTL_TC[,1], # Basal decay rates
-             as.vector(network$DR_sgn), # regulation direction
-             as.vector(network$DR_th), # regulation threshold
-             as.vector(network$DR_n), # regulation power
-             # protein decay parameters
-             network$p0_DP, # Basal decay rates
-             as.vector(network$DP_sgn), # regulation direction
-             as.vector(network$DP_th), # regulation threshold
-             as.vector(network$DP_n), # regulation power
-             # protein activation parameters
-             as.vector(network$ACT_sgn), # regulation direction
-             as.vector(network$ACT_th), # regulation threshold
-             as.vector(network$ACT_n), # regulation power
-             # protein inactivation parameters
-             as.vector(network$DEACT_sgn), # regulation direction
-             as.vector(network$DEACT_th), # regulation threshold
-             as.vector(network$DEACT_n) # regulation power
-  ) # ----
-  
-  names(parms) = c( # ----
-                    # Transcription parameters
-                    sapply(network$genes, function(x){paste0("k_TC",x)}), # Basal transcription rates
-                    combnames("sgn", "TF", rownames(network$TF_sgn), colnames(network$TF_sgn)), # regulation direction
-                    combnames("th", "TF", rownames(network$TF_th), colnames(network$TF_th)), # regulation threshold
-                    combnames("n", "TF", rownames(network$TF_n), colnames(network$TF_n)), # regulation power
-                    # Translation parameters
-                    sapply(network$prot, function(x){paste0("k_TL",x)}), # Basal translation rates
-                    combnames("sgn", "TLF", rownames(network$TLF_sgn), colnames(network$TLF_sgn)), # regulation direction
-                    combnames("th", "TLF", rownames(network$TLF_th), colnames(network$TLF_th)), # regulation threshold
-                    combnames("n", "TLF", rownames(network$TLF_n), colnames(network$TLF_n)), # regulation power
-                    # RNA decay parameters
-                    sapply(network$genes, function(x){paste0("p0_DR",x)}), # Basal decay rates
-                    combnames("sgn", "DR", rownames(network$DR_sgn), colnames(network$DR_sgn)), # regulation direction
-                    combnames("th", "DR", rownames(network$DR_th), colnames(network$DR_th)), # regulation threshold
-                    combnames("n", "DR", rownames(network$DR_n), colnames(network$DR_n)), # regulation power
-                    # protein decay parameters
-                    sapply(network$prot, function(x){paste0("p0_DP",x)}), # Basal decay rates
-                    combnames("sgn", "DP", rownames(network$DP_sgn), colnames(network$DP_sgn)), # regulation direction
-                    combnames("th", "DP", rownames(network$DP_th), colnames(network$DP_th)), # regulation threshold
-                    combnames("n", "DP", rownames(network$DP_n), colnames(network$DP_n)), # regulation power
-                    # protein activation parameters
-                    combnames("sgn", "ACT", rownames(network$ACT_sgn), colnames(network$ACT_sgn)), # regulation direction
-                    combnames("th", "ACT", rownames(network$ACT_th), colnames(network$ACT_th)), # regulation threshold
-                    combnames("n", "ACT", rownames(network$ACT_n), colnames(network$ACT_n)), # regulation power
-                    # protein inactivation parameters
-                    combnames("sgn", "DEACT", rownames(network$DEACT_sgn), colnames(network$DEACT_sgn)), # regulation direction
-                    combnames("th", "DEACT", rownames(network$DEACT_th), colnames(network$DEACT_th)), # regulation threshold
-                    combnames("n", "DEACT", rownames(network$DEACT_n), colnames(network$DEACT_n)) # regulation power
-  ) # ----
-  
-  res = list("x0" = x0, "a" = a, "nu" = nu, "parms" = parms)
-  return(res)
-}
-
-
-# -------------------------------------------------------------------- #
-# Transformation of sampled network and cohort into deSolve parameters #
-# -------------------------------------------------------------------- #
-
-# UNFINISHED
-paramDeSolve = function(network, cohort){
-  G = length(network$genes)
-  P = length(network$prot)
-  M = length(network$met)
-  
-  protNAA = c(sapply(network$prot, function(p){paste(p,"NA",sep = "_")}), sapply(network$prot, function(p){paste(p,"A",sep = "_")}))
-  
-  # Initial conditions ----
-  x0 = c(cohort$rna_0[,1], cohort$prot_NA_0[,1], cohort$prot_A_0[,1], cohort$met_tot_0)
-  names(x0) = c(network$genes, protNAA, network$met)
-
-  # Function giving the derivatives for each molecule ----
-  func = function(t, y, parms){
-    with(parms,{
-      protNAA = c(sapply(prot, function(p){paste(p,"NA",sep = "_")}), sapply(prot, function(p){paste(p,"A",sep = "_")}))
-      names(protNAA) = rep(prot,2)
-
-      res = vector(length = (length(genes)+2*length(prot))); names(res) = c(genes, protNAA, met)
-      
-      regnamesTC = colnames(TF_sgn); regnamesTC[grepl("^P", regnamesTC)] = paste0(regnamesTC[grepl("^P", regnamesTC)],"_A")
-      regTC = matrix(y[regnamesTC], nrow = length(genes), ncol = length(regnamesTC), byrow = T)^TF_n
-      tempTC = 1+TF_sgn[genes,]*(regTC/(regTC+(TF_th*QTL_TC[,1])^TF_n))
-      
-      regnamesTL = colnames(TLF_sgn); regnamesTL[grepl("^P", regnamesTL)] = paste0(regnamesTL[grepl("^P", regnamesTL)],"_A")
-      regTL = matrix(y[regnamesTL], nrow = length(protcod), ncol = length(regnamesTL), byrow = T)^TLF_n
-      tempTL = 1+TLF_sgn[protcod,]*(regTL/(regTL+(TLF_th*QTL_TL[,1])^TLF_n))
-      
-      regnamesDR = colnames(DR_sgn); regnamesDR[grepl("^P", regnamesDR)] = paste0(regnamesDR[grepl("^P", regnamesDR)],"_A")
-      regDR = matrix(y[regnamesDR], nrow = length(genes), ncol = length(regnamesDR), byrow = T)^DR_n
-      tempDR = 1+DR_sgn[genes,]*(regDR/(regDR+DR_th^DR_n))
-      
-      regnamesDP = colnames(DP_sgn); regnamesDP[grepl("^P", regnamesDP)] = paste0(regnamesDP[grepl("^P", regnamesDP)],"_A")
-      regDP = matrix(y[regnamesDP], nrow = length(prot), ncol = length(regnamesDP), byrow = T)^DP_n
-      tempDP = 1+DP_sgn[prot,]*(regDP/(regDP+DP_th^DP_n))
-      
-      regnamesACT = colnames(ACT_sgn); regnamesACT[grepl("^P", regnamesACT)] = paste0(regnamesACT[grepl("^P", regnamesACT)],"_A")
-      regACT = matrix(y[regnamesACT], nrow = length(prot), ncol = length(regnamesACT), byrow = T)^ACT_n
-      tempACT = ACT_sgn[prot,]*(regACT/(regACT+ACT_th^ACT_n)) + 1 - ACT_sgn[prot,]
-      
-      regnamesDEACT = colnames(DEACT_sgn); regnamesDEACT[grepl("^P", regnamesDEACT)] = paste0(regnamesDEACT[grepl("^P", regnamesDEACT)],"_A")
-      regDEACT = matrix(y[regnamesDEACT], nrow = length(prot), ncol = length(regnamesDEACT), byrow = T)^DEACT_n
-      tempDEACT = DEACT_sgn[prot,]*(regDEACT/(regDEACT+DEACT_th^DEACT_n)) + 1 - DEACT_sgn[prot,]
-      tempDEACT[apply(DEACT_sgn,1,sum) == 0,] = 0 # proteins whose inactivation is not regulated have an inactivation probability of 0
-      
-      res[genes] = k_TC[genes]*apply(tempTC,1,prod)-y[genes]*p0_DR*QTL_DR[genes,1]*apply(tempDR,1,prod)
-      res[protNAA[1:P]] = y[g2p[prot]]*k_TL[g2p[prot]]*apply(tempTL,1, prod)-y[protNAA[1:P]]*p0_DP*apply(tempDP,1,prod) +
-        y[protNAA[(P+1):(2*P)]]*apply(tempDEACT,1,prod) - y[protNAA[1:P]]*apply(tempACT,1,prod)
-      res[protNAA[(P+1):(2*P)]] = -y[protNAA[(P+1):(2*P)]]*p0_DP*apply(tempDP,1,prod) - y[protNAA[(P+1):(2*P)]]*apply(tempDEACT,1,prod) + y[protNAA[1:P]]*apply(tempACT,1,prod)
-    
-      return(list(res))  
-    })
-  }
-  
-  # Parameters ----
-  parms = c(network, cohort)
-  
-  return(list("y" = x0, "func" = func, "parms" = parms))
-}
-
 
 # ----------------- #
 #  One simulation   #
@@ -361,11 +133,51 @@ for(p in nw1$prot){
 # Summary of several simulations #
 # ------------------------------ # ---
 
-tmax = 500
-nsim = 100
+tmax = 8000
+nsim = 5
 
+# Negative feedback on transcription ----
+negative_feedback = rand_network_null(1,1,0)
+negative_feedback$TF_sgn[1] = -1
+negative_feedback$TF_th[1] = 500
+negative_feedback$TF_n[1] = 2
+nw1 = negative_feedback
+cohort = rand_cohort(nw1,1)
+
+save(nw1, cohort, file = "negative_feedback.RData")
+load("negative_feedback.RData")
+
+cohort$rna_0[1] = 100
+cohort$prot_A_0[1] = 2000
+cohort$prot_NA_0[1] = 0
+cohort$prot_tot_0 = cohort$prot_NA_0 + cohort$prot_A_0
+# ----
+
+nw1 = rand_network_null(1,1,0)
+nw1$TF_sgn[1] = -1
+nw1$TF_th[1] = 1000
+nw1$TF_n[1] = 2
+nw1$TF_fc[1] = 1
+
+nw1$k_TC[1] = 1/480
+nw1$k_TL[1] = 1/60
+nw1$p0_DR[1] = 1/300
+nw1$p0_DP[1] = 1/7200
+
+cohort = rand_cohort_null(nw1, 1)
+cohort$rna_0[1] = 100
+cohort$prot_NA_0[1] = 0
+cohort$prot_A_0[1] = 300
+
+
+
+# Random network ----
 nw1 = rand_network(5,3,0)
 cohort = rand_cohort(nw1,1)
+# ----
+
+
+network_plot(nw1)
 
 G = length(nw1$genes)
 P = length(nw1$prot)
@@ -395,7 +207,7 @@ parSSA = paramSSA(nw1, cohort)
 res_simSSA = vector("list", length = G+P); names(res_simSSA) = c(nw1$genes, nw1$prot)
 
 for(s in 1:nsim){ 
-  simSSA = ssa(parSSA$x0, parSSA$a, parSSA$nu, parSSA$parms, tmax, method = "ETL")
+  simSSA = ssa(parSSA$x0, parSSA$a, parSSA$nu, parSSA$parms, tmax, method = "OTL")
   # We want to keep the state of the system for each discrete time 0,1,2 .. tmax
   # We take the state of each time step to be the state of the system at each time point closest but inferior to the time step (ie for time step 1, if we have the 
   # state of the system for the time point for 0, 0.3, 0.9 and 1.2 we choose the time point 0.9 to represent time step 1)
@@ -429,6 +241,7 @@ resODE[,nw1$prot] = sapply(nw1$prot, function(p){apply(simODE[,grepl(p,colnames(
 
 
 for(mol in c(nw1$genes, nw1$prot)){
+  windows()
   ymin = min(quant2_5_sim[[mol]], quant2_5_simSSA[[mol]])
   ymax = max(quant97_5_sim[[mol]], quant97_5_simSSA[[mol]])
   plot(0:tmax, mean_sim[[mol]], type = 'l', col = "blue", main = mol, xlab = "time", ylab = "abundance", ylim = c(ymin,ymax))
@@ -438,6 +251,8 @@ for(mol in c(nw1$genes, nw1$prot)){
   lines(0:tmax, quant2_5_simSSA[[mol]], col = "red", lty = "dotted")
   lines(0:tmax, quant97_5_simSSA[[mol]], col = "red", lty = "dotted")
   lines(0:tmax, resODE[,mol], col = "black")
+  polygon(c(0:tmax, tmax:0), c(quant2_5_sim[[mol]],rev(quant97_5_sim[[mol]])), col = alpha("blue", alpha = 0.1), border = NA)
+  polygon(c(0:tmax, tmax:0), c(quant2_5_simSSA[[mol]],rev(quant97_5_simSSA[[mol]])), col = alpha("red", alpha = 0.1), border = NA)
 }
 
 
