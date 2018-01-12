@@ -2,7 +2,7 @@
 #                                                        MAIN                                                            #
 ##########################################################################################################################
 
-source("data_simulation.R")
+source("simulation.R")
 
 # Random simulation with execution time
 tmax = 1000  
@@ -94,7 +94,7 @@ lines(simSSA_prim$data[,1], (simSSA_prim$data[,"P1_NA"]+simSSA_prim$data[,"P1_A"
 #                                                   ON RANDOM NETWORKS                                                   #
 ##########################################################################################################################
 
-source("data_simulation.R")
+source("simulation.R")
 
 # ----------------- #
 #  One simulation   #
@@ -133,7 +133,7 @@ for(p in nw1$prot){
 # Summary of several simulations #
 # ------------------------------ # ---
 
-tmax = 8000
+tmax = 1000
 nsim = 5
 
 # Negative feedback on transcription ----
@@ -172,7 +172,7 @@ cohort$prot_A_0[1] = 300
 
 
 # Random network ----
-nw1 = rand_network(5,3,0)
+nw1 = rand_network(5,3,5)
 cohort = rand_cohort(nw1,1)
 # ----
 
@@ -207,7 +207,7 @@ parSSA = paramSSA(nw1, cohort)
 res_simSSA = vector("list", length = G+P); names(res_simSSA) = c(nw1$genes, nw1$prot)
 
 for(s in 1:nsim){ 
-  simSSA = ssa(parSSA$x0, parSSA$a, parSSA$nu, parSSA$parms, tmax, method = "OTL")
+  simSSA = ssa(parSSA$x0, parSSA$a, parSSA$nu, parSSA$parms, tmax, method = "ETL")
   # We want to keep the state of the system for each discrete time 0,1,2 .. tmax
   # We take the state of each time step to be the state of the system at each time point closest but inferior to the time step (ie for time step 1, if we have the 
   # state of the system for the time point for 0, 0.3, 0.9 and 1.2 we choose the time point 0.9 to represent time step 1)
@@ -241,7 +241,7 @@ resODE[,nw1$prot] = sapply(nw1$prot, function(p){apply(simODE[,grepl(p,colnames(
 
 
 for(mol in c(nw1$genes, nw1$prot)){
-  windows()
+  # windows()
   ymin = min(quant2_5_sim[[mol]], quant2_5_simSSA[[mol]])
   ymax = max(quant97_5_sim[[mol]], quant97_5_simSSA[[mol]])
   plot(0:tmax, mean_sim[[mol]], type = 'l', col = "blue", main = mol, xlab = "time", ylab = "abundance", ylim = c(ymin,ymax))
@@ -282,3 +282,32 @@ for(mol in c(nw1$genes, nw1$prot)){
 # lines(0:tmax, quant97_5_simSSA[[mol]], col = "red", lty = "dotted")
 # C2 = cohort$prot_tot_0[1,1]-cohort$rna_0[1,1]*(nw1$k_TL[1]/nw1$p0_DP[1])
 # lines(0:tmax, C2*exp(-nw1$p0_DP[1]*(0:tmax))+(C*exp(-pDR*(0:tmax))+(nw1$k_TC/pDR))*(nw1$k_TL/nw1$p0_DP[1]), col = "black")
+
+
+
+##########################################################################################################################
+#                                                      TEST SIMIND                                                       #
+##########################################################################################################################
+
+source("simulation.R")
+
+# Random network ----
+nw1 = rand_network(5,3,5)
+cohort = rand_cohort(nw1,1)
+
+
+indiv = cohort
+indiv["ind"] = NULL
+for(i in names(indiv)){
+  indiv[[i]] = indiv[[i]][,1]
+}
+
+indiv["indname"] = "ind1"
+
+# --------- #
+# Main code #
+# --------- #
+
+
+
+

@@ -746,7 +746,150 @@ simu = function(network, cohort, tmax){
   return(res)
   })
 }
-  
+
+simuInd = function(network, indiv, tmax){
+  with(as.list(c(network, indiv)),{
+    
+    ## Initialization ----
+    
+    t = 0
+    
+    G = length(genes)
+    P = length(prot)
+    NC = length(noncod)
+    M = length(met)
+    
+    # Vector creation
+    
+    rna = vector(length = G); names(rna) = genes
+    prot_NA = vector(length = P); names(prot_NA) = prot
+    prot_A = vector(length = P); names(prot_A) = prot
+    prot_tot = vector(length = P); names(prot_tot) = prot
+    met_tot = vector(length = M); names(met_tot) = met
+    
+    l_TC = vector(length = G); names(l_TC) = genes
+    l_TL = vector(length = P); names(l_TL) = protcod
+    p_DR = vector(length = G); names(p_DR) = genes
+    p_DP = vector(length = P); names(p_DP) = prot
+    p_act = vector(length = P); names(p_act) = prot
+    p_deact = vector(length = P); names(p_deact) = prot
+        
+ 
+    # Initial values
+    
+    rna_prev = rna_0; names(rna_prev) = genes
+    prot_NA_prev = prot_NA_0; names(prot_NA_prev) = prot
+    prot_A_prev = prot_A_0; names(prot_A_prev) = prot
+    prot_tot_prev = prot_NA_0 + prot_A_0; names(prot_tot_prev) = prot
+    met_tot_prev = met_tot_0; names(met_tot_prev) = met
+
+      
+    # For visualization
+    
+    time_abundance = matrix(c(t, rna_prev, prot_A_prev, prot_NA_prev, prot_tot_prev, met_tot_prev), nrow = 1, dimnames = list(c(),c("time",genes, paste0(prot,"_NA"), paste0(prot,"_A"), paste0(prot,"_tot"), met)))
+    time_rate = matrix(nrow = 0, ncol = length(c(l_TC, l_TL, p_DR, p_DP, p_act, p_deact)))
+    colnames(time_rate) = c(
+      sapply(genes, function(g){paste("l_TC",g, sep = "_")}),
+      sapply(protcod, function(g){paste("l_TL",g, sep = "_")}),
+      sapply(genes, function(g){paste("p_DR",g, sep = "_")}),
+      sapply(prot, function(p){paste("p_DP",p, sep = "_")}),
+      sapply(prot, function(p){paste("p_act",p, sep = "_")}),
+      sapply(prot, function(p){paste("p_deact",p, sep = "_")})
+      )
+    
+    # Main loop -----
+    
+    while(t<=tmax){
+      
+      t = t + 1
+      
+      ## 1: Update reaction rates ----
+      
+      regprev = c(rna_prev[noncod], prot_A_prev[prot], met_tot_prev[met])
+      
+      regTC = colnames(TF_sgn)
+      l_TC = k_TC * apply((1 + TF_sgn * TF_fc * t(regprev[regTC]^t(TF_n))/( (QTL_TC * TF_th)^TF_n +  t(regprev[regTC]^t(TF_n)))), 1, prod)
+      
+      regTL = colnames(TLF_sgn)
+      l_TL = rna_prev[protcod] * k_TL * apply((1 + TLF_sgn * t(regprev[regTL]^t(TLF_n))/( (QTL_TL * TLF_th)^TLF_n +  t(regprev[regTL]^t(TLF_n)))), 1, prod)
+      
+      regDR = colnames(DR_sgn)
+      p_DR = QTL_DR * p0_DR * apply((1 + DR_sgn * t(regprev[regDR]^t(DR_n))/( DR_th^DR_n +  t(regprev[regDR]^t(DR_n)))), 1, prod)
+      
+      regDP = colnames(DP_sgn)
+      p_DP = p0_DP * apply((1 + DP_sgn * t(regprev[regDP]^t(DP_n))/( DP_th^DP_n +  t(regprev[regDP]^t(DP_n)))), 1, prod)
+      
+      regACT = colnames(ACT_sgn)
+      p_act = apply((ACT_sgn * t(regprev[regACT]^t(ACT_n))/( ACT_th^ACT_n +  t(regprev[regACT]^t(ACT_n))) + 1 -ACT_sgn), 1, prod)
+ 
+      regDEACT = colnames(DEACT_sgn)
+      p_deact = (rowSums(DEACT_sgn) != 0) * apply((DEACT_sgn * t(regprev[regDEACT]^t(DEACT_n))/( DEACT_th^DEACT_n +  t(regprev[regDEACT]^t(DEACT_n))) + 1 -DEACT_sgn), 1, prod)
+      
+           
+     
+      
+      ## 2: Compute new molecule abundances ----
+      
+      # Update RNA abundance
+      #    Gene transcription follows a Poisson law, and each RNA molecule at time t-1 has a probability p_DR of being degraded
+      rna[genes] = rna_prev[genes] + rpois(length(l_TC), l_TC) - rbinom(G, rna_prev, p_DR)
+      
+      # Update protein abundance 
+      
+      # Activation or degradation of inactive proteins
+      # Each inactive protein has 3 possible fates:
+      #      - Stay inactive with a probability of (1-proba_activation)*(1-proba_degradation)
+      #      - Become active with a probability of proba_activation*(1-proba_degradation)
+      #      - Be degraded with a probability of proba_degradation
+      probs = rbind( (1-p_act)*(1-p_DP), p_act*(1-p_DP) ,p_DP ) # order of the columns: Prot1 for ind1, Prot2 for ind1, ... , ProtP for ind1, Prot1 for ind2, etc
+      # For each protein type in each individuals these fates are sampled using a multinomial distribution
+      temp = sapply(1:P, function(i){rmultinom(1,prot_NA_prev[i],probs[,i])})
+      Xa = temp[2,] # proteins inactive at time t-1 that are activated
+      Xdna = temp[3,] # proteins inactive at time t-1 that are degraded
+      
+      # Each active protein has 3 possible fates:
+      #      - Stay active with a probability of (1-proba_deactivation)*(1-proba_degradation) (row 1)
+      #      - Become inactive with a probability of proba_deactivation*(1-proba_degradation) (row 2)
+      #      - Be degraded with a probability of proba_degradation (row 3)
+      probs = rbind( (1-p_deact)*(1-p_DP), p_deact*(1-p_DP) ,p_DP ) # columns = proteins
+      # For each protein type in each individuals these fates are sampled using a multinomial distribution
+      temp = sapply(1:P, function(i){rmultinom(1,prot_A_prev[i],probs[,i])})
+      Xna = temp[2,] # proteins active at time t-1 that are deactivated
+      Xda = temp[3,] # proteins active at time t-1 that are degraded
+      
+      
+      # Update inactive protein abundance
+      prot_NA[prot] = rpois(length(l_TL), l_TL) + prot_NA_prev[prot] - Xa - Xdna + Xna
+      
+      # Update active protein abundance
+      prot_A[prot, ind] = prot_A_prev[prot] - Xna - Xda + Xa
+      
+      # Update total protein abundance
+      prot_tot[prot, ind] = prot_NA[prot] + prot_A[prot]
+      
+      
+      
+      ## Update the '_prev' matrices ----
+      rna_prev = rna
+      prot_tot_prev = prot_tot
+      prot_NA_prev = prot_NA
+      prot_A_prev = prot_A
+      
+      
+      ## Store values for visualization ----
+      time_abundance = rbind(time_abundance, c(t, rna, prot_A, prot_NA, prot_tot, met_tot))
+      time_rate = rbind(time_rate, c(l_TC, l_TL, p_DR, p_DP, p_act, p_deact))
+      
+    }
+      
+    res = list("time_abundance" = time_abundance,
+               "time_rate" = time_rate)
+    
+    return(res)
+  })
+}
+
+ 
   
 ##########################################################################################################################
 #                                                       OUTPUT                                                           #
@@ -911,9 +1054,9 @@ global_plot = function(nw){
 
 paramSSA = function(network, cohort){
   
-  G = length(nw1$genes)
-  P = length(nw1$prot)
-  M = length(nw1$met)
+  G = length(network$genes)
+  P = length(network$prot)
+  M = length(network$met)
   
   protNAA = c(sapply(network$prot, function(p){paste(p,"NA",sep = "_")}), sapply(network$prot, function(p){paste(p,"A",sep = "_")}))
   
