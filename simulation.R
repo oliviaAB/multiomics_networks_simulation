@@ -76,7 +76,9 @@ if(!suppressWarnings(require("igraph", quietly = T))){install.packages("igraph")
 library(igraph)
 if(!suppressWarnings(require("scales", quietly = T))){install.packages("scales")}
 library(scales)
-
+if(!suppressWarnings(require("devtools", quietly = T))){install.packages("devtools")}
+if(!suppressWarnings(require("ssar", quietly = T))){devtools::install_github("INSP-RH/ssar")}
+library(ssar)
 
 ##########################################################################################################################
 #                                                  NETWORK SIMULATION                                                    #
@@ -425,15 +427,15 @@ rand_cohort = function(network, N){
   QTL_DR = matrix(get(qtl_effect_RNAdecay)(G*N), nrow = G, ncol = N); rownames(QTL_DR) = network$genes; colnames(QTL_DR) = ind
   
   if(G!=0){
-    rna_0 = matrix(get(initial_abundance)(G,N), nrow = G, ncol = N); rownames(rna_0) = network$genes; colnames(rna_0) = ind
+    rna_0 = matrix(get(initial_abundanceCohort)(G,N), nrow = G, ncol = N); rownames(rna_0) = network$genes; colnames(rna_0) = ind
   }else{rna_0 = vector()}
   if(P!=0){
-    prot_A_0 = matrix(get(initial_abundance)(P,N), nrow = P, ncol = N); rownames(prot_A_0) = network$prot; colnames(prot_A_0) = ind
-    prot_NA_0 = matrix(get(initial_abundance)(P,N), nrow = P, ncol = N); rownames(prot_NA_0) = network$prot; colnames(prot_NA_0) = ind
+    prot_A_0 = matrix(get(initial_abundanceCohort)(P,N), nrow = P, ncol = N); rownames(prot_A_0) = network$prot; colnames(prot_A_0) = ind
+    prot_NA_0 = matrix(get(initial_abundanceCohort)(P,N), nrow = P, ncol = N); rownames(prot_NA_0) = network$prot; colnames(prot_NA_0) = ind
     prot_tot_0 = prot_NA_0 + prot_A_0; rownames(prot_tot_0) = network$prot; colnames(prot_tot_0) = ind
   }else{prot_A_0 = vector(); prot_NA_0 = vector(); prot_tot_0 = vector()}
   if(M!=0){
-    met_tot_0 = matrix(get(initial_abundance)(M,N), nrow = M, ncol = N); rownames(met_tot_0) = network$met; colnames(met_tot_0) = ind
+    met_tot_0 = matrix(get(initial_abundanceCohort)(M,N), nrow = M, ncol = N); rownames(met_tot_0) = network$met; colnames(met_tot_0) = ind
   }else{met_tot_0 = vector()}
   
   res = list("ind" = ind,
@@ -481,6 +483,85 @@ rand_cohort_null = function(network, N){
   }else{met_tot_0 = vector()}
   
   res = list("ind" = ind,
+             "QTL_TC" = QTL_TC,
+             "QTL_TL" = QTL_TL,
+             "QTL_DR" = QTL_DR,
+             "rna_0" = rna_0,
+             "prot_tot_0" = prot_tot_0,
+             "prot_A_0" = prot_A_0,
+             "prot_NA_0" = prot_NA_0,
+             "met_tot_0" = met_tot_0)
+  return(res)
+}
+
+
+rand_indiv = function(network, num = 1){
+  
+  G = length(network$genes)
+  P = length(network$prot)
+  M = length(network$met)
+  
+  # Individual name
+  indname = paste0("ind",num)
+  
+  # Genotype effects
+  
+  # QTL_TC : vector of genotype effect on transcription (TF binding)
+  QTL_TC = get(qtl_effect_transcription)(G); names(QTL_TC) = network$genes
+
+  # QTL_TL : vector of genotype effect on translation (TLF binding)
+  QTL_TL = get(qtl_effect_translation)(P); names(QTL_TL) = network$protcod
+  
+  # QTL_DR : vector of genotype effect on mRNA degradation
+  QTL_DR = get(qtl_effect_RNAdecay)(G); names(QTL_DR) = network$genes
+  
+  # Initial abundance
+  rna_0 = get(initial_abundance)(G); names(rna_0) = network$genes
+  prot_NA_0 = get(initial_abundance)(P); names(prot_NA_0) = network$prot
+  prot_A_0 = get(initial_abundance)(P); names(prot_A_0) = network$prot
+  prot_tot_0 = prot_NA_0 + prot_A_0; names(prot_tot_0) = network$prot
+  met_tot_0 = get(initial_abundance)(M); names(met_tot_0) = network$met
+  
+  res = list("indname" = indname,
+             "QTL_TC" = QTL_TC,
+             "QTL_TL" = QTL_TL,
+             "QTL_DR" = QTL_DR,
+             "rna_0" = rna_0,
+             "prot_tot_0" = prot_tot_0,
+             "prot_A_0" = prot_A_0,
+             "prot_NA_0" = prot_NA_0,
+             "met_tot_0" = met_tot_0)
+  return(res)
+}
+
+rand_indiv_null = function(network, num = 1){
+  
+  G = length(network$genes)
+  P = length(network$prot)
+  M = length(network$met)
+  
+  # Individual name
+  indname = paste0("ind",num)
+  
+  # Genotype effects
+  
+  # QTL_TC : vector of genotype effect on transcription (TF binding)
+  QTL_TC = rep(1, G); names(QTL_TC) = network$genes
+  
+  # QTL_TL : vector of genotype effect on translation (TLF binding)
+  QTL_TL = rep(1, P); names(QTL_TL) = network$protcod
+  
+  # QTL_DR : vector of genotype effect on mRNA degradation
+  QTL_DR = rep(1, G); names(QTL_DR) = network$genes
+  
+  # Initial abundance
+  rna_0 = get(initial_abundance)(G); names(rna_0) = network$genes
+  prot_NA_0 = get(initial_abundance)(P); names(prot_NA_0) = network$prot
+  prot_A_0 = get(initial_abundance)(P); names(prot_A_0) = network$prot
+  prot_tot_0 = prot_NA_0 + prot_A_0; names(prot_tot_0) = network$prot
+  met_tot_0 = get(initial_abundance)(M); names(met_tot_0) = network$met
+  
+  res = list("indname" = indname,
              "QTL_TC" = QTL_TC,
              "QTL_TL" = QTL_TL,
              "QTL_DR" = QTL_DR,
@@ -786,9 +867,9 @@ simuInd = function(network, indiv, tmax){
       
     # For visualization
     
-    time_abundance = matrix(c(t, rna_prev, prot_A_prev, prot_NA_prev, prot_tot_prev, met_tot_prev), nrow = 1, dimnames = list(c(),c("time",genes, paste0(prot,"_NA"), paste0(prot,"_A"), paste0(prot,"_tot"), met)))
-    time_rate = matrix(nrow = 0, ncol = length(c(l_TC, l_TL, p_DR, p_DP, p_act, p_deact)))
-    colnames(time_rate) = c(
+    time_abundance = matrix(c(t, rna_prev, prot_NA_prev, prot_A_prev, prot_tot_prev, met_tot_prev), nrow = 1, dimnames = list(c(),c("time",genes, paste0(prot,"_NA"), paste0(prot,"_A"), prot, met)))
+    time_rate = matrix(nrow = 0, ncol = length(c(t, l_TC, l_TL, p_DR, p_DP, p_act, p_deact)))
+    colnames(time_rate) = c( "time",
       sapply(genes, function(g){paste("l_TC",g, sep = "_")}),
       sapply(protcod, function(g){paste("l_TL",g, sep = "_")}),
       sapply(genes, function(g){paste("p_DR",g, sep = "_")}),
@@ -799,7 +880,7 @@ simuInd = function(network, indiv, tmax){
     
     # Main loop -----
     
-    while(t<=tmax){
+    while(t<tmax){
       
       t = t + 1
       
@@ -811,7 +892,7 @@ simuInd = function(network, indiv, tmax){
       l_TC = k_TC * apply((1 + TF_sgn * TF_fc * t(regprev[regTC]^t(TF_n))/( (QTL_TC * TF_th)^TF_n +  t(regprev[regTC]^t(TF_n)))), 1, prod)
       
       regTL = colnames(TLF_sgn)
-      l_TL = rna_prev[protcod] * k_TL * apply((1 + TLF_sgn * t(regprev[regTL]^t(TLF_n))/( (QTL_TL * TLF_th)^TLF_n +  t(regprev[regTL]^t(TLF_n)))), 1, prod)
+      l_TL = k_TL * apply((1 + TLF_sgn * TLF_fc * t(regprev[regTL]^t(TLF_n))/( (QTL_TL * TLF_th)^TLF_n +  t(regprev[regTL]^t(TLF_n)))), 1, prod)
       
       regDR = colnames(DR_sgn)
       p_DR = QTL_DR * p0_DR * apply((1 + DR_sgn * t(regprev[regDR]^t(DR_n))/( DR_th^DR_n +  t(regprev[regDR]^t(DR_n)))), 1, prod)
@@ -859,13 +940,13 @@ simuInd = function(network, indiv, tmax){
       
       
       # Update inactive protein abundance
-      prot_NA[prot] = rpois(length(l_TL), l_TL) + prot_NA_prev[prot] - Xa - Xdna + Xna
+      prot_NA[prot] = rpois(length(l_TL), rna_prev[protcod] * l_TL) + prot_NA_prev[prot] - Xa - Xdna + Xna
       
       # Update active protein abundance
-      prot_A[prot, ind] = prot_A_prev[prot] - Xna - Xda + Xa
+      prot_A[prot] = prot_A_prev[prot] - Xna - Xda + Xa
       
       # Update total protein abundance
-      prot_tot[prot, ind] = prot_NA[prot] + prot_A[prot]
+      prot_tot[prot] = prot_NA[prot] + prot_A[prot]
       
       
       
@@ -877,8 +958,8 @@ simuInd = function(network, indiv, tmax){
       
       
       ## Store values for visualization ----
-      time_abundance = rbind(time_abundance, c(t, rna, prot_A, prot_NA, prot_tot, met_tot))
-      time_rate = rbind(time_rate, c(l_TC, l_TL, p_DR, p_DP, p_act, p_deact))
+      time_abundance = rbind(time_abundance, c(t, rna, prot_NA, prot_A, prot_tot, met_tot))
+      time_rate = rbind(time_rate, c(t, l_TC, l_TL, p_DR, p_DP, p_act, p_deact))
       
     }
       
@@ -895,39 +976,98 @@ simuInd = function(network, indiv, tmax){
 #                                                       OUTPUT                                                           #
 ##########################################################################################################################
 
-visu = function(network, cohort, sim, tmax){
+visu_abundance = function(sim, network){
   
-  #cols = c('blue','green', 'red'); names(cols) = cohort$ind
-  cols = rainbow(length(cohort$ind)); names(cols) = cohort$ind
-  
-  # plot genes
+  # Plot RNA abundance for each gene
   for(g in network$genes){
-    plot(1:(tmax+1), ylim = c(0,max(unlist(sim$time_rna[[g]]))), type = 'n', main = paste('Gene',g, sep=' '), xlab = 'time', ylab = 'abundance')
-    for(i in cohort$ind){
-      lines(sim$time_rna[[g]][i,], col=cols[i])
-    }
-    legend('topright', col = cols, lty=1, legend = names(cols))
+    plot(sim$time_abundance[,"time"], sim$time_abundance[,g], col = "black", type = "l", main = paste(g, "abundance", sep = " "), xlab = "time", ylab = "Number of molecules")
   }
   
-  # plot proteins
-  for(p in network$prot){
-    plot(1:(tmax+1), ylim = c(0,max(unlist(sim$time_prot_tot[[p]]))), type = 'n', main = paste('Protein',p, sep=' '), xlab = 'time', ylab = 'abundance')
-    for(i in cohort$ind){
-      lines(sim$time_prot_tot[[p]][i,], col=cols[i])
-    }
-    legend('topright', col = cols, lty=1, legend = names(cols))
+  # Plot total, active and inactive abundance for each protein
+  for(p in  network$prot){
+    plot(sim$time_abundance[,"time"], sim$time_abundance[,p], col = "black", type = "l", main = paste(p, "abundance", sep = " "), xlab = "time", ylab = "Number of molecules")
+    lines(sim$time_abundance[,"time"], sim$time_abundance[,paste0(p, "_NA")], col = "blue")
+    lines(sim$time_abundance[,"time"], sim$time_abundance[,paste0(p, "_A")], col = "red")
+    legend("topleft", c("Total", "Active", "Inactive"), col = c("black", "red", "blue"), lty = c(1,1,1))
   }
-  
-   # plot transcription rates
-  for(g in network$genes){
-    plot(1:(tmax+1), ylim = c(min(unlist(sim$time_TC_rate[[g]])),max(unlist(sim$time_TC_rate[[g]]))), type = 'n', main = paste('TC rate - Gene',g, sep=' '), xlab = 'time', ylab = 'Transcription rate')
-    for(i in cohort$ind){
-      lines(sim$time_TC_rate[[g]][i,], col=cols[i])
-    }
-    legend('topright', col = cols, lty=1, legend = names(cols))
-    }
+  -----
+  # Plot abundance for each metabolite
+  for(m in network$met){
+    plot(sim$time_abundance[,"time"], sim$time_abundance[,m], col = "black", type = "l", main = paste(m, "abundance", sep = " "), xlab = "time", ylab = "Number of molecules")
+  }
   
 }  
+
+
+visu_rate = function(sim, network){
+  
+  # Transcription rates
+  TC_rates = grep("l_TC", colnames(sim$time_rate), value = T)
+  col = rainbow(length(TC_rates)); names(col) = TC_rates
+  ymin = min(sim$time_rate[,TC_rates])
+  ymax = max(sim$time_rate[,TC_rates])
+  plot(sim$time_rate[, "time"], sim$time_rate[, "time"], type = 'n', ylim = c(ymin, ymax), main = "Transcription rates", xlab = "time", ylab = "rates")
+  for(t in TC_rates){
+    lines(sim$time_rate[, "time"], sim$time_rate[, t], col = col[t])
+  }
+  legend('topleft', gsub("l_TC_", "", TC_rates), col = col, lty = 1, horiz = T)
+  
+  # Translation rates
+  TL_rates = grep("l_TL", colnames(sim$time_rate), value = T)
+  col = rainbow(length(TL_rates)); names(col) = TL_rates
+  ymin = min(sim$time_rate[,TL_rates])
+  ymax = max(sim$time_rate[,TL_rates])
+  plot(sim$time_rate[, "time"], sim$time_rate[, "time"], type = 'n', ylim = c(ymin, ymax), main = "Translation rates", xlab = "time", ylab = "rates")
+  for(t in TL_rates){
+    lines(sim$time_rate[, "time"], sim$time_rate[, t], col = col[t])
+  }
+  legend('topleft', gsub("l_TL_", "", TL_rates), col = col, lty = 1, horiz = T)
+  
+  # RNA degradation rates
+  DR_rates = grep("p_DR", colnames(sim$time_rate), value = T)
+  col = rainbow(length(DR_rates)); names(col) = DR_rates
+  ymin = min(sim$time_rate[,DR_rates])
+  ymax = max(sim$time_rate[,DR_rates])
+  plot(sim$time_rate[, "time"], sim$time_rate[, "time"], type = 'n', ylim = c(ymin, ymax), main = "RNA degradation rates", xlab = "time", ylab = "rates")
+  for(t in DR_rates){
+    lines(sim$time_rate[, "time"], sim$time_rate[, t], col = col[t])
+  }
+  legend('topleft', gsub("p_DR_", "", DR_rates), col = col, lty = 1, horiz = T)
+  
+  # Protein degradation rates
+  DP_rates = grep("p_DP", colnames(sim$time_rate), value = T)
+  col = rainbow(length(DP_rates)); names(col) = DP_rates
+  ymin = min(sim$time_rate[,DP_rates])
+  ymax = max(sim$time_rate[,DP_rates])
+  plot(sim$time_rate[, "time"], sim$time_rate[, "time"], type = 'n', ylim = c(ymin, ymax), main = "Protein degradation rates", xlab = "time", ylab = "rates")
+  for(t in DP_rates){
+    lines(sim$time_rate[, "time"], sim$time_rate[, t], col = col[t])
+  }
+  legend('topleft', gsub("p_DP_", "", DP_rates), col = col, lty = 1, horiz = T)
+  
+  # Protein activation rates
+  act_rates = grep("p_act", colnames(sim$time_rate), value = T)
+  col = rainbow(length(act_rates)); names(col) = act_rates
+  ymin = min(sim$time_rate[,act_rates])
+  ymax = max(sim$time_rate[,act_rates])
+  plot(sim$time_rate[, "time"], sim$time_rate[, "time"], type = 'n', ylim = c(ymin, ymax), main = "Protein activation rates", xlab = "time", ylab = "rates")
+  for(t in act_rates){
+    lines(sim$time_rate[, "time"], sim$time_rate[, t], col = col[t])
+  }
+  legend('topleft', gsub("p_act_", "", act_rates), col = col, lty = 1, horiz = T)
+  
+  # Protein inactivation rates
+  deact_rates = grep("p_deact", colnames(sim$time_rate), value = T)
+  col = rainbow(length(deact_rates)); names(col) = deact_rates
+  ymin = min(sim$time_rate[,deact_rates])
+  ymax = max(sim$time_rate[,deact_rates])
+  plot(sim$time_rate[, "time"], sim$time_rate[, "time"], type = 'n', ylim = c(ymin, ymax), main = "Protein inactivation rates", xlab = "time", ylab = "rates")
+  for(t in deact_rates){
+    lines(sim$time_rate[, "time"], sim$time_rate[, t], col = col[t])
+  }
+  legend('topleft', gsub("p_deact_", "", deact_rates), col = col, lty = 1, horiz = T)
+  
+}
 
 
 ##########################################################################################################################
@@ -1223,10 +1363,182 @@ paramSSA = function(network, cohort){
   return(res)
 }
 
+paramSSAindiv = function(network, indiv){
+  
+  G = length(network$genes)
+  P = length(network$prot)
+  M = length(network$met)
+  
+  protNAA = c(sapply(network$prot, function(p){paste(p,"NA",sep = "_")}), sapply(network$prot, function(p){paste(p,"A",sep = "_")}))
+  
+  # INITIAL CONDITIONS ----
+  x0 = c(indiv$rna_0, indiv$prot_NA_0, indiv$prot_A_0, indiv$met_tot_0)
+  names(x0) = c(network$genes, protNAA, network$met)
+  
+  
+  # PROPENSITY FUNCTIONS / REACTION RATES ---- 
+  
+  # Regulation law for transcription and translation reactions (takes into account the fc parameter)
+  regulation_law_TCTL = function(id, reaction, network){
+    reg = colnames(network[[paste0(reaction,"_sgn")]])[which(network[[paste0(reaction,"_sgn")]][id,]!=0)]
+    reg[grepl('^P',reg)] = paste(reg[grepl('^P',reg)],"A",sep = "_") # consider only active proteins
+    parname = paste0(reaction, id)
+    sup = sapply(reg, function(x){paste(c("*(1+sgn",parname,x,"*fc",parname,x,"*(",x,"^n",parname,x,"/(",x,"^n",parname,x,"+th",parname,x,"^n",parname,x,")))"), collapse = "")})
+    return(sup)
+  }
+  
+  # Regulation law for the decay reactions
+  regulation_law_decay = function(id, reaction, network){
+    reg = colnames(network[[paste0(reaction,"_sgn")]])[which(network[[paste0(reaction,"_sgn")]][id,]!=0)]
+    reg[grepl('^P',reg)] = paste(reg[grepl('^P',reg)],"A",sep = "_") # consider only active proteins
+    parname = paste0(reaction, id)
+    sup = sapply(reg, function(x){paste(c("*(1+sgn",parname,x,"*(",x,"^n",parname,x,"/(",x,"^n",parname,x,"+th",parname,x,"^n",parname,x,")))"), collapse = "")})
+    return(sup)
+  }
+  
+  # Regulation law for the activation/inactivation reactions
+  regulation_law_act = function(id, reaction, network){
+    #reg = names(which(network[[paste0(reaction,"_sgn")]][id,]!=0))
+    reg = colnames(network[[paste0(reaction,"_sgn")]])[which(network[[paste0(reaction,"_sgn")]][id,]!=0)]
+    reg[grepl('^P',reg)] = paste(reg[grepl('^P',reg)],"A",sep = "_") # consider only active proteins
+    parname = paste0(reaction, id)
+    sup = sapply(reg, function(x){paste(c("*(",x,"^n",parname,x,"/(",x,"^n",parname,x,"+th",parname,x,"^n",parname,x,"))"), collapse = "")})
+    return(sup)
+  }
+  
+  a = c( # ----
+         # transcription reactions
+         sapply(network$genes, function(g){
+           sup = regulation_law_TCTL(g, 'TF', network)
+           paste(c("k_TC",g,sup), collapse = "")}),
+         # translation reactions
+         sapply(network$prot, function(p){           
+           sup = regulation_law_TCTL(network$g2p[p], 'TLF', network)
+           paste(c(network$g2p[p],"*k_TL",p,sup), collapse = "")}),
+         # RNA decay reactions
+         sapply(network$genes, function(g){
+           sup = regulation_law_decay(g, 'DR', network)
+           paste(c(g,"*p0_DR",g,sup), collapse = "")}),
+         # Protein decay reactions (for active proteins then for inactive proteins)
+         sapply(protNAA, function(p){
+           sup = regulation_law_decay(sub("_NA|_A","",p), 'DP', network)
+           paste(c(p,"*p0_DP",sub("_NA|_A","",p),sup), collapse = "")}),
+         # Protein activation reactions
+         sapply(protNAA[1:P], function(p){
+           sup = regulation_law_act(sub("_NA","",p), 'ACT', network)
+           paste(c(p,sup), collapse = "")}),
+         # Protein inactivation reactions
+         sapply(protNAA[(P+1):(2*P)], function(p){
+           sup = regulation_law_act(sub("_A","",p), 'DEACT', network)
+           if(length(sup) == 0){return("0")}
+           else{paste(c(p,sup), collapse = "")}})
+  ) # ----
+  
+  names(a) = c(
+    # transcription reactions
+    sapply(network$genes, function(g){paste0("TRANSCRIPTION",g)}),
+    # translation reactions
+    sapply(network$prot, function(p){paste0("TRANSLATION",p)}),
+    # RNA decay reactions
+    sapply(network$genes, function(g){paste0("DECAY",g)}),
+    # Protein decay reactions
+    sapply(protNAA, function(p){paste0("DECAY",p)}),
+    # protein activation reactions
+    sapply(protNAA[1:P], function(p){paste0("ACTIVATION",p)}),
+    # protein inactivation reactions
+    sapply(protNAA[(P+1):(2*P)], function(p){paste0("DEACTIVATION",p)})
+  )
+  
+  # STATE-CHANGE VECTOR ----
+  tempTCTL = diag(1, nrow = G+P, ncol = G+P); tempTCTL = rbind(tempTCTL, matrix(0, nrow = P, ncol = G+P))
+  tempDRDP = diag(-1, nrow = G+2*P, ncol = G+2*P)
+  tempPos = diag(1, nrow = P, ncol = P); tempNeg = diag(-1, nrow = P, ncol = P)
+  tempACT = rbind(matrix(0, nrow = G, ncol = P), tempNeg, tempPos)
+  tempDEACT = rbind(matrix(0, nrow = G, ncol = P), tempPos, tempNeg)
+  nu = cbind(tempTCTL, tempDRDP, tempACT, tempDEACT); nu = rbind(nu, matrix(0, nrow = M, ncol = ncol(nu))); rownames(nu) = names(x0)
+  
+  # REACTION RATE PARAMETERS ----
+  combnames = function(par, reaction, target, reg){
+    reg[grepl('^P',reg)] = paste(reg[grepl('^P',reg)],"A",sep = "_")
+    comb = expand.grid(target, reg)
+    if(nrow(comb)!=0){sapply(1:nrow(comb), function(i){paste0(par, reaction, comb[i,1], comb[i, 2])})}
+  }
+  
+  parms = c( # ----
+             # Transcription parameters
+             network$k_TC, # Basal transcription rates
+             as.vector(network$TF_sgn), # regulation direction
+             as.vector(network$TF_th*indiv$QTL_TC), # regulation threshold
+             as.vector(network$TF_n), # regulation power
+             as.vector(network$TF_fc), # regulation fold change
+             # Translation parameters
+             network$k_TL, # Basal translation rates
+             as.vector(network$TLF_sgn), # regulation direction
+             as.vector(network$TLF_th*indiv$QTL_TL), # regulation threshold
+             as.vector(network$TLF_n), # regulation power
+             as.vector(network$TLF_fc), # regulation fold change
+             # RNA decay parameters
+             network$p0_DR*indiv$QTL_TC, # Basal decay rates
+             as.vector(network$DR_sgn), # regulation direction
+             as.vector(network$DR_th), # regulation threshold
+             as.vector(network$DR_n), # regulation power
+             # protein decay parameters
+             network$p0_DP, # Basal decay rates
+             as.vector(network$DP_sgn), # regulation direction
+             as.vector(network$DP_th), # regulation threshold
+             as.vector(network$DP_n), # regulation power
+             # protein activation parameters
+             as.vector(network$ACT_sgn), # regulation direction
+             as.vector(network$ACT_th), # regulation threshold
+             as.vector(network$ACT_n), # regulation power
+             # protein inactivation parameters
+             as.vector(network$DEACT_sgn), # regulation direction
+             as.vector(network$DEACT_th), # regulation threshold
+             as.vector(network$DEACT_n) # regulation power
+  ) # ----
+  
+  names(parms) = c( # ----
+                    # Transcription parameters
+                    sapply(network$genes, function(x){paste0("k_TC",x)}), # Basal transcription rates
+                    combnames("sgn", "TF", rownames(network$TF_sgn), colnames(network$TF_sgn)), # regulation direction
+                    combnames("th", "TF", rownames(network$TF_th), colnames(network$TF_th)), # regulation threshold
+                    combnames("n", "TF", rownames(network$TF_n), colnames(network$TF_n)), # regulation power
+                    combnames("fc", "TF", rownames(network$TF_fc), colnames(network$TF_fc)), # regulation fold change
+                    # Translation parameters
+                    sapply(network$prot, function(x){paste0("k_TL",x)}), # Basal translation rates
+                    combnames("sgn", "TLF", rownames(network$TLF_sgn), colnames(network$TLF_sgn)), # regulation direction
+                    combnames("th", "TLF", rownames(network$TLF_th), colnames(network$TLF_th)), # regulation threshold
+                    combnames("n", "TLF", rownames(network$TLF_n), colnames(network$TLF_n)), # regulation power
+                    combnames("fc", "TLF", rownames(network$TLF_fc), colnames(network$TLF_fc)), # regulation fold change
+                    # RNA decay parameters
+                    sapply(network$genes, function(x){paste0("p0_DR",x)}), # Basal decay rates
+                    combnames("sgn", "DR", rownames(network$DR_sgn), colnames(network$DR_sgn)), # regulation direction
+                    combnames("th", "DR", rownames(network$DR_th), colnames(network$DR_th)), # regulation threshold
+                    combnames("n", "DR", rownames(network$DR_n), colnames(network$DR_n)), # regulation power
+                    # protein decay parameters
+                    sapply(network$prot, function(x){paste0("p0_DP",x)}), # Basal decay rates
+                    combnames("sgn", "DP", rownames(network$DP_sgn), colnames(network$DP_sgn)), # regulation direction
+                    combnames("th", "DP", rownames(network$DP_th), colnames(network$DP_th)), # regulation threshold
+                    combnames("n", "DP", rownames(network$DP_n), colnames(network$DP_n)), # regulation power
+                    # protein activation parameters
+                    combnames("sgn", "ACT", rownames(network$ACT_sgn), colnames(network$ACT_sgn)), # regulation direction
+                    combnames("th", "ACT", rownames(network$ACT_th), colnames(network$ACT_th)), # regulation threshold
+                    combnames("n", "ACT", rownames(network$ACT_n), colnames(network$ACT_n)), # regulation power
+                    # protein inactivation parameters
+                    combnames("sgn", "DEACT", rownames(network$DEACT_sgn), colnames(network$DEACT_sgn)), # regulation direction
+                    combnames("th", "DEACT", rownames(network$DEACT_th), colnames(network$DEACT_th)), # regulation threshold
+                    combnames("n", "DEACT", rownames(network$DEACT_n), colnames(network$DEACT_n)) # regulation power
+  ) # ----
+  
+  res = list("x0" = x0, "a" = a, "nu" = nu, "parms" = parms)
+  return(res)
+}
 
 ##########################################################################################################################
 #                         TRANSFORMATION OF SAMPLED NETWORK AND COHORT INTO DESOLVE PARAMETERS                           #
 ##########################################################################################################################
+
+# !!! PROBABLY OBSOLETE: NEED TO UPDATE TO HAVE INDIV AS INPUT + TAKE INTO ACCOUNT FC PARAMETERS
 
 paramDeSolve = function(network, cohort){
   G = length(network$genes)
@@ -1285,5 +1597,73 @@ paramDeSolve = function(network, cohort){
   parms = c(network, cohort)
   
   return(list("y" = x0, "func" = func, "parms" = parms))
+}
+
+##########################################################################################################################
+#                       TRANSFORMATION OF SAMPLED NETWORK AND COHORT INTO ADAPTIVETAU PARAMETERS                        #
+##########################################################################################################################
+
+paramAT = function(network, ind){
+  
+  G = length(network$genes)
+  P = length(network$prot)
+  M = length(network$met)
+  
+  protNAA = c(sapply(network$prot, function(p){paste(p,"NA",sep = "_")}), sapply(network$prot, function(p){paste(p,"A",sep = "_")}))
+  
+  # Initial values ----
+  init.values = c(ind$rna_0, ind$prot_NA_0, ind$prot_A_0, ind$met_tot_0)
+  names(init.values) = c(network$genes, protNAA, network$met)
+  
+  # Propensity matrix ----
+  tempTCTL = diag(1, nrow = G+P, ncol = G+P); tempTCTL = rbind(tempTCTL, matrix(0, nrow = P, ncol = G+P))
+  tempDRDP = diag(-1, nrow = G+2*P, ncol = G+2*P)
+  tempPos = diag(1, nrow = P, ncol = P); tempNeg = diag(-1, nrow = P, ncol = P)
+  tempACT = rbind(matrix(0, nrow = G, ncol = P), tempNeg, tempPos)
+  tempDEACT = rbind(matrix(0, nrow = G, ncol = P), tempPos, tempNeg)
+  transitions = cbind(tempTCTL, tempDRDP, tempACT, tempDEACT); transitions = rbind(transitions, matrix(0, nrow = M, ncol = ncol(transitions))); rownames(transitions) = names(init.values)
+  
+  # Parameters ----
+  params = as.list(c(network, ind))
+  
+  # Rate function ----
+  rateFunc = function(x, params, t){
+    with(params, {
+      
+      regprev = x[c(noncod, paste0(prot, "_A"), met)]
+      
+      regTC = colnames(TF_sgn); regTC[grepl('^P',regTC)] = paste(regTC[grepl('^P',regTC)],"A",sep = "_")
+      l_TC = k_TC * apply((1 + TF_sgn * TF_fc * t(regprev[regTC]^t(TF_n))/( (QTL_TC * TF_th)^TF_n +  t(regprev[regTC]^t(TF_n)))), 1, prod)
+      
+      regTL = colnames(TLF_sgn); regTL[grepl('^P',regTL)] = paste(regTL[grepl('^P',regTL)],"A",sep = "_")
+      l_TL = k_TL * apply((1 + TLF_sgn * TLF_fc * t(regprev[regTL]^t(TLF_n))/( (QTL_TL * TLF_th)^TLF_n +  t(regprev[regTL]^t(TLF_n)))), 1, prod)
+      
+      regDR = colnames(DR_sgn); regDR[grepl('^P',regDR)] = paste(regDR[grepl('^P',regDR)],"A",sep = "_")
+      p_DR = QTL_DR * p0_DR * apply((1 + DR_sgn * t(regprev[regDR]^t(DR_n))/( DR_th^DR_n +  t(regprev[regDR]^t(DR_n)))), 1, prod)
+      
+      regDP = colnames(DP_sgn); regDP[grepl('^P',regDP)] = paste(regDP[grepl('^P',regDP)],"A",sep = "_")
+      p_DP = p0_DP * apply((1 + DP_sgn * t(regprev[regDP]^t(DP_n))/( DP_th^DP_n +  t(regprev[regDP]^t(DP_n)))), 1, prod)
+      
+      regACT = colnames(ACT_sgn); regACT[grepl('^P',regACT)] = paste(regACT[grepl('^P',regACT)],"A",sep = "_")
+      p_act = apply((ACT_sgn * t(regprev[regACT]^t(ACT_n))/( ACT_th^ACT_n +  t(regprev[regACT]^t(ACT_n))) + 1 -ACT_sgn), 1, prod)
+      
+      regDEACT = colnames(DEACT_sgn); regDEACT[grepl('^P',regDEACT)] = paste(regDEACT[grepl('^P',regDEACT)],"A",sep = "_")
+      p_deact = (rowSums(DEACT_sgn) != 0) * apply((DEACT_sgn * t(regprev[regDEACT]^t(DEACT_n))/( DEACT_th^DEACT_n +  t(regprev[regDEACT]^t(DEACT_n))) + 1 -DEACT_sgn), 1, prod)
+      
+      return(c(l_TC,
+               x[protcod] * l_TL,
+               x[genes] * p_DR,
+               x[paste0(prot, "_NA")] * p_DP,
+               x[paste0(prot, "_A")] * p_DP,
+               x[paste0(prot, "_NA")] * p_act,
+               x[paste0(prot, "_A")] * p_deact))
+    })
+  }
+  
+  return(list("init.values" = init.values,
+              "transitions" = transitions,
+              "params" = params,
+              rateFunc = rateFunc))
+  
 }
 

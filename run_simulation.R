@@ -102,7 +102,7 @@ source("simulation.R")
 
 tmax = 1000
 
-nw1 = rand_network(5,3,1)
+nw1 = rand_network(5,3,0)
 cohort = rand_cohort(nw1,1)
 
 # -- Our method --
@@ -111,7 +111,7 @@ sim = simu(nw1, cohort, tmax)
 # -- GillespieSSA --
 parSSA = paramSSA(nw1, cohort)
 
-simSSA = ssa(parSSA$x0, parSSA$a, parSSA$nu, parSSA$parms, tmax, method = "ETL")
+simSSA = ssa(parSSA$x0, parSSA$a, parSSA$nu, parSSA$parms, tmax, method = "OTL")
 
 # -- Visualization --
 
@@ -294,7 +294,7 @@ source("simulation.R")
 # Random network ----
 nw1 = rand_network(5,3,5)
 cohort = rand_cohort(nw1,1)
-
+tmax = 1000
 
 indiv = cohort
 indiv["ind"] = NULL
@@ -308,6 +308,236 @@ indiv["indname"] = "ind1"
 # Main code #
 # --------- #
 
+simC = simu(nw1, cohort, tmax)
+simI = simuInd(nw1, indiv, tmax)
+
+for(g in nw1$genes){
+  ymin = min(simC$time_rna[[g]], simI$time_abundance[,g])
+  ymax = max(simC$time_rna[[g]], simI$time_abundance[,g])
+  
+  plot(0:tmax, simC$time_rna[[g]], type = 'l', col = "red", ylim = c(ymin, ymax), main = g)
+  lines(simI$time_abundance[,"time"], simI$time_abundance[,g], col = "blue")
+}
+
+for(p in nw1$prot){
+  ymin = min(simC$time_prot_tot[[p]], simI$time_abundance[,p])
+  ymax = max(simC$time_prot_tot[[p]], simI$time_abundance[,p])
+  
+  plot(0:tmax, simC$time_prot_tot[[p]], type = 'l', col = "red", ylim = c(ymin, ymax), main = p)
+  lines(simI$time_abundance[,"time"], simI$time_abundance[,p], col = "blue")
+}
+
+# -------
+
+nsim = 100
+
+res_sim = vector("list", length = length(nw1$genes)+length(nw1$prot)); names(res_sim) = c(nw1$genes, nw1$prot)
+
+system.time(for(s in 1:nsim){ 
+    sim = simu(nw1, cohort, tmax)
+    for(g in nw1$genes){ res_sim[[g]] = rbind(res_sim[[g]], sim$time_rna[[g]][1,]) }
+    for(p in nw1$prot){ res_sim[[p]] = rbind(res_sim[[p]], sim$time_prot_tot[[p]][1,]) }
+  }
+)
+
+# Get the mean and the 2,5% and 97,5% quantiles
+mean_sim = lapply(res_sim, colMeans)
+quant2_5_sim = lapply(res_sim, function(x){apply(x, 2, quantile, probs = 0.025)})
+quant97_5_sim = lapply(res_sim, function(x){apply(x, 2, quantile, probs = 0.975)})
+
+
+
+res_simInd = vector("list", length = length(nw1$genes)+length(nw1$prot)); names(res_simInd) = c(nw1$genes, nw1$prot)
+
+system.time(for(s in 1:nsim){ 
+  sim = simuInd(nw1, indiv, tmax)
+  for(g in nw1$genes){ res_simInd[[g]] = rbind(res_simInd[[g]], sim$time_abundance[,g]) }
+  for(p in nw1$prot){ res_simInd[[p]] = rbind(res_simInd[[p]], sim$time_abundance[,p]) }
+}
+)
+
+# Get the mean and the 2,5% and 97,5% quantiles
+mean_simInd = lapply(res_simInd, colMeans)
+quant2_5_simInd = lapply(res_simInd, function(x){apply(x, 2, quantile, probs = 0.025)})
+quant97_5_simInd = lapply(res_simInd, function(x){apply(x, 2, quantile, probs = 0.975)})
+
+
+for(mol in c(nw1$genes, nw1$prot)){
+  # windows()
+  ymin = min(quant2_5_sim[[mol]], quant2_5_simInd[[mol]])
+  ymax = max(quant97_5_sim[[mol]], quant97_5_simInd[[mol]])
+  plot(0:tmax, mean_sim[[mol]], type = 'l', col = "blue", main = mol, xlab = "time", ylab = "abundance", ylim = c(ymin,ymax))
+  lines(0:tmax, mean_simInd[[mol]], col = "red")
+  lines(0:tmax, quant2_5_sim[[mol]], col = "blue", lty = "dotted")
+  lines(0:tmax, quant97_5_sim[[mol]], col = "blue", lty = "dotted")
+  lines(0:tmax, quant2_5_simInd[[mol]], col = "red", lty = "dotted")
+  lines(0:tmax, quant97_5_simInd[[mol]], col = "red", lty = "dotted")
+  #lines(0:tmax, resODE[,mol], col = "black")
+  polygon(c(0:tmax, tmax:0), c(quant2_5_sim[[mol]],rev(quant97_5_sim[[mol]])), col = alpha("blue", alpha = 0.1), border = NA)
+  polygon(c(0:tmax, tmax:0), c(quant2_5_simInd[[mol]],rev(quant97_5_simInd[[mol]])), col = alpha("red", alpha = 0.1), border = NA)
+}
+
+
+
+# --------------------------------------- #
+#               New test                  #
+# --------------------------------------- #
+
+
+source("simulation.R")
+
+nw1 = rand_network(5, 3, 0)
+indiv = rand_indiv(nw1)
+tmax = 1000
+
+sim = simuInd(nw1, indiv, tmax)
+
+for(m in c(nw1$genes, nw1$met)){
+  plot(sim$time_abundance[,"time"], sim$time_abundance[,m], type = "l", main = m)
+}
+
+for(p in  nw1$prot){
+  plot(sim$time_abundance[,"time"], sim$time_abundance[,p], col = "black", type = "l", main = p)
+  lines(sim$time_abundance[,"time"], sim$time_abundance[,paste0(p, "_NA")], col = "blue")
+  lines(sim$time_abundance[,"time"], sim$time_abundance[,paste0(p, "_A")], col = "red")
+}
+
+
+
+
+
+
+
+
+
+
+
+##########################################################################################################################
+#                 USE PACKAGE ADAPTIVETAU TO COMPARE RESULTS FROM OUR ALGO TO APPROX. SSA SIMULATION                     #
+##########################################################################################################################
+
+library(adaptivetau)
+
+source("simulation.R")
+
+network = rand_network_null(5, 4, 2)
+ind = rand_indiv(network)
+
+G = length(network$genes)
+P = length(network$prot)
+M = length(network$met)
+
+protNAA = c(sapply(network$prot, function(p){paste(p,"NA",sep = "_")}), sapply(network$prot, function(p){paste(p,"A",sep = "_")}))
+
+tmax = 1000
+
+parAT = paramAT(network, ind)
+init.values = parAT$init.values
+transitions = parAT$transitions
+rateFunc = parAT$rateFunc
+params = parAT$params
+
+# -------------------------- #
+#     Only 1 simulation      #
+# -------------------------- #
+
+system.time(sim <- simuInd(network, ind, tmax))
+
+system.time(simAD <- ssa.adaptivetau(parAT$init.values, parAT$transitions, parAT$rateFunc, parAT$params, tf = tmax))
+
+parSSA = paramSSAindiv(network, ind)
+system.time(simSSA <- GillespieSSA::ssa(parSSA$x0, parSSA$a, parSSA$nu, parSSA$parms, tmax, method = "ETL") )
+
+for(m in setdiff(colnames(sim$time_abundance)[-1], c(network$prot, network$met))){
+  plot(sim$time_abundance[,"time"], sim$time_abundance[, m], type = 'l', col = 'blue', main = m)
+  lines(simAD[, 'time'], simAD[,m], col = 'green')
+  lines(simSSA$data[, 1], simSSA$data[,m], col = 'red')
+  
+}
+
+# -------------------------- #
+#       100 simulations      #
+# -------------------------- #
+
+nsim = 100
+
+# Our algo ----
+res_simInd = vector("list", length = length(network$genes)+length(network$prot)); names(res_simInd) = c(network$genes, network$prot)
+system.time(for(s in 1:nsim){ 
+  sim = simuInd(network, ind, tmax)
+  for(g in network$genes){ res_simInd[[g]] = rbind(res_simInd[[g]], sim$time_abundance[,g]) }
+  for(p in network$prot){ res_simInd[[p]] = rbind(res_simInd[[p]], sim$time_abundance[,p]) }
+}
+)
+
+# Get the mean and the 2,5% and 97,5% quantiles
+mean_simInd = lapply(res_simInd, colMeans)
+quant2_5_simInd = lapply(res_simInd, function(x){apply(x, 2, quantile, probs = 0.025)})
+quant97_5_simInd = lapply(res_simInd, function(x){apply(x, 2, quantile, probs = 0.975)})
+
+
+# SSA algo ----
+parSSA = paramSSAindiv(network, ind)
+res_simSSA = vector("list", length = G+P); names(res_simSSA) = c(network$genes, network$prot)
+system.time(for(s in 1:nsim){ 
+  simSSA = ssa(parSSA$x0, parSSA$a, parSSA$nu, parSSA$parms, tmax, method = "ETL")
+  # We want to keep the state of the system for each discrete time 0,1,2 .. tmax
+  # We take the state of each time step to be the state of the system at each time point closest but inferior to the time step (ie for time step 1, if we have the 
+  # state of the system for the time point for 0, 0.3, 0.9 and 1.2 we choose the time point 0.9 to represent time step 1)
+  for(g in network$genes){ res_simSSA[[g]] = rbind(res_simSSA[[g]], sapply(0:tmax, function(i){simSSA$data[max(which(simSSA$data[,1]<=i)),g]})) }
+  for(p in network$prot){ res_simSSA[[p]] = rbind(res_simSSA[[p]], sapply(0:tmax, function(i){
+    temptime =  max(which(simSSA$data[,1]<=i)) 
+    return(simSSA$data[temptime,paste0(p,"_NA")] + simSSA$data[temptime,paste0(p,"_A")])})) }
+})
+
+# Get the mean and the 2,5% and 97,5% quantiles
+mean_simSSA = lapply(res_simSSA, colMeans)
+quant2_5_simSSA = lapply(res_simSSA, function(x){apply(x, 2, quantile, probs = 0.025)})
+quant97_5_simSSA = lapply(res_simSSA, function(x){apply(x, 2, quantile, probs = 0.975)})
+
+
+# Adaptivetau ----
+res_simAT = vector("list", length = G+P); names(res_simAT) = c(network$genes, network$prot)
+enableJIT(1)
+system.time(for(s in 1:nsim){
+  simAT <- ssa.adaptivetau(init.values, transitions, rateFunc, params, tf = tmax)
+  for(g in network$genes){ res_simAT[[g]] = rbind(res_simAT[[g]], sapply(0:tmax, function(i){simAT[max(which(simAT[,"time"]<=i)),g]})) }
+  for(p in network$prot){ res_simAT[[p]] = rbind(res_simAT[[p]], sapply(0:tmax, function(i){
+    temptime =  max(which(simAT[,"time"]<=i)) 
+    return(simAT[temptime,paste0(p,"_NA")] + simAT[temptime,paste0(p,"_A")])})) }
+  
+}
+)
+
+
+# Get the mean and the 2,5% and 97,5% quantiles
+mean_simAT = lapply(res_simAT, colMeans)
+quant2_5_simAT = lapply(res_simAT, function(x){apply(x, 2, quantile, probs = 0.025)})
+quant97_5_simAT = lapply(res_simAT, function(x){apply(x, 2, quantile, probs = 0.975)})
+
+
+
+
+# Visualization ----
+for(mol in c(network$genes, network$prot)){
+  # windows()
+  ymin = min(quant2_5_simInd[[mol]], quant2_5_simAT[[mol]])
+  ymax = max(quant97_5_simInd[[mol]], quant97_5_simAT[[mol]])
+  # ymin = min(quant2_5_simInd[[mol]], quant2_5_simSSA[[mol]], quant2_5_simAT[[mol]])
+  # ymax = max(quant2_5_simInd[[mol]], quant2_5_simSSA[[mol]], quant2_5_simAT[[mol]])
+  plot(0:tmax, mean_simInd[[mol]], type = 'l', col = "blue", main = mol, xlab = "time", ylab = "abundance", ylim = c(ymin,ymax))
+  # lines(0:tmax, mean_simSSA[[mol]], col = "red")
+  lines(0:tmax, mean_simAT[[mol]], col = "green")
+  lines(0:tmax, quant2_5_simInd[[mol]], col = "blue", lty = "dotted")
+  lines(0:tmax, quant97_5_simInd[[mol]], col = "blue", lty = "dotted")
+  # lines(0:tmax, quant2_5_simSSA[[mol]], col = "red", lty = "dotted")
+  # lines(0:tmax, quant97_5_simSSA[[mol]], col = "red", lty = "dotted")
+  lines(0:tmax, quant2_5_simAT[[mol]], col = "green", lty = "dotted")
+  lines(0:tmax, quant97_5_simAT[[mol]], col = "green", lty = "dotted")
+  polygon(c(0:tmax, tmax:0), c(quant2_5_simInd[[mol]],rev(quant97_5_simInd[[mol]])), col = alpha("blue", alpha = 0.1), border = NA)
+  # polygon(c(0:tmax, tmax:0), c(quant2_5_simSSA[[mol]],rev(quant97_5_simSSA[[mol]])), col = alpha("red", alpha = 0.1), border = NA)
+  polygon(c(0:tmax, tmax:0), c(quant2_5_simAT[[mol]],rev(quant97_5_simAT[[mol]])), col = alpha("green", alpha = 0.1), border = NA)
+}
 
 
 

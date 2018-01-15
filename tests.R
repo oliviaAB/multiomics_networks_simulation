@@ -118,7 +118,7 @@ lines(0:tmax, res_simSSA[[2]], col = "blue", lty = 2)
 
 
 library(ssar)
-source("data_simulation.R")
+source("simulation.R")
 
 
 negative_feedback = rand_network_null(1,1,0)
@@ -126,6 +126,7 @@ negative_feedback$TF_sgn[1] = -1
 negative_feedback$TF_th[1] = 500
 negative_feedback$TF_n[1] = 2
 network = negative_feedback
+
 cohort = rand_cohort_null(network,1)
 cohort$rna_0[1] = 100
 cohort$prot_A_0[1] = 100
@@ -245,22 +246,6 @@ pfun = function(t, X, params){
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 # Propensity functions ----
 
 # Regulation law for transcription and translation reactions (takes into account the fc parameter)
@@ -337,6 +322,219 @@ pfun = function(t, X, params){
 
 
 ssar::ssa(xinit = x0, pfun = pfun, v = v, params = params, tmax = 1000, nsim = 1)
+
+
+
+
+
+#########################################################################################################################################################################################################################################
+#########################################################################################################################################################################################################################################
+#########################################################################################################################################################################################################################################
+
+
+library(ssar)
+source("simulation.R")
+
+network = rand_network(5, 4, 2)
+ind = rand_indiv(network)
+
+G = length(network$genes)
+P = length(network$prot)
+M = length(network$met)
+
+protNAA = c(sapply(network$prot, function(p){paste(p,"NA",sep = "_")}), sapply(network$prot, function(p){paste(p,"A",sep = "_")}))
+
+# Initial conditions ----
+x0 = matrix(c(ind$rna_0, ind$prot_NA_0, ind$prot_A_0, ind$met_tot_0), nrow = 1)
+colnames(x0) = c(network$genes, protNAA, network$met)
+
+# Propensity matrix ----
+tempTCTL = diag(1, nrow = G+P, ncol = G+P); tempTCTL = rbind(tempTCTL, matrix(0, nrow = P, ncol = G+P))
+tempDRDP = diag(-1, nrow = G+2*P, ncol = G+2*P)
+tempPos = diag(1, nrow = P, ncol = P); tempNeg = diag(-1, nrow = P, ncol = P)
+tempACT = rbind(matrix(0, nrow = G, ncol = P), tempNeg, tempPos)
+tempDEACT = rbind(matrix(0, nrow = G, ncol = P), tempPos, tempNeg)
+v = cbind(tempTCTL, tempDRDP, tempACT, tempDEACT); v = rbind(v, matrix(0, nrow = M, ncol = ncol(v))); rownames(v) = colnames(x0)
+
+# Propensity scores ----
+
+pfun = function(t, X, params){
+  
+  # G transcription rates, P translation rates, G RNA degradation rates, 2*P protein degradation rates, P activation rates, P inactivation rates
+  res = vector(length = (2*params["G"] + 5*params["G"]))
+  
+  
+  
+  return(matrix(res, nrow = 1))
+}
+
+# Parameters ----
+
+params = c(length(network$genes), length(network$prot), length(network$met))
+
+names(params) = c("G", "P", "M")
+
+
+#########################################################################################################################################################################################################################################
+
+library(ssar)
+
+params     <- c(iter = 3, a = 3, c = 2, b = 0.01, v1 = 1, v2 = 2)
+X          <- matrix(c(100, 100), ncol = 2); colnames(X) = c("v1", "v2")
+
+#Propensity function
+pfun       <- function(t, X, params){ cbind(params['a']*t*X[,params['v1']] + 1, 
+                                            params['b']*X[,params['v1']]*X[,params['v2']], 
+                                            params['c']*X[,params['v2']]) }
+
+
+pfun = function(t, X, params){
+  res = vector(length = params['iter'])
+  for(i in 1:params['iter']){
+    res[i] = i*params["b"]*X[,params["v1"]]
+  }
+  return(matrix(res, nrow = 1))
+}
+
+#Propensity score
+v          <- matrix(c(+1,-1,0,0,+1,-1),nrow=2,byrow=TRUE)
+
+#Simulate
+simulation <- ssar::ssa(X, pfun, v, params)
+
+
+
+
+#########################################################################################################################################################################################################################################
+#########################################################################################################################################################################################################################################
+#########################################################################################################################################################################################################################################
+
+
+library(adaptivetau)
+
+init.values = c(prey = 1000, pred = 500)
+transitions = matrix(c(+1, 0, -2, +1, 0, -1), nrow = 2, ncol = 3, dimnames = list(c("prey", "pred"), c()))
+params = vector("list")
+params$p = c(r = 10, beta = 0.01, delta = 10)
+rateFunc = function(x, params, t){
+  with(params, {  res = vector(length = 3)
+  res[1] = p['r'] * x["prey"]
+  res[2] = p['beta'] * x["prey"] * x["pred"] * (x["prey"] >=2)
+  res[3] = p['delta'] * x["pred"]
+  return(res)})
+}
+
+sim = ssa.adaptivetau(init.values, transitions, rateFunc, params, tf = 100)
+
+
+# ----------------------------------
+
+
+source("simulation.R")
+
+network = rand_network(5, 4, 2)
+ind = rand_indiv(network)
+
+tmax = 1000
+
+
+system.time(sim <- simuInd(network, ind, tmax))
+
+system.time(simAD <- ssa.adaptivetau(init.values, transitions, rateFunc, params, tf = 1000))
+
+parSSA = paramSSAindiv(network, ind)
+system.time(simSSA <- GillespieSSA::ssa(parSSA$x0, parSSA$a, parSSA$nu, parSSA$parms, tmax, method = "OTL") )
+
+for(m in setdiff(colnames(sim$time_abundance)[-1], c(network$prot, network$met))){
+  plot(sim$time_abundance[,"time"], sim$time_abundance[, m], type = 'l', col = 'blue', main = m)
+  lines(simAD[, 'time'], simAD[,m], col = 'green')
+  lines(simSSA$data[, 1], simSSA$data[,m], col = 'red')
+  
+}
+
+
+
+# -------------------------- #
+#       100 simulations      #
+# -------------------------- #
+
+nsim = 100
+
+# Our algo ----
+res_simInd = vector("list", length = length(network$genes)+length(network$prot)); names(res_simInd) = c(network$genes, network$prot)
+system.time(for(s in 1:nsim){ 
+  sim = simuInd(network, ind, tmax)
+  for(g in network$genes){ res_simInd[[g]] = rbind(res_simInd[[g]], sim$time_abundance[,g]) }
+  for(p in network$prot){ res_simInd[[p]] = rbind(res_simInd[[p]], sim$time_abundance[,p]) }
+}
+)
+
+# Get the mean and the 2,5% and 97,5% quantiles
+mean_simInd = lapply(res_simInd, colMeans)
+quant2_5_simInd = lapply(res_simInd, function(x){apply(x, 2, quantile, probs = 0.025)})
+quant97_5_simInd = lapply(res_simInd, function(x){apply(x, 2, quantile, probs = 0.975)})
+
+
+# SSA algo ----
+parSSA = paramSSAindiv(network, ind)
+res_simSSA = vector("list", length = G+P); names(res_simSSA) = c(network$genes, network$prot)
+system.time(for(s in 1:nsim){ 
+  simSSA = ssa(parSSA$x0, parSSA$a, parSSA$nu, parSSA$parms, tmax, method = "ETL")
+  # We want to keep the state of the system for each discrete time 0,1,2 .. tmax
+  # We take the state of each time step to be the state of the system at each time point closest but inferior to the time step (ie for time step 1, if we have the 
+  # state of the system for the time point for 0, 0.3, 0.9 and 1.2 we choose the time point 0.9 to represent time step 1)
+  for(g in network$genes){ res_simSSA[[g]] = rbind(res_simSSA[[g]], sapply(0:tmax, function(i){simSSA$data[max(which(simSSA$data[,1]<=i)),g]})) }
+  for(p in network$prot){ res_simSSA[[p]] = rbind(res_simSSA[[p]], sapply(0:tmax, function(i){
+    temptime =  max(which(simSSA$data[,1]<=i)) 
+    return(simSSA$data[temptime,paste0(p,"_NA")] + simSSA$data[temptime,paste0(p,"_A")])})) }
+})
+
+# Get the mean and the 2,5% and 97,5% quantiles
+mean_simSSA = lapply(res_simSSA, colMeans)
+quant2_5_simSSA = lapply(res_simSSA, function(x){apply(x, 2, quantile, probs = 0.025)})
+quant97_5_simSSA = lapply(res_simSSA, function(x){apply(x, 2, quantile, probs = 0.975)})
+
+
+# Adaptivetau ----
+res_simAT = vector("list", length = G+P); names(res_simAT) = c(network$genes, network$prot)
+system.time(for(s in 1:nsim){
+    simAT <- ssa.adaptivetau(init.values, transitions, rateFunc, params, tf = 1000)
+    for(g in network$genes){ res_simAT[[g]] = rbind(res_simAT[[g]], sapply(0:tmax, function(i){simAT[max(which(simAT[,"time"]<=i)),g]})) }
+    for(p in network$prot){ res_simAT[[p]] = rbind(res_simAT[[p]], sapply(0:tmax, function(i){
+      temptime =  max(which(simAT[,"time"]<=i)) 
+      return(simAT[temptime,paste0(p,"_NA")] + simAT[temptime,paste0(p,"_A")])})) }
+  }
+)
+
+# Get the mean and the 2,5% and 97,5% quantiles
+mean_simAT = lapply(res_simAT, colMeans)
+quant2_5_simAT = lapply(res_simAT, function(x){apply(x, 2, quantile, probs = 0.025)})
+quant97_5_simAT = lapply(res_simAT, function(x){apply(x, 2, quantile, probs = 0.975)})
+
+
+
+
+# Visualization ----
+for(mol in c(network$genes, network$prot)){
+  # windows()
+  ymin = min(quant2_5_simInd[[mol]], quant2_5_simAT[[mol]])
+  ymax = max(quant97_5_simInd[[mol]], quant97_5_simAT[[mol]])
+  # ymin = min(quant2_5_simInd[[mol]], quant2_5_simSSA[[mol]], quant2_5_simAT[[mol]])
+  # ymax = max(quant2_5_simInd[[mol]], quant2_5_simSSA[[mol]], quant2_5_simAT[[mol]])
+  plot(0:tmax, mean_simInd[[mol]], type = 'l', col = "blue", main = mol, xlab = "time", ylab = "abundance", ylim = c(ymin,ymax))
+  # lines(0:tmax, mean_simSSA[[mol]], col = "red")
+  lines(0:tmax, mean_simAT[[mol]], col = "green")
+  lines(0:tmax, quant2_5_simInd[[mol]], col = "blue", lty = "dotted")
+  lines(0:tmax, quant97_5_simInd[[mol]], col = "blue", lty = "dotted")
+  # lines(0:tmax, quant2_5_simSSA[[mol]], col = "red", lty = "dotted")
+  # lines(0:tmax, quant97_5_simSSA[[mol]], col = "red", lty = "dotted")
+  lines(0:tmax, quant2_5_simAT[[mol]], col = "green", lty = "dotted")
+  lines(0:tmax, quant97_5_simAT[[mol]], col = "green", lty = "dotted")
+  polygon(c(0:tmax, tmax:0), c(quant2_5_simInd[[mol]],rev(quant97_5_simInd[[mol]])), col = alpha("blue", alpha = 0.1), border = NA)
+  # polygon(c(0:tmax, tmax:0), c(quant2_5_simSSA[[mol]],rev(quant97_5_simSSA[[mol]])), col = alpha("red", alpha = 0.1), border = NA)
+  polygon(c(0:tmax, tmax:0), c(quant2_5_simAT[[mol]],rev(quant97_5_simAT[[mol]])), col = alpha("green", alpha = 0.1), border = NA)
+}
+
 
 
 
