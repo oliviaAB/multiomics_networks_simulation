@@ -538,3 +538,63 @@ for(mol in c(network$genes, network$prot)){
 
 
 
+
+#########################################################################################################################################################################################################################################
+#                                                          TEST ENZYMATIC REACTION                                                             #
+#########################################################################################################################################################################################################################################
+
+library(adaptivetau)
+
+tf = 10
+
+##  Complete reaction ----
+
+x0 = c(E = 100, S = 50, ES = 0, P = 0)
+
+transitions = matrix(c(-1, -1, 1, 0, # binding reaction
+                       1, 1, -1, 0, # unbinding reaction
+                       1, 0, -1, 1), # transformation reaction
+                     nrow = 4, dimnames = list(c("E", "S", "ES", "P"), c("binding", "unbinding", "transformation")))
+
+# values from Lagagne, 2013
+params = list(k1 = 1, # 1 molecule^(-1).s^(-1)
+              kminus1 = 28300, #28300 s^(-1)
+              k2 = 3.2) # k2 = kcat (median 13.7 s^(-1))
+
+rateFunc = function(x, params, t){
+  c(binding = params$k1*x["E"]*x["S"], unbinding = params$kminus1*x["ES"], transformation = params$k2*x["ES"])
+}
+
+rateFunc(x0, params, 1)
+
+
+system.time(sim1 <- ssa.adaptivetau(init.values = x0, transitions = transitions, rateFunc = rateFunc, params = params, tf = tf))
+
+
+## Michaelis-Menten
+
+x02 = c(E = x0["E"], S = x0["S"], P = x0["P"]); names(x02) = c("E", "S", "P")
+
+transitions2 = matrix(c(0, -1, 1), nrow = 3, dimnames = list(c("E", "S", "P"), c("transformation")))
+
+params2 = list("kcat" = params$k2, "KM" = (params$kminus1 + params$k2)/params$k1)
+
+rateFunc2 = function(x, params, t){
+  c(params2$kcat * x["E"] * x["S"] / (params2$KM + x["S"]))
+}
+rateFunc2(x02, params2, 1)
+
+system.time( sim2 <- ssa.adaptivetau(init.values = x02, transitions = transitions2, rateFunc = rateFunc2, params = params2, tf = tf) )
+
+tplot = round(seq(1, nrow(sim1), by = nrow(sim1)/100))
+
+plot(sim1[tplot, "time"], sim1[tplot, "S"], col = "red", type = 'l', ylim = c(0, max(x0)))
+lines(sim2[,"time"], sim2[,"S"], col = "red", lty = 2)
+lines(sim1[tplot, "time"], sim1[tplot, "P"], col = "green")
+lines(sim2[,"time"], sim2[,"P"], col = "green", lty = 2)
+lines(sim1[tplot, "time"], sim1[tplot, "E"], col = "orange")
+lines(sim1[tplot, "time"], sim1[tplot, "ES"], col = "yellow")
+
+for(m in names(x0)){
+  plot(sim1[tplot, "time"], sim1[tplot, m], main = m)
+}

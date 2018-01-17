@@ -95,6 +95,7 @@ qtl_effect_RNAdecay = "qtl_effect_RNAdecay_default"
 
 # Initial abundance ----
 #     Given as sampling functions to allow the user to control the distribution from which are sampled the parameters
+
 #     Input parameter of each function is the number of different molecules m and the number of individuals i
 initial_abundanceCohort_default = function(m, i){
   mol_mean = round(sample(0:500, m, replace = T))                                                   # each molecule has an mean initial abundance across the individuals sampled from a discrete uniform distribution ranging from 0 to 500 
@@ -104,8 +105,12 @@ initial_abundanceCohort_default = function(m, i){
 }
 initial_abundanceCohort = "initial_abundanceCohort_default"
 
+#     Input parameter of each function is the number of different molecules x
 initial_abundance_default = function(x){ sample(0:500, size = x, replace = T)  }
 initial_abundance = "initial_abundance_default"
+
+initial_abundance_met_default = function(x){ sample(1000:5000, size = x, replace = T)  }
+initial_abundance_met = "initial_abundance_met_default"
 
 
 # ----

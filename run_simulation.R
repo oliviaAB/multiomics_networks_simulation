@@ -102,7 +102,7 @@ source("simulation.R")
 
 tmax = 1000
 
-nw1 = rand_network(5,3,0)
+nw1 = rand_network(5,3,5)
 cohort = rand_cohort(nw1,1)
 
 # -- Our method --
@@ -506,10 +506,7 @@ system.time(for(s in 1:nsim){
     temptime =  max(which(simAT[,"time"]<=i)) 
     return(simAT[temptime,paste0(p,"_NA")] + simAT[temptime,paste0(p,"_A")])})) }
   
-}
-)
-
-
+})
 # Get the mean and the 2,5% and 97,5% quantiles
 mean_simAT = lapply(res_simAT, colMeans)
 quant2_5_simAT = lapply(res_simAT, function(x){apply(x, 2, quantile, probs = 0.025)})
@@ -539,5 +536,133 @@ for(mol in c(network$genes, network$prot)){
   polygon(c(0:tmax, tmax:0), c(quant2_5_simAT[[mol]],rev(quant97_5_simAT[[mol]])), col = alpha("green", alpha = 0.1), border = NA)
 }
 
+
+##########################################################################################################################
+#                                            PARALLELIZE CODE                                                            #
+##########################################################################################################################
+
+library(parallel)
+library(adaptivetau)
+library(compiler)
+
+source("simulation.R")
+
+ncores = detectCores()
+
+network = rand_network(5, 4, 10, 4)
+ind = rand_indiv(network)
+
+G = length(network$genes)
+P = length(network$prot)
+M = length(network$met)
+
+protNAA = c(sapply(network$prot, function(p){paste(p,"NA",sep = "_")}), sapply(network$prot, function(p){paste(p,"A",sep = "_")}))
+
+tmax = 1000
+
+parAT = paramAT(network, ind)
+init.values = parAT$init.values
+transitions = parAT$transitions
+rateFunc = parAT$rateFunc
+params = parAT$params
+
+
+nsim = 100
+
+# Our algo ----
+system.time(sims <- mclapply(1:nsim, function(i){ 
+  simuInd(network, ind, tmax)$time_abundance
+}, mc.cores = ncores))
+
+res_simInd = vector("list", length = ncol(sims[[1]])-1); names(res_simInd) = colnames(sims[[1]])[-1]
+
+for(sim in sims){
+  for(m in names(res_simInd)){ res_simInd[[m]] = rbind(res_simInd[[m]], sim[,m]) }
+}
+
+mean_simInd = lapply(res_simInd, colMeans)
+quant2_5_simInd = lapply(res_simInd, function(x){apply(x, 2, quantile, probs = 0.025)})
+quant97_5_simInd = lapply(res_simInd, function(x){apply(x, 2, quantile, probs = 0.975)})
+
+
+# Adaptivetau ----
+
+enableJIT(1)
+system.time(sims <- mclapply(1:nsim, function(i){
+  simAT <- ssa.adaptivetau(init.values, transitions, rateFunc, params, tf = tmax)
+  res = simAT[sapply(0:tmax, function(t){ max(which(simAT[,"time"]<=t)) }),]
+  res[,1] = 0:tmax
+  res = cbind(res, sapply(network$prot, function(p){ rowSums(res[,grep(paste0('^',p,'_'), colnames(res))]) }))
+  return(res)
+}, mc.cores = ncores))
+
+res_simAT = vector("list", length = ncol(sims[[1]])-1); names(res_simAT) = colnames(sims[[1]])[-1]
+
+for(sim in sims){
+  for(m in names(res_simAT)){ res_simAT[[m]] = rbind(res_simAT[[m]], sim[,m]) }
+}
+
+mean_simAT = lapply(res_simAT, colMeans)
+quant2_5_simAT = lapply(res_simAT, function(x){apply(x, 2, quantile, probs = 0.025)})
+quant97_5_simAT = lapply(res_simAT, function(x){apply(x, 2, quantile, probs = 0.975)})
+
+for(mol in names(mean_simInd)){
+  ymin = min(quant2_5_simInd[[mol]], quant2_5_simAT[[mol]])
+  ymax = max(quant97_5_simInd[[mol]], quant97_5_simAT[[mol]])
+  plot(0:tmax, mean_simInd[[mol]], type = 'l', col = "blue", main = mol, xlab = "time", ylab = "abundance", ylim = c(ymin,ymax))
+  lines(0:tmax, mean_simAT[[mol]], col = "green")
+  lines(0:tmax, quant2_5_simInd[[mol]], col = "blue", lty = "dotted")
+  lines(0:tmax, quant97_5_simInd[[mol]], col = "blue", lty = "dotted")
+  lines(0:tmax, quant2_5_simAT[[mol]], col = "green", lty = "dotted")
+  lines(0:tmax, quant97_5_simAT[[mol]], col = "green", lty = "dotted")
+  polygon(c(0:tmax, tmax:0), c(quant2_5_simInd[[mol]],rev(quant97_5_simInd[[mol]])), col = alpha("blue", alpha = 0.1), border = NA)
+  polygon(c(0:tmax, tmax:0), c(quant2_5_simAT[[mol]],rev(quant97_5_simAT[[mol]])), col = alpha("green", alpha = 0.1), border = NA)
+}
+
+
+
+
+
+
+##########################################################################################################################
+#                                            SIMULATION METABOLISM                                                       #
+##########################################################################################################################
+
+# for(i in 1:length(network)){assign(names(network)[i], network[[i]])}; for(i in 1:length(indiv)){assign(names(indiv)[i], indiv[[i]])}
+
+rm(list = ls(all=T))
+
+source("simulation.R")
+
+tmax = 1000
+
+network = rand_network(5, 4, 5, 10)
+indiv = rand_indiv(network)
+
+
+## Our algo
+system.time(sim <- simuInd(network, indiv, tmax) )
+sim = sim$time_abundance
+
+## Adaptivetau
+parAT = paramAT(network, indiv)
+parAT$rateFunc(parAT$init.values, parAT$params, 1)
+system.time(simAT <- ssa.adaptivetau(parAT$init.values, parAT$transitions, parAT$rateFunc, parAT$params, tf = tmax) )
+simAT = cbind(simAT, sapply(network$prot, function(p){ rowSums(simAT[,grep(paste0(p,"_"), colnames(simAT))]) }))
+
+## Deterministic solution
+parDS = paramDeSolve(network, indiv)
+system.time(simDS <- ode(parDS$y, seq(0, tmax, by = 1), parDS$func, parDS$parms))
+simDS = cbind(simDS, sapply(network$prot, function(p){ rowSums(simDS[,grep(paste0(p,"_"), colnames(simDS))]) }))
+
+
+## Plot
+for(mol in colnames(sim)[-1]){
+  ymin = min(sim[,mol], simAT[, mol], simDS[, mol])
+  ymax = max(sim[,mol], simAT[, mol], simDS[, mol])
+  plot(sim[,"time"], sim[,mol], col = "blue", ylim = c(ymin, ymax), type = 'l', main = mol)
+  lines(simAT[,"time"], simAT[,mol], col = "red")
+  lines(simDS[,"time"], simDS[,mol], col = "black")
+}
 
 
