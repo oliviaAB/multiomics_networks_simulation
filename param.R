@@ -78,10 +78,10 @@ basal_proteindecay_rate_default = function(x){ runif(x, 0.01, 0.1) } # default: 
 basal_proteindecay_rate = "basal_proteindecay_rate_default"
 
 
-basal_RNAlifetime_default = function(x){ runif(x, 60, 3600) } # default: basal RNA lifetime chosen from a uniform distribution ranging from 1 minutes to 1 hour (in seconds)
+basal_RNAlifetime_default = function(x){ sample(60:3600, x, replace = T) } # default: basal RNA lifetime chosen from a discrete uniform distribution ranging from 1 minutes to 1 hour (in seconds)
 basal_RNAlifetime = "basal_RNAlifetime_default"
 
-basal_protlifetime_default = function(x){ runif(x, 5400, 14400) } # default: basal protein lifetime chosen from a uniform distribution ranging from 90 minutes to 4 hours (in seconds)
+basal_protlifetime_default = function(x){ sample(5400:14400, x, replace = T) } # default: basal protein lifetime chosen from a discrete uniform distribution ranging from 90 minutes to 4 hours (in seconds)
 basal_protlifetime = "basal_protlifetime_default"
 
 

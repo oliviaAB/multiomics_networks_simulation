@@ -111,18 +111,20 @@ rand_network = function(G, P, M , RM = NULL){
   # Protein activation ----
   # ACT : array for protein activation network, target proteins (P rows) x activators (P + NC + M (= G+M) columns)
   ACT_sgn = matrix( sample(c(0,1), size = (length(pNA.id) * (P+NC+M)), replace = T, prob = proba_reg_ACT), nrow = length(pNA.id), ncol = NC+P+M, dimnames = list(pNA.id, c(pNN.id, pA.id, noncod,m.id)))
-  # The th parameter for the Hill function of each regulator is sampled from a uniform distribution on discrete numbers between 50 and 100
-  ACT_th = matrix( 0, nrow = length(pNA.id), ncol = G+M, dimnames = list(pNA.id, c(pNN.id, pA.id, noncod,m.id))) ; ACT_th[which(ACT_sgn!=0)] = get(th_sampling)(length(which(ACT_sgn!=0)))
-  # The n parameter for the Hill function of each regulator is sampled from a uniform distribution on discrete numbers between 1 and 4
-  ACT_n = matrix( 0, nrow = length(pNA.id), ncol = G+M, dimnames = list(pNA.id, c(pNN.id, pA.id, noncod,m.id))) ; ACT_n[which(ACT_sgn!=0)] = get(n_sampling)(length(which(ACT_sgn!=0)))
+  # The kcat parameter for the Michaelis-Menten function of each regulator is sampled from a uniform distribution on discrete numbers between 50 and 100
+  temp = get(enzparam_sampling)(length(which(ACT_sgn!=0)))
+  ACT_kcat = matrix( 0, nrow = length(pNA.id), ncol = G+M, dimnames = list(pNA.id, c(pNN.id, pA.id, noncod,m.id))) ; ACT_kcat[which(ACT_sgn!=0)] = temp[1,]
+  # The n parameter for the Michaelis-Menten function of each regulator is sampled from a uniform distribution on discrete numbers between 1 and 4
+  ACT_KM = matrix( 0, nrow = length(pNA.id), ncol = G+M, dimnames = list(pNA.id, c(pNN.id, pA.id, noncod,m.id))) ; ACT_KM[which(ACT_sgn!=0)] = temp[2,]
   
   # Protein deactivation ----
   # DEACT : array for protein deactivation network, target proteins (P rows) x activators (P + NC + M (= G+M) columns)
   DEACT_sgn = matrix( sample(c(0,1), size = (length(pA.id) * (P+NC+M)), replace = T, prob = proba_reg_DEACT), nrow = length(pA.id), ncol = NC+P+M, dimnames = list(pA.id, c(pNN.id, pA.id, noncod,m.id)))
-  # The th parameter for the Hill function of each regulator is sampled from a uniform distribution on discrete numbers between 50 and 100
-  DEACT_th = matrix( 0, nrow = length(pA.id), ncol = G+M, dimnames = list(pA.id, c(pNN.id, pA.id, noncod,m.id))) ; DEACT_th[which(DEACT_sgn!=0)] = get(th_sampling)(length(which(DEACT_sgn!=0)))
-  # The n parameter for the Hill function of each regulator is sampled from a uniform distribution on discrete numbers between 1 and 4
-  DEACT_n = matrix( 0, nrow = length(pA.id), ncol = G+M, dimnames = list(pA.id, c(pNN.id, pA.id, noncod,m.id))) ; DEACT_n[which(DEACT_sgn!=0)] = get(n_sampling)(length(which(DEACT_sgn!=0)))
+  # The kcat parameter for the Michaelis-Menten function of each regulator is sampled from a uniform distribution on discrete numbers between 50 and 100
+  temp = get(enzparam_sampling)(length(which(DEACT_sgn!=0)))
+  DEACT_kcat = matrix( 0, nrow = length(pA.id), ncol = G+M, dimnames = list(pA.id, c(pNN.id, pA.id, noncod,m.id))) ; DEACT_kcat[which(DEACT_sgn!=0)] = temp[1,]
+  # The KM parameter for the Michaelis-Menten function of each regulator is sampled from a uniform distribution on discrete numbers between 1 and 4
+  DEACT_KM = matrix( 0, nrow = length(pA.id), ncol = G+M, dimnames = list(pA.id, c(pNN.id, pA.id, noncod,m.id))) ; DEACT_KM[which(DEACT_sgn!=0)] = temp[2,]
   
   # Metabolic reactions ----
   #MR: number of metabolic reactions. Can be specified by the user, otherwise MR = M-1
@@ -205,11 +207,11 @@ rand_network = function(G, P, M , RM = NULL){
              "DP_th" = DP_th,
              "DP_n" = DP_n,
              "ACT_sgn" = ACT_sgn,
-             "ACT_th" = ACT_th,
-             "ACT_n" = ACT_n,
+             "ACT_kcat" = ACT_kcat,
+             "ACT_KM" = ACT_KM,
              "DEACT_sgn" = DEACT_sgn,
-             "DEACT_th" = DEACT_th,
-             "DEACT_n" = DEACT_n,
+             "DEACT_kcat" = DEACT_kcat,
+             "DEACT_KM" = DEACT_KM,
              "k_TC" = k_TC,
              "k_TL" = k_TL,
              # "p0_DR" = p0_DR,
@@ -296,14 +298,14 @@ rand_network_null = function(G, P, M , RM = NULL){
   # Protein activation ----
   # ACT : array for protein activation network, target proteins (P rows) x activators (P + NC + M (= G+M) columns)
   ACT_sgn = matrix(nrow = 0, ncol = 0)
-  ACT_th = matrix(nrow = 0, ncol = 0)
-  ACT_n = matrix(nrow = 0, ncol = 0)
+  ACT_kcat = matrix(nrow = 0, ncol = 0)
+  ACT_KM = matrix(nrow = 0, ncol = 0)
   
   # Protein deactivation ----
   # DEACT : array for protein deactivation network, target proteins (P rows) x activators (P + NC + M (= G+M) columns)
   DEACT_sgn = matrix(nrow = 0, ncol = 0)
-  DEACT_th = matrix(nrow = 0, ncol = 0)
-  DEACT_n = matrix(nrow = 0, ncol = 0)  
+  DEACT_kcat = matrix(nrow = 0, ncol = 0)
+  DEACT_KM = matrix(nrow = 0, ncol = 0)  
   # Metabolic reactions ----
   #MR: number of metabolic reactions. Can be specified by the user, otherwise MR = M-1
   if(is.null(MR)) MR = M-1
@@ -384,17 +386,17 @@ rand_network_null = function(G, P, M , RM = NULL){
              "DP_th" = DP_th,
              "DP_n" = DP_n,
              "ACT_sgn" = ACT_sgn,
-             "ACT_th" = ACT_th,
-             "ACT_n" = ACT_n,
+             "ACT_kcat" = ACT_kcat,
+             "ACT_KM" = ACT_KM,
              "DEACT_sgn" = DEACT_sgn,
-             "DEACT_th" = DEACT_th,
-             "DEACT_n" = DEACT_n,
+             "DEACT_kcat" = DEACT_kcat,
+             "DEACT_KM" = DEACT_KM,
              "k_TC" = k_TC,
              "k_TL" = k_TL,
              # "p0_DR" = p0_DR,
              # "p0_DP" = p0_DP,
              "LT0_R" = LT0_R,
-             "LT0_P" = LR0_P,
+             "LT0_P" = LT0_P,
              "S" = S,
              "E2R" = E2R,
              "ENZ" = ENZ)
@@ -519,17 +521,17 @@ simuInd = function(network, indiv, tmax, dt = 1){
     l_TL = vector(length = G-NC); names(l_TL) = protcod
     p_DR = vector(length = G); names(p_DR) = g.id
     p_DP = vector(length = P); names(p_DP) = p.id
-    p_act = vector(length = length(pNA.id)); names(p_act) = pNA.id
-    p_deact = vector(length = length(pA.id)); names(p_deact) = pA.id
+    l_act = vector(length = length(pNA.id)); names(l_act) = pNA.id
+    l_deact = vector(length = length(pA.id)); names(l_deact) = pA.id
     
     # SSA parameters creation (for metabolic reactions simulation)
     
     if(MR>0){
       rateFunc = function(x, params, t){
-        sapply(params$metreactions, function(r){  x[params$E2R[r]] * params$ENZ["k_cat",r] * x[rownames(params$S)[params$S[,r] == -1]] / ( params$ENZ["K_M",r] + x[rownames(params$S)[params$S[,r] == -1]] ) })
+        sapply(params$mr.id, function(r){  x[params$E2R[r]] * params$ENZ["k_cat",r] * x[rownames(params$S)[params$S[,r] == -1]] / ( params$ENZ["K_M",r] + x[rownames(params$S)[params$S[,r] == -1]] ) })
       }
-      params = as.list(E2R, ENZ, S)
-      Sprim = rbind(S, matrix(0, nrow = P, ncol = MR, dimnames = list(p.id, mr.id)))
+      params = list("E2R" = E2R, "ENZ" = ENZ, "S" = S, "mr.id" = mr.id)
+      Sprim = rbind(S, matrix(0, nrow = length(c(pNN.id, pA.id)), ncol = MR, dimnames = list(c(pNN.id, pA.id), mr.id)))
     }
     
     # Initial values
@@ -542,14 +544,14 @@ simuInd = function(network, indiv, tmax, dt = 1){
     # For visualization
     
     time_abundance = matrix(c(t, rna_prev, prot_prev, met_prev), nrow = 1, dimnames = list(c(),c("time",g.id, p.id, m.id)))
-    time_rate = matrix(nrow = 0, ncol = length(c(t, l_TC, l_TL, p_DR, p_DP, p_act, p_deact)))
+    time_rate = matrix(nrow = 0, ncol = length(c(t, l_TC, l_TL, p_DR, p_DP, l_act, l_deact)))
     colnames(time_rate) = c( "time",
                              sapply(g.id, function(g){paste("l_TC",g, sep = "_")}),
                              sapply(protcod, function(g){paste("l_TL",g, sep = "_")}),
                              sapply(g.id, function(g){paste("p_DR",g, sep = "_")}),
                              sapply(p.id, function(p){paste("p_DP",p, sep = "_")}),
-                             sapply(pNA.id, function(p){paste("p_act",p, sep = "_")}),
-                             sapply(pA.id, function(p){paste("p_deact",p, sep = "_")})
+                             sapply(pNA.id, function(p){paste("l_act",p, sep = "_")}),
+                             sapply(pA.id, function(p){paste("l_deact",p, sep = "_")})
     )
     
     # Main loop -----
@@ -559,7 +561,6 @@ simuInd = function(network, indiv, tmax, dt = 1){
       t = t + dt
       
       ## 1: Update reaction rates ----
-      
       regprev = c(rna_prev[noncod], prot_prev[c(pNN.id, pA.id)], met_prev[m.id])
       
       regTC = colnames(TF_sgn)
@@ -569,78 +570,56 @@ simuInd = function(network, indiv, tmax, dt = 1){
       l_TL = k_TL * (1 + rowSums((TLF_sgn > 0)*TLF_fc*t(regprev[regTL]^t(TLF_n))/( (QTL_TL * TLF_th)^TLF_n +  t(regprev[regTL]^t(TLF_n))))) * apply( (1-(TLF_sgn<0)*(t(regprev[regTL]^t(TLF_n))/( (QTL_TL * TLF_th)^TLF_n +  t(regprev[regTL]^t(TLF_n))))), 1, prod)
       
       regDR = colnames(DR_sgn)
-      p_DR = (1/(LT0_R*QTL_DR)) * (1 + ((LT0_R*QTL_DR) - 1)*(1 - apply( 1 - (DR_sgn>0)*(t(regprev[regDR]^t(DR_n))/( DR_th^DR_n +  t(regprev[regDR]^t(DR_n)))) , 1, prod))) * apply((1 + (DR_sgn<0) * t(regprev[regDR]^t(DR_n))/( DR_th^DR_n +  t(regprev[regDR]^t(DR_n)))), 1, prod)
+      p_DR = (1/(LT0_R*QTL_DR)) * (1 + ((LT0_R*QTL_DR) - 1)*(1 - apply( 1 - (DR_sgn>0)*(t(regprev[regDR]^t(DR_n))/( DR_th^DR_n +  t(regprev[regDR]^t(DR_n)))) , 1, prod))) * apply((1 - (DR_sgn<0) * t(regprev[regDR]^t(DR_n))/( DR_th^DR_n +  t(regprev[regDR]^t(DR_n)))), 1, prod)
       
       
       regDP = colnames(DP_sgn)
-      p_DP = (1/LT0_P) * (1 + (LT0_P - 1)*(1 - apply( 1 - (DP_sgn>0)*(t(regprev[regDP]^t(DP_n))/( DP_th^DP_n +  t(regprev[regDP]^t(DP_n)))) , 1, prod))) * apply((1 + (DP_sgn<0) * t(regprev[regDP]^t(DP_n))/( DP_th^DP_n +  t(regprev[regDP]^t(DP_n)))), 1, prod)
+      p_DP = (1/LT0_P) * (1 + (LT0_P - 1)*(1 - apply( 1 - (DP_sgn>0)*(t(regprev[regDP]^t(DP_n))/( DP_th^DP_n +  t(regprev[regDP]^t(DP_n)))) , 1, prod))) * apply((1 - (DP_sgn<0) * t(regprev[regDP]^t(DP_n))/( DP_th^DP_n +  t(regprev[regDP]^t(DP_n)))), 1, prod)
       
       regACT = colnames(ACT_sgn)
-      p_act = apply((ACT_sgn * t(regprev[regACT]^t(ACT_n))/( ACT_th^ACT_n +  t(regprev[regACT]^t(ACT_n))) + 1 -ACT_sgn), 1, prod)
-      
+      l_act = rowSums(ACT_kcat*rbind(regprev[regACT], regprev[regACT])*prot_prev[pNA.id]/(prot_prev[pNA.id]+ACT_KM), na.rm = T)
+
       regDEACT = colnames(DEACT_sgn)
-      p_deact = (rowSums(DEACT_sgn) != 0) * apply((DEACT_sgn * t(regprev[regDEACT]^t(DEACT_n))/( DEACT_th^DEACT_n +  t(regprev[regDEACT]^t(DEACT_n))) + 1 -DEACT_sgn), 1, prod)
-      
-      
+      l_deact = rowSums(DEACT_kcat*rbind(regprev[regDEACT], regprev[regDEACT])*prot_prev[pA.id]/(prot_prev[pA.id]+DEACT_KM), na.rm = T)
       
       
       ## 2: Compute new molecule abundances ----
       
-      # Update RNA abundance
+      ## Update RNA abundance
       #    Gene transcription follows a Poisson law, and each RNA molecule at time t-1 has a probability p_DR of being degraded
-      rna[genes] = rna_prev[genes] + rpois(length(l_TC), l_TC*dt) - rbinom(G, rna_prev, p_DR*dt)
+      rna[g.id] = rna_prev[g.id] + rpois(length(l_TC), l_TC[g.id]*dt) - rbinom(G, rna_prev[g.id], p_DR[g.id]*dt)
       
-      # Update protein abundance 
+      # Protein decay: we remove from the pool of previous proteins those who have been degraded
+      prot_prev_prim = prot_prev[p.id] - rbinom(P, prot_prev[p.id], p_DP[p.id]); names(prot_prev_prim) = p.id
       
-      # Activation or degradation of inactive proteins
-      # Each inactive protein has 3 possible fates:
-      #      - Stay inactive with a probability of (1-proba_activation)*(1-proba_degradation)
-      #      - Become active with a probability of proba_activation*(1-proba_degradation)
-      #      - Be degraded with a probability of proba_degradation
-      probs = rbind( (1-p_act)*(1-p_DP), p_act*(1-p_DP) ,p_DP ) # order of the columns: Prot1 for ind1, Prot2 for ind1, ... , ProtP for ind1, Prot1 for ind2, etc
-      # For each protein type in each individuals these fates are sampled using a multinomial distribution
-      temp = sapply(1:P, function(i){rmultinom(1,prot_NA_prev[i],probs[,i])})
-      Xa = temp[2,] # proteins inactive at time t-1 that are activated
-      Xdna = temp[3,] # proteins inactive at time t-1 that are degraded
+      ## Update protein abundance
+      # Protein synthesis (not for active proteins)
+      prot[c(pNN.id, pNA.id)] = prot_prev_prim[c(pNN.id, pNA.id)] + rpois(length(l_TL), rna_prev[g2p[c(pNN.id, names(pNA.id))]]*l_TL[g2p[c(pNN.id, names(pNA.id))]]*dt)
+      prot[pA.id] = prot_prev_prim[pA.id]
       
-      # Each active protein has 3 possible fates:
-      #      - Stay active with a probability of (1-proba_deactivation)*(1-proba_degradation) (row 1)
-      #      - Become inactive with a probability of proba_deactivation*(1-proba_degradation) (row 2)
-      #      - Be degraded with a probability of proba_degradation (row 3)
-      probs = rbind( (1-p_deact)*(1-p_DP), p_deact*(1-p_DP) ,p_DP ) # columns = proteins
-      # For each protein type in each individuals these fates are sampled using a multinomial distribution
-      temp = sapply(1:P, function(i){rmultinom(1,prot_A_prev[i],probs[,i])})
-      Xna = temp[2,] # proteins active at time t-1 that are deactivated
-      Xda = temp[3,] # proteins active at time t-1 that are degraded
+      # Sample the number of activation/deactivation reactions occuring  
+      actreactions = apply(cbind(prot_prev_prim[pNA.id], rpois(length(pNA.id), l_act*dt)), 1, min)
+      deactreactions = apply(cbind(prot_prev_prim[pA.id], rpois(length(pA.id), l_deact*dt)), 1, min)
       
+      prot[pNA.id] = prot[pNA.id] - actreactions[pNA.id] + deactreactions[pA.id[names(pNA.id)]]
+      prot[pA.id] = prot[pA.id] + actreactions[pNA.id[names(pA.id)]] - deactreactions[pA.id]
       
-      # Update inactive protein abundance
-      prot_NA[prot] = rpois(length(l_TL), rna_prev[g2p[prot]] * l_TL) + prot_NA_prev[prot] - Xa - Xdna + Xna
-      
-      # Update active protein abundance
-      prot_A[prot] = prot_A_prev[prot] - Xna - Xda + Xa
-      
-      # Update total protein abundance
-      prot_tot[prot] = prot_NA[prot] + prot_A[prot]
       
       # Update metabolite abundance
       if(MR>0){ 
-        SSAmetabo = ssa.adaptivetau(init.values = c(met_tot_prev[met], prot_A_prev[prot]), transitions = Sprim, rateFunc = rateFunc, params = params, tf = 1)
-        met_tot[met] = SSAmetabo[max(which(SSAmetabo[, "time"] <= 1)), met] # we take the iteration that is closest to time = 1 (we don't take into account reactions occuring after one second)
-      }else{met_tot[met] = met_tot_prev[met]}
+        SSAmetabo = ssa.adaptivetau(init.values = c(met_prev[m.id], prot_prev[c(pNN.id, pA.id)]), transitions = Sprim, rateFunc = rateFunc, params = params, tf = 1)
+        met[m.id] = SSAmetabo[max(which(SSAmetabo[, "time"] <= 1)), m.id] # we take the iteration that is closest to time = 1 (we don't take into account reactions occuring after one second)
+      }else{met[m.id] = met_prev[m.id]}
       
       ## Update the '_prev' matrices ----
       rna_prev = rna
-      prot_tot_prev = prot_tot
-      prot_NA_prev = prot_NA
-      prot_A_prev = prot_A
-      met_tot_prev = met_tot
+      prot_prev = prot
+      met_prev = met
       
       
       ## Store values for visualization ----
-      time_abundance = rbind(time_abundance, c(t, rna, prot_NA, prot_A, prot_tot, met_tot))
-      time_rate = rbind(time_rate, c(t, l_TC, l_TL, p_DR, p_DP, p_act, p_deact))
-      
+      time_abundance = rbind(time_abundance, c(t, rna, prot, met))
+      time_rate = rbind(time_rate, c(t, l_TC, l_TL, p_DR, p_DP, l_act, l_deact))
     }
     
     res = list("time_abundance" = time_abundance,
@@ -651,3 +630,74 @@ simuInd = function(network, indiv, tmax, dt = 1){
 }
 
 
+##########################################################################################################################
+#                    TRANSFORMATION OF SAMPLED NETWORK AND INDIVIDUAL INTO ADAPTIVETAU PARAMETERS                        #
+##########################################################################################################################
+
+paramAT = function(network, indiv){
+  
+  G = length(network$g.id)
+  P = length(network$p.id)
+  M = length(network$m.id)
+  MR = length(network$mr.id)
+  
+  # Initial values ----
+  init.values = c(indiv$rna_0, indiv$prot_0[c(network$pNN.id, network$pNA.id, network$pA.id)], indiv$met_0)
+  names(init.values) = c(network$g.id, network$pNN.id, network$pNA.id, network$pA.id, network$m.id)
+  
+  # Propensity matrix ----
+  tempTCTL = diag(1, nrow = G+length(network$p.id), ncol = G+length(network$protspec.id))
+  tempDRDP = diag(-1, nrow = G+length(network$p.id), ncol = G+length(network$p.id))
+  tempPos = diag(1, nrow = length(network$pA.id), ncol = length(network$pA.id)); tempNeg = diag(-1, nrow = length(network$pA.id), ncol = length(network$pA.id))
+  tempACT = rbind(matrix(0, nrow = G+length(network$pNN.id), ncol = length(network$pA.id)), tempNeg, tempPos)
+  tempDEACT = rbind(matrix(0, nrow = G+length(network$pNN.id), ncol = length(network$pA.id)), tempPos, tempNeg)
+  if(MR == 0){ transitions = cbind(tempTCTL, tempDRDP, tempACT, tempDEACT); transitions = rbind(transitions, matrix(0, nrow = M, ncol = ncol(transitions))) }
+  if(MR>0){ transitions = cbind(tempTCTL, tempDRDP, tempACT, tempDEACT); transitions = adiag(transitions, network$S) }
+  rownames(transitions) = c(network$g.id, network$pNN.id, network$pNA.id, network$pA.id, network$m.id)
+  
+  # Parameters ----
+  params = as.list(c(network, indiv))
+
+  # Rate function ----
+  rateFunc = function(x, params, t){
+    with(params, {
+      
+      regprev = c(x[noncod], x[c(pNN.id, pA.id)], x[m.id])
+      
+      regTC = colnames(TF_sgn)
+      l_TC = k_TC * (1 + rowSums((TF_sgn > 0)*TF_fc*t(regprev[regTC]^t(TF_n))/( (QTL_TC * TF_th)^TF_n +  t(regprev[regTC]^t(TF_n))))) * apply( (1-(TF_sgn<0)*(t(regprev[regTC]^t(TF_n))/( (QTL_TC * TF_th)^TF_n +  t(regprev[regTC]^t(TF_n))))), 1, prod)
+      
+      regTL = colnames(TLF_sgn)
+      l_TL = k_TL * (1 + rowSums((TLF_sgn > 0)*TLF_fc*t(regprev[regTL]^t(TLF_n))/( (QTL_TL * TLF_th)^TLF_n +  t(regprev[regTL]^t(TLF_n))))) * apply( (1-(TLF_sgn<0)*(t(regprev[regTL]^t(TLF_n))/( (QTL_TL * TLF_th)^TLF_n +  t(regprev[regTL]^t(TLF_n))))), 1, prod)
+      
+      regDR = colnames(DR_sgn)
+      p_DR = (1/(LT0_R*QTL_DR)) * (1 + ((LT0_R*QTL_DR) - 1)*(1 - apply( 1 - (DR_sgn>0)*(t(regprev[regDR]^t(DR_n))/( DR_th^DR_n +  t(regprev[regDR]^t(DR_n)))) , 1, prod))) * apply((1 - (DR_sgn<0) * t(regprev[regDR]^t(DR_n))/( DR_th^DR_n +  t(regprev[regDR]^t(DR_n)))), 1, prod)
+      
+      regDP = colnames(DP_sgn)
+      p_DP = (1/LT0_P) * (1 + (LT0_P - 1)*(1 - apply( 1 - (DP_sgn>0)*(t(regprev[regDP]^t(DP_n))/( DP_th^DP_n +  t(regprev[regDP]^t(DP_n)))) , 1, prod))) * apply((1 - (DP_sgn<0) * t(regprev[regDP]^t(DP_n))/( DP_th^DP_n +  t(regprev[regDP]^t(DP_n)))), 1, prod)
+      
+      regACT = colnames(ACT_sgn)
+      l_act = rowSums(ACT_kcat*rbind(regprev[regACT], regprev[regACT])*x[pNA.id]/(x[pNA.id]+ACT_KM), na.rm = T)
+      
+      regDEACT = colnames(DEACT_sgn)
+      l_deact = rowSums(DEACT_kcat*rbind(regprev[regDEACT], regprev[regDEACT])*x[pA.id]/(x[pA.id]+DEACT_KM), na.rm = T)
+      
+      
+      metrates = sapply(mr.id, function(r){  x[E2R[r]] * ENZ["k_cat",r] * x[rownames(S)[S[,r] == -1]] / ( ENZ["K_M",r] + x[rownames(S)[S[,r] == -1]] ) })
+      
+      return(c(l_TC,
+               x[protcod] * l_TL[protcod],
+               x[g.id] * p_DR[g.id],
+               x[p.id] * p_DP[p.id],
+               l_act,
+               l_deact,
+               unlist(metrates)))
+    })
+  }
+  
+  return(list("init.values" = init.values,
+              "transitions" = transitions,
+              "params" = params,
+              rateFunc = rateFunc))
+  
+}
