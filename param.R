@@ -71,11 +71,11 @@ basal_transcription_rate = "basal_transcription_rate_default"
 basal_translation_rate_default = function(x){ runif(x, 0.5, 5) } # default: basal TL rate chosen from a uniform distribution ranging from 0.5 to 5
 basal_translation_rate = "basal_translation_rate_default"
 
-basal_RNAdecay_rate_default = function(x){ runif(x, 0.005, 0.01) } # default: basal RNA decay rate chosen from a uniform distribution ranging from 0.005 to 0.1
-basal_RNAdecay_rate = "basal_RNAdecay_rate_default"
-
-basal_proteindecay_rate_default = function(x){ runif(x, 0.01, 0.1) } # default: basal protein decay rate chosen from a uniform distribution ranging from 0.01 to 0.1
-basal_proteindecay_rate = "basal_proteindecay_rate_default"
+# basal_RNAdecay_rate_default = function(x){ runif(x, 0.005, 0.01) } # default: basal RNA decay rate chosen from a uniform distribution ranging from 0.005 to 0.1
+# basal_RNAdecay_rate = "basal_RNAdecay_rate_default"
+# 
+# basal_proteindecay_rate_default = function(x){ runif(x, 0.01, 0.1) } # default: basal protein decay rate chosen from a uniform distribution ranging from 0.01 to 0.1
+# basal_proteindecay_rate = "basal_proteindecay_rate_default"
 
 
 basal_RNAlifetime_default = function(x){ sample(60:3600, x, replace = T) } # default: basal RNA lifetime chosen from a discrete uniform distribution ranging from 1 minutes to 1 hour (in seconds)
