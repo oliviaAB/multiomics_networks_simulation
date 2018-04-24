@@ -58,6 +58,7 @@ system.time(sim3 <- simuInd(network, indiv, tmax, dt = 0.05))
 parDS = paramDeSolve(network, indiv)
 system.time(simDS <- ode(parDS$y, 0:tmax, parDS$func, parDS$parms))
 
+
 for(m in colnames(sim$time_abundance)[-1]){
   ymin = min(sim$time_abundance[,m], sim1$time_abundance[,m], sim2$time_abundance[,m], sim3$time_abundance[,m], simDS[,m])
   ymax = max(sim$time_abundance[,m], sim1$time_abundance[,m], sim2$time_abundance[,m], sim3$time_abundance[,m], simDS[,m])
@@ -101,4 +102,67 @@ for(m in colnames(sim$time_abundance)[-1]){
   lines(simP$time_abundance[,"time"], simP$time_abundance[,m], col = "orange")
   lines(simDS[, "time"], simDS[, m], col = 'black')
 }
+
+
+
+
+
+# ---------------------------------------------------------
+# ---------------------------------------------------------
+
+library(adaptivetau)
+
+x0 = c('P' = 1, 'R' = 0, 'PR' = 0, 'RNA' = 0)
+trans = matrix(c(-1, -1, 1, 0,
+                 1, 1, -1, 0, 
+                 0, 0, 0, 1,
+                 0, 1, 0, 0),
+               nrow = 4)
+params = c('pbind' = 0.05, 'punbind' = 0.5, 'TC' = 2, 'synthR' = 0.5)
+rateFunc = function(y, params, t){
+  return(c(params['pbind']*y['P']*y['R'],
+           params['punbind']*y['PR'],
+           params['TC']*y['PR'],
+           params['synthR']))
+}
+
+rateFunc(x0, params, 1)
+
+res1 = ssa.adaptivetau(x0, trans, rateFunc, params, 500)
+plot(res1[,'time'], res1[,'RNA'], type= 'l')
+lines(res1[,'time'], res1[,'R'], lty = 2)
+
+####
+
+x0_prim = c('R' = 0, 'RNA' = 0)
+trans_prim = matrix(c(0,1, 1, 0), nrow = 2)
+rateFunc_prim = function(y, params, t){
+  return(c(params['TC']*y['R']/(y['R'] + params['punbind']/params['pbind']), params['synthR']))
+}
+rateFunc_prim(x0_prim, params, 1)
+
+res2 = ssa.adaptivetau(x0_prim, trans_prim, rateFunc_prim, params, 500)
+lines(res2[,'time'], res2[,'RNA'], col = 'blue')
+lines(res2[,'time'], res2[,'R'], col = 'blue', lty = 2)
+
+
+x0_prim2 = c('R' = 0, 'RNA' = 0)
+trans_prim2 = matrix(c(0,1, 1, 0), nrow = 2)
+rateFunc_prim2 = function(y, params, t){
+  return(c(params['TC']*y['R'], params['synthR']))
+}
+rateFunc_prim2(x0_prim, params, 1)
+
+res3 = ssa.adaptivetau(x0_prim2, trans_prim2, rateFunc_prim2, params, 500)
+lines(res3[,'time'], res3[,'RNA'], col = 'green')
+lines(res3[,'time'], res3[,'R'], col = 'green', lty = 2)
+
+
+# Plot transcription rate
+
+plot(res1[, 'time'], params['TC']*res1[,'PR'], col = 'black')
+lines(res2[, 'time'], params['TC']*res2[,'R']/(res2[,'R'] + params['punbind']/params['pbind']), col = 'blue')
+lines(res3[, 'time'], params['TC']*res3[,'R'], col = 'green')
+
+
 
