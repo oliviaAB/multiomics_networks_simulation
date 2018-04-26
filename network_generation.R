@@ -7,6 +7,9 @@
 if(!suppressWarnings(require("XRJulia", quietly = T))){install.packages("XRJulia")}
 library(XRJulia)
 
+if(!suppressWarnings(require("igraph", quietly = T))){install.packages("igraph")}
+library(igraph)
+
 ## Temporary - load parameters from param_nw.R
 setwd("~/winData/multiomics_networks_simulation")
 source("param_nw.R")
@@ -20,43 +23,37 @@ if(!findJulia(test = T)) stop("Julia is not installed on the computer or not acc
 
 
 ##########################################################################################################################
-###                                              DEFINE JULIA FUNCTIONS                                                ###
+###                                        DEFINE JULIA AND R FUNCTIONS                                                ###
 ##########################################################################################################################
 
-j.sample_expon = juliaEval("
-    function sample_expon(n, lambda, max)
-      prob = (1/lambda)*exp.(-(1:max)/lambda)
-      cumprob = cumsum(prob / sum(prob))
-      rnb = rand(Int(n))
-      res = Int64[]
-      for nb in rnb
-        push!(res, findfirst(x -> x >= nb, cumprob))
-      end 
-      return res
-    end
-                  ")
+## Get Julia functions from source code
+juliaSource("julia_functions.jl")
 
+## Fit a power law to the frequency distribution of the values given in obs using nls
+fitPowerLaw = function(obs, cstart = 1, gstart= 1, cmin= 0, gmin= 0.1){
+  cat("\n Fitting the distribution freq(obs = x) ~ c*x^(-g)\n\n")
+  x = 1:max(obs)
+  y = sapply(x, function(i){sum(obs == i)})
+  y = y/sum(y)
+  
+  m = nls(y~c*x^(-g), algorithm = "port", start = list(c = cstart, g = gstart), lower = c(cmin, gmin))
+  print(m)
+  cat("\n Correlation between observed and predicted values:   ")
+  cat(cor(y, predict(m)))
+}
 
-j.sample_powerlaw = juliaEval("
-    function sample_powerlaw(n, gamma, max)
-      prob = (1:max).^(-gamma)
-      cumprob = cumsum(prob / sum(prob))
-      rnb = rand(Int(n))
-      res = Int64[]
-      for nb in rnb
-        push!(res, findfirst(x -> x >= nb, cumprob))
-      end 
-      return res
-    end
-                  ")
-
-
-
-
-j.sample_expon_fct = JuliaFunction(j.sample_expon)
-j.sample_powerlaw_fct = JuliaFunction(j.sample_powerlaw)
-
-myres = juliaGet(j.sample_powerlaw_fct(500,0.8,60))
+## Fit an exponential to the frequency distribution of the values given in obs using nls
+fitExponential = function(obs, cstart = 1, lstart= 1, cmin= 0, lmin= 0.1){
+  cat("\n Fitting the distribution freq(obs = x) ~ (c/l)*exp(-x/l)\n\n")
+  x = 1:max(obs)
+  y = sapply(x, function(i){sum(obs == i)})
+  y = y/sum(y)
+  
+  m = nls(y~(c/l)*exp(-x/l), algorithm = "port", start = list(c = cstart, l = lstart), lower = c(cmin,lmin))
+  print(m)
+  cat("\n Correlation between observed and predicted values: \t ")
+  cat(cor(y, predict(m)))
+}
 
 ##########################################################################################################################
 ###                                                      R CODE                                                        ###
@@ -119,6 +116,48 @@ out.max = length(TF.target)
 
 ## Construct the network nodes and edges data.frame
 TCRN.nod = nod[nod$id %in% c(TF.id, TF.target),]
-TCRN.edg = data.frame("from" = NULL, "to" = NULL, "TargetReaction" = NULL, "RegSign" = NULL, stringsAsFactors = F)
 
+edg = juliaGet(juliaCall("nwgeneration", TF.id, TF.target, "powerlaw", "powerlaw", 0.8))
+TCRN.edg = data.frame("from" = edg[,1], "to" = edg[,2], "TargetReaction" = rep("TC",nrow(edg)), "RegSign" = rep("",nrow(edg)), stringsAsFactors = F)
+
+## Choose the sign (activation or repression) of each regulation (=edge)
+TCRN.edg$RegSign = sample(c("1","-1"), nrow(TCRN.edg), prob = c(TC.pos.p, 1 - TC.pos.p), replace = T)
+
+## Create corresponding igraph object
+TCRN.nw = igraph::graph_from_data_frame(d = TCRN.edg, directed = T, vertices = TCRN.nod)
+
+
+##############################################################
+
+## Color differently TFs and other genes
+colrs = c("gold", "tomato")
+V(TCRN.nw)$color = colrs[V(TCRN.nw)$name %in% TF.id +1]
+
+# colrs = rainbow(Mod)
+# V(TCRN.nw)$color = colrs[as.factor(V(TCRN.nw)$Module)]
+
+## Color differently activating and inhibiting regulations
+colrs = c("1" = "red", "-1" = "blue")
+E(TCRN.nw)$color = colrs[E(TCRN.nw)$RegSign]
+
+
+## Visualisation
+plot(TCRN.nw, edge.arrow.size=.4, layout = layout_with_fr, vertex.size = 7, vertex.label = NA)
+
+fitPowerLaw(degree(TCRN.nw, mode = "out")[degree(TCRN.nw, mode = "out")!=0])
+hist(degree(TCRN.nw, mode = "out"))
+
+fitPowerLaw(degree(TCRN.nw, mode = "in"))
+hist(degree(TCRN.nw, mode = "in"))
+
+##############################################################
+
+reg = sapply(1:157, function(x){paste0("G",x)})
+target = sapply(1:4410, function(x){paste0("G",x)})
+
+edg = juliaGet(juliaCall("nwgeneration", reg, target, "exponential", "powerlaw", 0.8))
+edg = data.frame("from" = edg[,1], "to" = edg[,2], stringsAsFactors = F)
+
+## Create corresponding igraph object
+nw = igraph::graph_from_data_frame(d = edg, directed = T)
 
