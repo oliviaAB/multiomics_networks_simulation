@@ -10,13 +10,18 @@ library(XRJulia)
 if(!suppressWarnings(require("igraph", quietly = T))){install.packages("igraph")}
 library(igraph)
 
-## Temporary - load parameters from param_nw.R
-setwd("~/winData/multiomics_networks_simulation")
-source("param_nw.R")
-
 ## Test if Julia is installed on the computer
 if(!findJulia(test = T)) stop("Julia is not installed on the computer or not accessible by R. Check that Julia is correcly installed and/or in the PATH variable\n")
 
+
+##########################################################################################################################
+###                                               PARAMETERS                                                           ###
+##########################################################################################################################
+
+
+## Temporary - load parameters from param_nw.R
+setwd("~/winData/multiomics_networks_simulation")
+source("param_nw.R")
 
 ## Test the validity of the input parameters
 ## TO DO
@@ -27,32 +32,19 @@ if(!findJulia(test = T)) stop("Julia is not installed on the computer or not acc
 ##########################################################################################################################
 
 ## Get Julia functions from source code
-juliaSource("julia_functions.jl")
+juliaSource("winData/multiomics_networks_simulation/julia_functions.jl")
 
-## Fit a power law to the frequency distribution of the values given in obs using nls
-fitPowerLaw = function(obs, cstart = 1, gstart= 1, cmin= 0, gmin= 0.1){
-  cat("\n Fitting the distribution freq(obs = x) ~ c*x^(-g)\n\n")
-  x = 1:max(obs)
-  y = sapply(x, function(i){sum(obs == i)})
-  y = y/sum(y)
-  
-  m = nls(y~c*x^(-g), algorithm = "port", start = list(c = cstart, g = gstart), lower = c(cmin, gmin))
-  print(m)
-  cat("\n Correlation between observed and predicted values:   ")
-  cat(cor(y, predict(m)))
+howmanyautoreg = function(edg){
+  cat("There are  ")
+  cat(sum(edg[,1] == edg[,2]))
+  cat("  self-regulatory edges in the graph.\n")
 }
 
-## Fit an exponential to the frequency distribution of the values given in obs using nls
-fitExponential = function(obs, cstart = 1, lstart= 1, cmin= 0, lmin= 0.1){
-  cat("\n Fitting the distribution freq(obs = x) ~ (c/l)*exp(-x/l)\n\n")
-  x = 1:max(obs)
-  y = sapply(x, function(i){sum(obs == i)})
-  y = y/sum(y)
-  
-  m = nls(y~(c/l)*exp(-x/l), algorithm = "port", start = list(c = cstart, l = lstart), lower = c(cmin,lmin))
-  print(m)
-  cat("\n Correlation between observed and predicted values: \t ")
-  cat(cor(y, predict(m)))
+howmanyloops = function(edg){
+  cat("There are  ")
+  res = edg[(edg[,1]!=edg[,2]), ]
+  cat(sum(duplicated.matrix(rbind(res, res[,2:1])))/2)
+  cat("  2-nodes loops in the graph.\n")
 }
 
 ##########################################################################################################################
@@ -61,14 +53,13 @@ fitExponential = function(obs, cstart = 1, lstart= 1, cmin= 0, lmin= 0.1){
 
 #### 0: CREATION OF THE DIFFERENT VARIABLES ----
 
-## G.id : ID of genes 
-G.id = sapply(1:G, function(i){paste0("G_",i)})
+## G.name : genes name 
+G.nameid = sapply(1:G, function(i){paste0("G_",i)})
 
-##Mod.id : ID of modules
-Mod.id = sapply(1:Mod, function(i){paste0("Module_",i)})
-
-##nod is the vertices data frame (1st column "id", 2nd column "coding" (values "NC" or "PC"), 3rd column "TargetReaction" (values "TC", "TL", "RD", "PTM", "PD", "MR"), 4th column "Module" (which module the gene belongs to))
-nod = data.frame("id" = G.id, "coding" = rep("", G), "TargetReaction" = rep("", G),  "PTMform" = rep("", G), "Module" = rep("", G), stringsAsFactors = F)
+## nod is the vertices data frame (1st column "id" = an integer value (faster for computation), 2nd column "name", 3rd column "coding" (values "NC" or "PC"),  
+##  4rd column "TargetReaction" (values "TC", "TL", "RD", "PTM", "PD", "MR"), next columns: kinetic parameters (transcription rate, translation rate, RNA decay rate, protein decay rate))
+nod = data.frame("id" = 1:G, "nameid" = G.nameid, "coding" = rep("", G), "TargetReaction" = rep("", G),  "PTMform" = rep("", G),
+                 "TCrate" = rep(0,G), "TLrate" = rep(0,G), "RDrate" = rep(0,G), "PDrate" = rep(0,G), stringsAsFactors = F)
 rownames(nod) = nod$id
 
 ##edg is the edges data frame (1st column "from", 2nd column "to", 3rd column "TargetReaction" (values "TC", "TL", "RD", "PTM", "PD", "MR"), 4th column "RegSign" (value +1 or -1))
@@ -95,39 +86,91 @@ nod$TargetReaction = sub("^[[:alpha:]]+\\.", "", func)
 nod$PTMform[nod$coding == "PC"] = sample(c("1","0"), sum(nod$coding == "PC"), prob = c(PC.PTM.form.p, 1-PC.PTM.form.p), replace = T)
 nod$PTMform[nod$coding == "NC"] = "0"
 
-## Choose the module each gene belongs to
-nod$Module = sample(Mod.id, G, prob = rep(1.0/Mod, Mod), replace = T)
 
+# ----------------------------------------------------------
+#### STEP 2: sample the kinetic parameters of each gene ----
+# ----------------------------------------------------------
 
+## Transcription rate: applicable to all genes
+nod$TCrate = get(basal_transcription_rate)(G)
+
+## RNA decay rate: applicable to all genes
+## Sample the lifetime, the decay rate is defined as 1/lifetime
+nod$RDrate = 1/get(basal_RNAlifetime)(G)
+
+## Translation rate: applicable to protein-coding genes
+nod$TLrate[nod$coding == "PC"] = get(basal_translation_rate)(sum(nod$coding == "PC"))
+
+## Protein coding rate: applicable to protein-coding genes
+nod$PDrate[nod$coding == "PC"] = 1/get(basal_protlifetime)(sum(nod$coding == "PC"))
 
 
 # -----------------------------------------------------------------
-#### STEP 2 : Define Transcriptional regulatory network (TCRN) ----
+#### STEP 3 : Define Transcriptional regulatory network (TCRN) ----
 # -----------------------------------------------------------------
 
 ## Identify TFs in the system
 TF.id = nod$id[nod$coding == "PC" & nod$TargetReaction == "TC"]
-TF = length(TF.id)
 
 ## which genes are targeted by TFs? here any gene (including the TFs because a TF can autoregulate himself)
-TF.target = nod$id
-## out.max: maximum out-degree, equal to the number of possible targets
-out.max = length(TF.target)
+target.id = nod$id
 
 ## Construct the network nodes and edges data.frame
-TCRN.nod = nod[nod$id %in% c(TF.id, TF.target),]
+TCRN.nod = nod[nod$id %in% c(TF.id, target.id),]
 
-edg = juliaGet(juliaCall("nwgeneration", TF.id, TF.target, "powerlaw", "powerlaw", 0.8))
-TCRN.edg = data.frame("from" = edg[,1], "to" = edg[,2], "TargetReaction" = rep("TC",nrow(edg)), "RegSign" = rep("",nrow(edg)), stringsAsFactors = F)
+edg = juliaGet(juliaCall("nwgeneration", TF.id, target.id, "exponential", "powerlaw", TC.outdeg.power))
+TCRN.edg = data.frame("from" = edg[,1], "to" = edg[,2], "TargetReaction" = rep("TC",nrow(edg)), "RegSign" = rep("",nrow(edg)), 
+                      "bindingrate" = rep(0,nrow(edg)), "unbindingrate" = rep(0,nrow(edg)), "FoldChange" = rep(0,nrow(edg)), stringsAsFactors = F)
 
 ## Choose the sign (activation or repression) of each regulation (=edge)
 TCRN.edg$RegSign = sample(c("1","-1"), nrow(TCRN.edg), prob = c(TC.pos.p, 1 - TC.pos.p), replace = T)
+
+## Sample the kinetic parameters for each regulatory reaction
+TCRN.edg$bindingrate = get(TCbindingrate)(nrow(TCRN.edg))
+TCRN.edg$unbindingrate = get(TCunbindingrate)(nrow(TCRN.edg))
+TCRN.edg$FoldChange[TCRN.edg$RegSign == "1"] = get(TCunbindingrate)(sum(TCRN.edg$RegSign == "1"))
 
 ## Create corresponding igraph object
 TCRN.nw = igraph::graph_from_data_frame(d = TCRN.edg, directed = T, vertices = TCRN.nod)
 
 
-##############################################################
+
+# -----------------------------------------------------------------
+#### STEP 4 : Define Translational regulatory network (TLRN) ----
+# -----------------------------------------------------------------
+
+## Identify TLFs in the system
+TLF.id = nod$id[nod$coding == "PC" & nod$TargetReaction == "TL"]
+
+## which genes are targeted by TFs? here any gene (including the TFs because a TF can autoregulate himself)
+target.id = nod$id
+
+## Construct the network nodes and edges data.frame
+TCRN.nod = nod[nod$id %in% c(TF.id, target.id),]
+
+edg = juliaGet(juliaCall("nwgeneration", TF.id, target.id, "exponential", "powerlaw", 0.8))
+TCRN.edg = data.frame("from" = edg[,1], "to" = edg[,2], "TargetReaction" = rep("TC",nrow(edg)), "RegSign" = rep("",nrow(edg)), 
+                      "bindingrate" = rep(0,nrow(edg)), "unbindingrate" = rep(0,nrow(edg)), "FoldChange" = rep(0,nrow(edg)), stringsAsFactors = F)
+
+## Choose the sign (activation or repression) of each regulation (=edge)
+TCRN.edg$RegSign = sample(c("1","-1"), nrow(TCRN.edg), prob = c(TC.pos.p, 1 - TC.pos.p), replace = T)
+
+## Sample the kinetic parameters for each regulatory reaction
+TCRN.edg$bindingrate = get(TCbindingrate)(nrow(TCRN.edg))
+TCRN.edg$unbindingrate = get(TCunbindingrate)(nrow(TCRN.edg))
+TCRN.edg$FoldChange[TCRN.edg$RegSign == "1"] = get(TCunbindingrate)(sum(TCRN.edg$RegSign == "1"))
+
+## Create corresponding igraph object
+TCRN.nw = igraph::graph_from_data_frame(d = TCRN.edg, directed = T, vertices = TCRN.nod)
+
+
+
+howmanyautoreg(edg)
+howmanyloops(edg)
+
+############################################################################################################################
+############################################################################################################################
+
 
 ## Color differently TFs and other genes
 colrs = c("gold", "tomato")
@@ -161,3 +204,21 @@ edg = data.frame("from" = edg[,1], "to" = edg[,2], stringsAsFactors = F)
 ## Create corresponding igraph object
 nw = igraph::graph_from_data_frame(d = edg, directed = T)
 
+
+##############################################################
+
+iter = 100
+
+Edist = vector(length = iter)
+tarav = vector(length = iter)
+for(i in 1:iter){
+  out = juliaGet(juliaCall("samplepowerlaw", 124, 1.4, 4410))
+  Edist[i] = sum(out)
+  tarav[i] = mean(out)
+}
+
+
+
+hist(Edist)
+hist(tarav)
+hist(2*Edist/(157+4410))

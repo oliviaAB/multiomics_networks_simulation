@@ -4,7 +4,7 @@
 
 
 ## G : number of genes in the system
-G = 500
+G = 100
 
 ## M : number of metabolites in the system
 M = 5
@@ -67,11 +67,50 @@ RD.pos.p = 0.6
 PD.pos.p = 0.6
 PTM.pos.p = 0.5
 
+
+#### Distribution of the different kinetic parameters of genes ----
+
+##     Given as sampling functions to allow the user to control the distribution from which are sampled the parameters
+##     Input parameter of each function is the sample size required
+
+basal_transcription_rate_default = function(x){ runif(x, 0.01, 0.1) } ## default: basal TC rate chosen from a uniform distribution ranging from 0.01 to 0.1
+basal_transcription_rate = "basal_transcription_rate_default"
+
+basal_translation_rate_default = function(x){ runif(x, 0.5, 5) } ## default: basal TL rate chosen from a uniform distribution ranging from 0.5 to 5
+basal_translation_rate = "basal_translation_rate_default"
+
+# basal_RNAdecay_rate_default = function(x){ runif(x, 0.005, 0.01) } ## default: basal RNA decay rate chosen from a uniform distribution ranging from 0.005 to 0.1
+# basal_RNAdecay_rate = "basal_RNAdecay_rate_default"
+# 
+# basal_proteindecay_rate_default = function(x){ runif(x, 0.01, 0.1) } ## default: basal protein decay rate chosen from a uniform distribution ranging from 0.01 to 0.1
+# basal_proteindecay_rate = "basal_proteindecay_rate_default"
+
+
+basal_RNAlifetime_default = function(x){ sample(60:3600, x, replace = T) } ## default: basal RNA lifetime chosen from a discrete uniform distribution ranging from 1 minutes to 1 hour (in seconds)
+basal_RNAlifetime = "basal_RNAlifetime_default"
+
+basal_protlifetime_default = function(x){ sample(5400:14400, x, replace = T) } ## default: basal protein lifetime chosen from a discrete uniform distribution ranging from 90 minutes to 4 hours (in seconds)
+basal_protlifetime = "basal_protlifetime_default"
+
+
+
 #### TC reg. network properties ----
 
 ## TC.outdeg.power : power of the power-law distribution for the out-degree of the transcription graph
 TC.outdeg.power = 2.2
 ## TC.indeg.exp : power of the exponent distribution for the in-degree of the transcription graph
-TC.indeg.exp = 0.6
+# TC.indeg.exp = 0.6
+
+
+#### Distribution of the different kinetic parameters of transcription regulatory reactions ----
+TCbindingrate_default = function(x){ runif(x, 0.001, 0.01) } ## default: transcription factor binding rate chosen from a uniform distribution ranging from ??????
+TCbindingrate = "TCbindingrate_default"
+
+TCunbindingrate_default = function(x){ runif(x, 0.001, 0.01) } ## default: transcription factor unbinding rate chosen from a uniform distribution ranging from ??????
+TCunbindingrate = "TCunbindingrate_default"
+
+TCFoldChange_default = function(x){ sample(2:30, x, replace = T)  } ## default: transcription factor fold change from a discrete uniform distribution ranging from ??????
+TCFoldChange = "TCFoldChange_default"
+
 
 # ----
