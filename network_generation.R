@@ -32,7 +32,7 @@ source("param_nw.R")
 ##########################################################################################################################
 
 ## Get Julia functions from source code
-juliaSource("winData/multiomics_networks_simulation/julia_functions.jl")
+juliaSource("julia_functions.jl")
 
 howmanyautoreg = function(edg){
   cat("There are  ")

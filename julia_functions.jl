@@ -75,7 +75,7 @@ end
 function getOutDeg(nodes, edg)
   from = sort(edg[:,1])
   res = [length(searchsorted(from, n)) for n in nodes]
-  return resend
+  return res
 end
 
 # Function for checking if an edge between two nodes exist
@@ -96,9 +96,22 @@ end
 
 ## MAIN FUNCTION - GENERATE A GRAPH WITH SPECIFIED IN- AND OUT- DEGREE DISTRIBUTION
 
-function nwgeneration(reg, target, indeg, outdeg, outdegexp) 
 
+function nwgeneration(reg, target, indeg, outdeg, outdegexp) 
+## Input:
+##    - reg: list of regulator nodes
+##    - target: list of target nodes
+##    - indeg: string variable (either "exponential" or "powerlaw") specifying the type of preferential attachment used to construct the network
+##    - outdeg: string variable (either "exponential" or "powerlaw") specifying the type of distribution from which the out-degree of regulators are sampled
+##    - outdegexp: the exponent of the out-degree distribution
+
+
+## Output:
+##    - edg: A 2D array of edges, 1st column: from, 2nd column: to
   # Ensure that reg and target are arrays
+
+
+
   if typeof(reg) == Int64
     reg = [reg]
   end
@@ -128,7 +141,102 @@ function nwgeneration(reg, target, indeg, outdeg, outdegexp)
 
   ## Sample the number of target (out-degree) for each regulator
   out = foutdeg(length(reg), outdegexp, length(target))
-  out = sort!(out, rev = true)
+  sort!(out, rev = true)
+
+  ## Create the mx2 array of edges (m = number of edges), 1st column = from, 2nd column = to
+  edg = Array{Int64}(0,2)
+
+  ## For each regulator, sample from the target list its target according to its number of targets specified in the out variable
+  for r in eachindex(reg)
+
+    probTar = findeg(target, edg) # compute for each target the probability of being regulated by r
+
+    ## How to deal with self-regulatory edges: if regulator r is in 
+    ##   Here we try to limit the number of self-regulatory edges
+    if reg[r] in target
+      probTar[findfirst(y -> y == reg[r], target)] = probTar[findfirst(y -> y == reg[r], target)] / 2
+    end
+
+    ## How to deal with loops, i.e. if one or more target(s) already control the regulator r
+    ## Here we try to reduce the number of loops
+    exEdg = isEdge(target, reg[r], edg)
+    probTar[exEdg] = 0
+
+    ## Make sure that the out-degree of regulator r doesn't exceed the number of targets with non-null proba 
+    out[r] = min(out[r], sum(probTar .> 0))
+    if out[r] == 0
+      println("OUT-DEGREE SET TO 0")
+    end
+
+    ## Sample targets of regulator
+    sa = StatsBase.sample(target, Weights(probTar), out[r], replace = false)
+
+    ## Add the created edges in edg
+    edg = vcat(edg, [fill(reg[r], out[r]) sa])
+
+  end
+
+  return edg
+
+end
+
+
+
+
+
+
+function nwgenerationSR(regList, target, indeg, outdegList, outdegexpList) 
+## Input:
+##    - reg: list of lists of regulator nodes (e.g. the first list represents the TFs, and the second list the lncRNAs). Each regulator list can have a different out-degree distribution
+##            but the edges is added considering the "global" in-degree of the targets, i.e. without distinction between the different types of regulators
+##    - target: list of target nodes
+##    - indeg: string variable (either "exponential" or "powerlaw") specifying the type of preferential attachment used to construct the network
+##    - outdeg: list of string variables (either "exponential" or "powerlaw") specifying the type of distribution from which the out-degree of regulators are sampled for each regulator list
+##    - outdegexp: list of the exponents of the out-degree distribution for each of the regulator list
+
+
+## Output:
+##    - edg: A 2D array of edges, 1st column: from, 2nd column: to
+
+  ## Check that the length of the the regulator list matches the length of the out-degree distribution list and out degree distribution exponent list
+  if length(regList)!=length(outdegList) | length(regList)!=length(outdegexpList)
+    error("Make sure the length of regList, outdegList and outdegexpList is the same \n")
+  end
+
+  ## For each list of regulators, sample an out-degree from specified distribution for each regulator
+  out = []
+  reg = [] # gives the ID of regulators of the different lists
+  for l in 1:length(regList)
+
+    ## Get the function for sampling from the desired out- degree distribution
+    if outdegList[l] == "exponential"
+      foutdeg = getfield(current_module(), Symbol("sampleexpon"))
+    elseif outdegList[l] == "powerlaw"
+      foutdeg = getfield(current_module(), Symbol("samplepowerlaw"))  
+    else
+      error("Argument outdeg non-valid: must be exponential or powerlaw")
+    end
+
+    ## Sample the number of target (out-degree) for each regulator in the regulator list l
+      append!(out, foutdeg(length(regList[l]), outdegexpList[l], length(target)))
+      append!(reg, regList[l])
+  end
+
+  reg = reg[sortperm(out, rev = true)] ## sort regulator indices according to their out-degree
+  out = sort!(out, rev = true) ## sort the out-degree of the different regulators, without considering the list they are from
+
+  ## Get the function for computing the probability of each target node to receive a new incoming edge for the desired in-degree distribution
+  ##  If in-degree is power law, use the model of preferential attachment from Barabasi-Albert
+  ##  If in-degree is exponential, use the model of preferential attachment from Lachgar
+  if indeg == "exponential"
+    findeg = getfield(current_module(), Symbol("probaInvPA"))
+  elseif indeg == "powerlaw"
+    findeg = getfield(current_module(), Symbol("probaPA"))
+  else
+    error("Argument indeg non-valid: must be exponential or powerlaw")
+  end
+
+
 
   ## Create the mx2 array of edges (m = number of edges), 1st column = from, 2nd column = to
   edg = Array{Int64}(0,2)
@@ -169,6 +277,7 @@ end
 
 
 function whatisit(x)
+  println(x)
   println(typeof(x))
 end
 
@@ -181,4 +290,14 @@ target = collect(1:10)
 indeg = "exponential"
 outdeg = "powerlaw"
 outdegexp = 0.8
+
+
+
+
+regList = [collect(1:100), collect(101:200)]
+target = collect(1:10000)
+indeg = "exponential"
+outdegList = ["powerlaw", "powerlaw"]
+outdegexpList = [2.2, 1]
+
 =#
