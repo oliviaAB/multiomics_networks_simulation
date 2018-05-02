@@ -111,19 +111,29 @@ nod$PDrate[nod$coding == "PC"] = 1/get(basal_protlifetime)(sum(nod$coding == "PC
 
 ## Identify TFs in the system
 TF.id = nod$id[nod$coding == "PC" & nod$TargetReaction == "TC"]
+# Identify non-coding genes regulating transcription in the system
+ncRNA.id = nod$id[nod$coding == "NC" & nod$TargetReaction == "TC"]
 
 ## which genes are targeted by TFs? here any gene (including the TFs because a TF can autoregulate himself)
-target.id = nod$id
+targetTF.id = nod$id
+## which genes are targeted by noncoding RNAs? here any protein-coding gene 
+targetncRNA.id = nod$id[nod$coding == "PC"]
 
 ## Construct the network nodes and edges data.frame
-TCRN.nod = nod[nod$id %in% c(TF.id, target.id),]
+TCRN.nod = nod[nod$id %in% c(TF.id, ncRNA.id, targetTF.id, targetncRNA.id),]
 
-edg = juliaGet(juliaCall("nwgeneration", TF.id, target.id, "exponential", "powerlaw", TC.outdeg.power))
+# Call the julia function nwgeneration to construct the TF-mediated regulatory network
+edg = juliaGet(juliaCall("nwgeneration", TF.id, targetTF.id, TC.TF.indeg.distr, TC.TF.outdeg.distr, TC.TF.outdeg.exp, TC.TF.autoregproba, TC.twonodesloop))
+temp = nrow(edg) #keep in memory the number of edges coming from protein-coding genes (to be used when sampling the sign of the regulation for each edge)
+#edg = juliaGet(juliaCall("nwgenerationSR", list(TF.id, ncRNA.id), target.id, TC.indeg.distr, list(TC.TF.outdeg.distr, TC.ncRNA.outdeg.distr), list(TC.TF.outdeg.exp, TC.ncRNA.outdeg.exp)))
+edg = juliaGet(juliaCall("nwgeneration", ncRNA.id, targetncRNA.id , TC.ncRNA.indeg.distr, TC.ncRNA.outdeg.distr, TC.ncRNA.outdeg.exp, TC.ncRNA.autoregproba, TC.twonodesloop, edg))
+
 TCRN.edg = data.frame("from" = edg[,1], "to" = edg[,2], "TargetReaction" = rep("TC",nrow(edg)), "RegSign" = rep("",nrow(edg)), 
                       "bindingrate" = rep(0,nrow(edg)), "unbindingrate" = rep(0,nrow(edg)), "FoldChange" = rep(0,nrow(edg)), stringsAsFactors = F)
 
 ## Choose the sign (activation or repression) of each regulation (=edge)
-TCRN.edg$RegSign = sample(c("1","-1"), nrow(TCRN.edg), prob = c(TC.pos.p, 1 - TC.pos.p), replace = T)
+TCRN.edg$RegSign[1:temp] = sample(c("1","-1"), temp, prob = c(TC.PC.pos.p, 1 - TC.PC.pos.p), replace = T) ## the first rows are edges coming from protein-coding genes
+TCRN.edg$RegSign[(temp+1):nrow(TCRN.edg)] = sample(c("1","-1"), nrow(TCRN.edg)-temp, prob = c(TC.NC.pos.p, 1 - TC.PC.pos.p), replace = T) ## the rest of the edges are from noncoding genes
 
 ## Sample the kinetic parameters for each regulatory reaction
 TCRN.edg$bindingrate = get(TCbindingrate)(nrow(TCRN.edg))
@@ -141,27 +151,36 @@ TCRN.nw = igraph::graph_from_data_frame(d = TCRN.edg, directed = T, vertices = T
 
 ## Identify TLFs in the system
 TLF.id = nod$id[nod$coding == "PC" & nod$TargetReaction == "TL"]
+## Identify noncoding RNAs regulating translation (miRNAs for ex)
+ncRNA.id = nod$id[nod$coding == "NC" & nod$TargetReaction == "TL"]
 
 ## which genes are targeted by TFs? here any gene (including the TFs because a TF can autoregulate himself)
-target.id = nod$id
+targetTLF.id = nod$id[nod$coding == "PC"]
+targetncRNA.id = nod$id[nod$coding == "PC"]
 
 ## Construct the network nodes and edges data.frame
-TCRN.nod = nod[nod$id %in% c(TF.id, target.id),]
+TLRN.nod = nod[nod$id %in% c(TLF.id, ncRNA.id, targetTLF.id, targetncRNA.id),]
 
-edg = juliaGet(juliaCall("nwgeneration", TF.id, target.id, "exponential", "powerlaw", 0.8))
-TCRN.edg = data.frame("from" = edg[,1], "to" = edg[,2], "TargetReaction" = rep("TC",nrow(edg)), "RegSign" = rep("",nrow(edg)), 
+# Call the julia function nwgeneration to construct the TLF-mediated regulatory network
+edg = juliaGet(juliaCall("nwgeneration", TLF.id, targetTLF.id, TL.TLF.indeg.distr, TL.TLF.outdeg.distr, TL.TLF.outdeg.exp, TL.TLF.autoregproba, TL.twonodesloop))
+temp = nrow(edg) #keep in memory the number of edges coming from protein-coding genes (to be used when sampling the sign of the regulation for each edge)
+#edg = juliaGet(juliaCall("nwgenerationSR", list(TLF.id, ncRNA.id), target.id, TL.indeg.distr, list(TL.TLF.outdeg.distr, TL.ncRNA.outdeg.distr), list(TL.TLF.outdeg.exp, TL.ncRNA.outdeg.exp)))
+edg = juliaGet(juliaCall("nwgeneration", ncRNA.id, targetncRNA.id , TL.ncRNA.indeg.distr, TL.ncRNA.outdeg.distr, TL.ncRNA.outdeg.exp, TL.ncRNA.autoregproba, TL.twonodesloop, edg))
+
+TLRN.edg = data.frame("from" = edg[,1], "to" = edg[,2], "TargetReaction" = rep("TL",nrow(edg)), "RegSign" = rep("",nrow(edg)), 
                       "bindingrate" = rep(0,nrow(edg)), "unbindingrate" = rep(0,nrow(edg)), "FoldChange" = rep(0,nrow(edg)), stringsAsFactors = F)
 
 ## Choose the sign (activation or repression) of each regulation (=edge)
-TCRN.edg$RegSign = sample(c("1","-1"), nrow(TCRN.edg), prob = c(TC.pos.p, 1 - TC.pos.p), replace = T)
+TLRN.edg$RegSign[1:temp] = sample(c("1","-1"), temp, prob = c(TL.PC.pos.p, 1 - TL.PC.pos.p), replace = T) ## the first rows are edges coming from protein-coding genes
+TLRN.edg$RegSign[(temp+1):nrow(TLRN.edg)] = sample(c("1","-1"), nrow(TLRN.edg)-temp, prob = c(TL.NC.pos.p, 1 - TL.PC.pos.p), replace = T) ## the rest of the edges are from noncoding genes
 
 ## Sample the kinetic parameters for each regulatory reaction
-TCRN.edg$bindingrate = get(TCbindingrate)(nrow(TCRN.edg))
-TCRN.edg$unbindingrate = get(TCunbindingrate)(nrow(TCRN.edg))
-TCRN.edg$FoldChange[TCRN.edg$RegSign == "1"] = get(TCunbindingrate)(sum(TCRN.edg$RegSign == "1"))
+TLRN.edg$bindingrate = get(TLbindingrate)(nrow(TLRN.edg))
+TLRN.edg$unbindingrate = get(TLunbindingrate)(nrow(TLRN.edg))
+TLRN.edg$FoldChange[TLRN.edg$RegSign == "1"] = get(TLunbindingrate)(sum(TLRN.edg$RegSign == "1"))
 
 ## Create corresponding igraph object
-TCRN.nw = igraph::graph_from_data_frame(d = TCRN.edg, directed = T, vertices = TCRN.nod)
+TLRN.nw = igraph::graph_from_data_frame(d = TLRN.edg, directed = T, vertices = TLRN.nod)
 
 
 
@@ -173,8 +192,8 @@ howmanyloops(edg)
 
 
 ## Color differently TFs and other genes
-colrs = c("gold", "tomato")
-V(TCRN.nw)$color = colrs[V(TCRN.nw)$name %in% TF.id +1]
+colrs = c("gold","tomato", "blue")
+V(TCRN.nw)$color = colrs[1 + (V(TCRN.nw)$name %in% TF.id) + (V(TCRN.nw)$name %in% ncRNA.id)*2]
 
 # colrs = rainbow(Mod)
 # V(TCRN.nw)$color = colrs[as.factor(V(TCRN.nw)$Module)]
