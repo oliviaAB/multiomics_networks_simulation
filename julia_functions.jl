@@ -1,7 +1,9 @@
 ##########################################################################################################################
 ###                                JULIA FUNCTIONS FOR NETWORK GENERATION                                              ###
 ##########################################################################################################################
-
+#=if !haskey(Pkg.installed(), "StatsBase") 
+	Pkg.add("StatsBase")
+end=#
 using StatsBase
 
 # ------------------------------------------- #
@@ -97,7 +99,7 @@ end
 ## MAIN FUNCTION - GENERATE A GRAPH WITH SPECIFIED IN- AND OUT- DEGREE DISTRIBUTION
 
 
-function nwgeneration(reg, target, indeg, outdeg, outdegexp, autoregproba, twonodesloop, edg = Array{Int64}(0,2)) 
+function nwgeneration(reg, target, indeg, outdeg, outdegexp, autoregproba, twonodesloop, edg = Array{Int64}(0,2), targetweight = []) 
 ## Input:
 ##    - reg: list of regulator nodes
 ##    - target: list of target nodes
@@ -107,19 +109,28 @@ function nwgeneration(reg, target, indeg, outdeg, outdegexp, autoregproba, twono
 ##    - autoregproba: probability that a regulatory molecule regulates itself
 ##    - twonodesloop: do we allow 2-nodes loops? can be true or false
 ##    - optional argument edg: a 2-D array of edges already existing, to take into account; if not given creates an empty array
+##    - optional argument targetweight: an array of weight for the targets, defining the probability of each target to be selected (multiplied to the probability computed from in-degree of target)
 
 ## Output:
 ##    - edg: A 2D array of edges, 1st column: from, 2nd column: to
+
   # Ensure that reg and target are arrays
-
-
-
   if typeof(reg) == Int64
     reg = [reg]
   end
   if typeof(target) == Int64
     target = [target]
   end
+
+  ## If a target weight vector is provided check that its length matches the number of target
+  if length(targetweight)>0 & length(targetweight)!=length(target)
+  	error("targetweight must match the length of target")
+  end
+  ## If no target weight is provided targetweight will simply be one for all targets
+  if length(targetweight) == 0
+  	targetweight = fill(1.0, length(target))
+  end
+
 
   ## Get the function for sampling from the desired out- degree distribution
   if outdeg == "exponential"
@@ -152,6 +163,7 @@ function nwgeneration(reg, target, indeg, outdeg, outdegexp, autoregproba, twono
   for r in eachindex(reg)
 
     probTar = findeg(target, edg) # compute for each target the probability of being regulated by r
+    # probTar = targetweight .* findeg(target, edg) # compute for each target the probability of being regulated by r, weighted by the weight of each target
 
     ## we exclude the regulator r from the list of potential targets (autoregulation is treated later)
     if reg[r] in target
@@ -188,6 +200,110 @@ function nwgeneration(reg, target, indeg, outdeg, outdegexp, autoregproba, twono
 
 end
 
+
+
+
+function nwgenerationFromInDegree(reg, target, indeg, outdeg, outdegexp, autoregproba, twonodesloop, edg = Array{Int64}(0,2), targetweight = []) 
+## Input:
+##    - reg: list of regulator nodes
+##    - target: list of target nodes
+##    - indeg: string variable (either "exponential" or "powerlaw") specifying the type of preferential attachment used to construct the network
+##    - outdeg: string variable (either "exponential" or "powerlaw") specifying the type of distribution from which the out-degree of regulators are sampled
+##    - outdegexp: the exponent of the out-degree distribution
+##    - autoregproba: probability that a regulatory molecule regulates itself
+##    - twonodesloop: do we allow 2-nodes loops? can be true or false
+##    - optional argument edg: a 2-D array of edges already existing, to take into account; if not given creates an empty array
+##    - optional argument targetweight: an array of weight for the targets, defining the probability of each target to be selected (multiplied to the probability computed from in-degree of target)
+
+## Output:
+##    - edg: A 2D array of edges, 1st column: from, 2nd column: to
+
+
+  # Ensure that reg and target are arrays
+  if typeof(reg) == Int64
+    reg = [reg]
+  end
+  if typeof(target) == Int64
+    target = [target]
+  end
+
+  ## If a target weight vector is provided check that its length matches the number of target
+  if length(targetweight)>0 & length(targetweight)!=length(target)
+  	error("targetweight must match the length of target")
+  end
+  ## If no target weight is provided targetweight will simply be one for all targets
+  if length(targetweight) == 0
+  	targetweight = fill(1.0, length(target))
+  end
+
+
+  ## Get the function for sampling from the desired out- degree distribution
+  if outdeg == "exponential"
+    foutdeg = getfield(current_module(), Symbol("sampleexpon"))
+  elseif outdeg == "powerlaw"
+    foutdeg = getfield(current_module(), Symbol("samplepowerlaw"))  
+  else
+    error("Argument outdeg non-valid: must be exponential or powerlaw")
+  end
+
+  ## Get the function for computing the probability of each target node to receive a new incoming edge for the desired in-degree distribution
+  ##  If in-degree is power law, use the model of preferential attachment from Barabasi-Albert
+  ##  If in-degree is exponential, use the model of preferential attachment from Lachgar
+  if indeg == "exponential"
+    findeg = getfield(current_module(), Symbol("probaInvPA"))
+  elseif indeg == "powerlaw"
+    findeg = getfield(current_module(), Symbol("probaPA"))
+  else
+    error("Argument indeg non-valid: must be exponential or powerlaw")
+  end
+
+  ## Sample the number of target (out-degree) for each regulator
+  out = foutdeg(length(reg), outdegexp, length(target))
+  sort!(out, rev = true)
+
+  ## Create the mx2 array of edges, 1st column = from, 2nd column = to
+  # edg = Array{Int64}(0,2)
+
+  ## For each regulator, sample from the target list its target according to its number of targets specified in the out variable
+  for r in eachindex(reg)
+
+    probTar = findeg(target, edg) # compute for each target the probability of being regulated by r
+    # probTar = targetweight .* findeg(target, edg) # compute for each target the probability of being regulated by r, weighted by the weight of each target
+
+    ## we exclude the regulator r from the list of potential targets (autoregulation is treated later)
+    if reg[r] in target
+      probTar[findfirst(y -> y == reg[r], target)] = 0
+    end
+
+    ## How to deal with loops, i.e. if one or more target(s) already control the regulator r
+    ## if twonodesloop == false we don't authorise the regulator to target a node that controls it
+    if !twonodesloop
+      exEdg = isEdge(target, reg[r], edg)
+      probTar[exEdg] = 0
+    end
+
+    ## Make sure that the out-degree of regulator r doesn't exceed the number of targets with non-null proba 
+    out[r] = min(out[r], sum(probTar .> 0))
+    if out[r] == 0
+      println("OUT-DEGREE SET TO 0")
+    end
+
+    ## Sample targets of regulator
+    sa = StatsBase.sample(target, Weights(probTar), out[r], replace = false)
+
+    ## Add the created edges in edg
+    edg = vcat(edg, [fill(reg[r], out[r]) sa])
+
+    ## Add an autoregulatory edge with probability autoregproba
+    if rand() <= autoregproba
+      edg = vcat(edg, [reg[r] reg[r]])
+    end
+
+  end
+
+  return edg
+
+end
 
 
 

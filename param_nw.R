@@ -109,26 +109,28 @@ basal_protlifetime = "basal_protlifetime_default"
 
 
 ## Form of the distribution of the number of targets of transcription factors (can be either "powerlaw" or "exponential")
-TC.TF.outdeg.distr = "powerlaw"
+TC.PC.outdeg.distr = "powerlaw"
 ## Form of the the distribution of the number of targets of noncoding RNAs regulating transcription (can be either "powerlaw" or "exponential")
-TC.ncRNA.outdeg.distr = "powerlaw"
+TC.NC.outdeg.distr = "powerlaw"
 
 ## exponent of the distribution for the out-degree of the TFs in the transcription graph
-TC.TF.outdeg.exp = 2.2
+TC.PC.outdeg.exp = 2.2
 ## exponent of the distribution for the out-degree of the noncoding RNAs in the transcription graph
-TC.ncRNA.outdeg.exp = 1
+TC.NC.outdeg.exp = 1
 ## Type of preferential attachment for the targets of TFs in the transcription graph
-TC.TF.indeg.distr = "exponential"
+TC.PC.indeg.distr = "exponential"
 ## Type of preferential attachment for the targets of ncRNAs in the transcription graph
-TC.ncRNA.indeg.distr = "powerlaw"
+TC.NC.indeg.distr = "powerlaw"
 
 ## Probability of TFs to perform autoregulation
-TC.TF.autoregproba = 0.2
+TC.PC.autoregproba = 0.2
 ## Probability of ncRNAs to perform autoregulation
-TC.ncRNA.autoregproba = 0
+TC.NC.autoregproba = 0
 
-## Are 2-nodes loops authorised in the transcription network?
-TC.twonodesloop = FALSE
+## Are 2-nodes loops authorised in the transcription network with protein regulators?
+TC.PC.twonodesloop = FALSE
+## Are 2-nodes loops authorised in the transcription network with noncoding regulators?
+TC.NC.twonodesloop = FALSE
 
 
 #### Distribution of the different kinetic parameters of transcription regulatory reactions ----
@@ -149,26 +151,28 @@ TCFoldChange = "TCFoldChange_default"
 
 
 ## Form of the distribution of the number of targets of translation factors (can be either "powerlaw" or "exponential")
-TL.TLF.outdeg.distr = "powerlaw"
+TL.PC.outdeg.distr = "powerlaw"
 ## Form of the the distribution of the number of targets of noncoding RNAs regulating translation (can be either "powerlaw" or "exponential")
-TL.ncRNA.outdeg.distr = "powerlaw"
+TL.NC.outdeg.distr = "powerlaw"
 
 ## exponent of the distribution for the out-degree of the TLFs in the translation graph
-TL.TLF.outdeg.exp = 3
+TL.PC.outdeg.exp = 3
 ## exponent of the distribution for the out-degree of the noncoding RNAs in the translation graph
-TL.ncRNA.outdeg.exp = 1
+TL.NC.outdeg.exp = 1
 ## Type of preferential attachment for the targets of TLFs in the translation graph
-TL.TLF.indeg.distr = "exponential"
+TL.PC.indeg.distr = "exponential"
 ## Type of preferential attachment for the targets of ncRNAs in the translation graph
-TL.ncRNA.indeg.distr = "powerlaw"
+TL.NC.indeg.distr = "powerlaw"
 
 ## Probability of TLFs to perform autoregulation
-TL.TLF.autoregproba = 0.1
+TL.PC.autoregproba = 0.2
 ## Probability of ncRNAs to perform autoregulation
-TL.ncRNA.autoregproba = 0
+TL.NC.autoregproba = 0
 
-## Are 2-nodes loops authorised in the translation network?
-TL.twonodesloop = FALSE
+## Are 2-nodes loops authorised in the translation network with protein regulators?
+TL.PC.twonodesloop = FALSE
+## Are 2-nodes loops authorised in the translation network with noncoding regulators?
+TL.NC.twonodesloop = FALSE
 
 
 #### Distribution of the different kinetic parameters of translation regulatory reactions ----
@@ -180,6 +184,79 @@ TLunbindingrate = "TLunbindingrate_default"
 
 TLFoldChange_default = function(x){ sample(2:30, x, replace = T)  } ## default: translation factor fold change from a discrete uniform distribution ranging from ??????
 TLFoldChange = "TLFoldChange_default"
+
+
+#### RD reg. network properties ----
+
+
+## Form of the distribution of the number of targets of protein regulating RNA decay (can be either "powerlaw" or "exponential")
+RD.PC.outdeg.distr = "exponential"
+## Form of the the distribution of the number of targets of noncoding RNAs regulating RNA decay (can be either "powerlaw" or "exponential")
+RD.NC.outdeg.distr = "powerlaw"
+
+## exponent of the distribution for the out-degree of the regulatory proteins in the RNA decay graph
+RD.PC.outdeg.exp = 2
+## exponent of the distribution for the out-degree of the noncoding RNAs in the RNA decay graph
+RD.NC.outdeg.exp = 2
+## Type of preferential attachment for the targets of regulatory proteins in the RNA decay graph
+RD.PC.indeg.distr = "exponential"
+## Type of preferential attachment for the targets of ncRNAs in the RNA decay graph
+RD.NC.indeg.distr = "powerlaw"
+
+## Probability of regulatory proteins to perform autoregulation
+RD.PC.autoregproba = 0.2
+## Probability of ncRNAs to perform autoregulation
+RD.NC.autoregproba = 0
+
+## Are 2-nodes loops authorised in the RNA decay network with protein regulators?
+RD.PC.twonodesloop = FALSE
+## Are 2-nodes loops authorised in the RNA decay network with noncoding regulators?
+RD.NC.twonodesloop = FALSE
+
+
+#### Distribution of the different kinetic parameters of RNA decay regulatory reactions ----
+RDbindingrate_default = function(x){ runif(x, 0.001, 0.01) } ## default: regulator binding rate chosen from a uniform distribution ranging from ??????
+RDbindingrate = "RDbindingrate_default"
+
+RDunbindingrate_default = function(x){ runif(x, 0.001, 0.01) } ## default: regulator unbinding rate chosen from a uniform distribution ranging from ??????
+RDunbindingrate = "RDunbindingrate_default"
+
+
+
+#### PD reg. network properties ----
+
+
+## Form of the distribution of the number of targets of protein regulating protein decay (can be either "powerlaw" or "exponential")
+PD.PC.outdeg.distr = "exponential"
+## Form of the the distribution of the number of targets of noncoding RNAs regulating protein decay (can be either "powerlaw" or "exponential")
+PD.NC.outdeg.distr = "powerlaw"
+
+## exponent of the distribution for the out-degree of the regulatory proteins in the protein decay graph
+PD.PC.outdeg.exp = 2
+## exponent of the distribution for the out-degree of the noncoding RNAs in the protein decay graph
+PD.NC.outdeg.exp = 2
+## Type of preferential attachment for the targets of regulatory proteins in the protein decay graph
+PD.PC.indeg.distr = "exponential"
+## Type of preferential attachment for the targets of ncRNAs in the protein decay graph
+PD.NC.indeg.distr = "powerlaw"
+
+## Probability of regulatory proteins to perform autoregulation
+PD.PC.autoregproba = 0.2
+## Probability of ncRNAs to perform autoregulation
+PD.NC.autoregproba = 0
+
+## Are 2-nodes loops authorised in the protein decay network with protein regulators?
+PD.PC.twonodesloop = FALSE
+## Are 2-nodes loops authorised in the protein decay network with noncoding regulators?
+PD.NC.twonodesloop = FALSE
+
+
+#### Distribution of the different kinetic parameters of protein decay regulatory reactions ----
+PDbindingrate_default = function(x){ runif(x, 0.001, 0.01) } ## default: regulator binding rate chosen from a uniform distribution ranging from ??????
+PDbindingrate = "PDbindingrate_default"
+
+PDunbindingrate_default = function(x){ runif(x, 0.001, 0.01) } ## default: regulator unbinding rate chosen from a uniform distribution ranging from ??????
+PDunbindingrate = "PDunbindingrate_default"
 
 
 # ----
