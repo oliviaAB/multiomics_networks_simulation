@@ -6,9 +6,10 @@
 
 if(!suppressWarnings(require("XRJulia", quietly = T))){install.packages("XRJulia")}
 library(XRJulia)
-
 if(!suppressWarnings(require("igraph", quietly = T))){install.packages("igraph")}
 library(igraph)
+if(!suppressWarnings(require("ggplot2", quietly = T))){install.packages("ggplot2")}
+library(ggplot2)
 
 ## Test if Julia is installed on the computer
 if(!findJulia(test = T)) stop("Julia is not installed on the computer or not accessible by R. Check that Julia is correcly installed and/or in the PATH variable\n")
@@ -20,7 +21,7 @@ if(!findJulia(test = T)) stop("Julia is not installed on the computer or not acc
 
 
 ## Temporary - load parameters from param_nw.R
-#setwd("~/winData/multiomics_networks_simulation")
+setwd("~/winData/multiomics_networks_simulation")
 source("param_nw.R")
 
 ## Test the validity of the input parameters
@@ -42,8 +43,8 @@ howmanyautoreg = function(edg){
 
 howmanyloops = function(edg){
   cat("There are  ")
-  res = edg[(edg[,1]!=edg[,2]), ]
-  cat(sum(duplicated.matrix(rbind(res, res[,2:1])))/2)
+  res = edg[(edg[,1]!=edg[,2]), c("from", "to")] ## remove self-loops
+  cat(sum(duplicated.matrix(data.frame("1" = c(res$from, res$to), "2" = c(res$to, res$from))))/2)
   cat("  2-nodes loops in the graph.\n")
 }
 
@@ -68,7 +69,7 @@ getregnw = function(regsList, tarsList, reaction, nod){
   edgNC = juliaGet(juliaCall("nwgeneration", regsList[["NC"]], tarsList[["NC"]], get(paste(reaction, "NC", "indeg.distr", sep = ".")), get(paste(reaction, "NC", "outdeg.distr", sep = ".")), get(paste(reaction, "NC", "outdeg.exp", sep = ".")), get(paste(reaction, "NC", "autoregproba", sep = ".")), get(paste(reaction, "NC", "twonodesloop", sep = "."))))
   
   ## create the edge dataframe
-  nwedg = data.frame("from" = c(edgPC[,1], edgNC[,1]), "to" = c(edgPC[,2], edgNC[,2]), "TargetReaction" = rep(reaction,nrow(edgPC)+nrow(edgNC)), "RegSign" = rep("",nrow(edgPC)+nrow(edgNC)), stringsAsFactors = F)
+  nwedg = data.frame("from" = c(edgPC[,1], edgNC[,1]), "to" = c(edgPC[,2], edgNC[,2]), "TargetReaction" = rep(reaction,nrow(edgPC)+nrow(edgNC)), "RegSign" = rep("",nrow(edgPC)+nrow(edgNC)), "RegBy" = rep(c("PCreg", "NCreg"), c(nrow(edgPC), nrow(edgNC))), stringsAsFactors = F)
   
   ## Choose the sign (activation or repression) of each regulation (=edge)
   ## First for the regulatory interactions exerted by protein regulators
@@ -80,6 +81,16 @@ getregnw = function(regsList, tarsList, reaction, nod){
   
 }
 
+
+ggbarplot = function(x, title, labx, laby){
+  #data = data.frame("values" = factor(x, level = factor(0:max(x))))
+  #g = ggplot(data, aes(x = values))+geom_bar() +ggtitle(title) + xlab(labx) + ylab(laby) + scale_x_discrete(drop=FALSE)
+  
+  data = data.frame("values" = x)
+  g = ggplot(data, aes(x = values)) + geom_histogram() +ggtitle(title) + xlab(labx) + ylab(laby)
+  return(g)
+  
+}
 
 shownw = function(nw){
   
@@ -95,18 +106,33 @@ shownw = function(nw){
   plot(nw, edge.arrow.size=.4, layout = layout_with_fr, vertex.size = 7, vertex.label = NA)
   
   ## Histogram of the in- and out-degree
-  hist(degree(nw, which(V(nw)$nodetype != "target"), mode = "out"), main = "Out-degree of regulators", xlab = "Number of targets per regulator", ylab = "Regulators")
-  hist(degree(nw, which(V(nw)$nodetype == "PCreg"), mode = "out"), main = "Out-degree of protein regulators", xlab = "Number of targets per regulator", ylab = "Protein regulators")
-  hist(degree(nw, which(V(nw)$nodetype == "NCreg"), mode = "out"), main = "Out-degree of noncoding regulators", xlab = "Number of targets per regulator", ylab = "Noncoding regulators")
-  
-  hist(degree(nw, mode = "in"), main = "In-degree of genes", xlab = "Number of regulators", ylab = "Targets")
+  #hist(degree(nw, which(V(nw)$nodetype != "target"), mode = "out"), main = "Out-degree of regulators", xlab = "Number of targets per regulator", ylab = "Regulators")
+  print(ggbarplot(degree(nw, which(V(nw)$nodetype != "target"), mode = "out"), "Out-degree of regulators", "Number of targets per regulator", "Regulators"))
+
+  #hist(degree(nw, mode = "in"), main = "In-degree of genes", xlab = "Number of regulators", ylab = "Targets")
+  print(ggbarplot(degree(nw, mode = "in"), "In-degree of genes", "Number of regulators", "Targets"))
   
   ## Separate regulation by protein regulators and noncoding reglators
-  nwPC = induced_subgraph(nw, which(V(nw)$nodetype %in% c("target", "PCreg")))
-  hist(degree(nw, mode = "in"), main = "In-degree of genes (only protein regulators)", xlab = "Number of protein regulators perf target", ylab = "Targets")
+  nwPC = delete.edges(nw, E(nw)[E(nw)$RegBy == "NCreg"])
+  #hist(degree(nwPC, mode = "in"), main = "In-degree of genes (only protein regulators)", xlab = "Number of protein regulators per target", ylab = "Targets")
+  print(ggbarplot(degree(nwPC, mode = "in"), "In-degree of genes (only protein regulators)", "Number of protein regulators per target", "Targets"))
+  #hist(degree(nwPC, which(V(nwPC)$nodetype == "PCreg"), mode = "out"), main = "Out-degree of protein regulators", xlab = "Number of targets per protein regulator", ylab = "Protein regulators")
+  print(ggbarplot(degree(nwPC, which(V(nwPC)$nodetype == "PCreg"), mode = "out"), "Out-degree of protein regulators", "Number of targets per protein regulator", "Protein regulators"))
   
-  
+  nwNC = delete.edges(nw, E(nw)[E(nw)$RegBy == "PCreg"])
+  #hist(degree(nwNC, mode = "in"), main = "In-degree of genes (only noncoding regulators)", xlab = "Number of noncoding regulators per target", ylab = "Targets")
+  print(ggbarplot(degree(nwNC, mode = "in"), "In-degree of genes (only noncoding regulators)", "Number of noncoding regulators per target", "Targets"))
+  #hist(degree(nwNC, which(V(nwNC)$nodetype == "NCreg"), mode = "out"), main = "Out-degree of noncoding regulators", xlab = "Number of targets per noncoding regulator", ylab = "Noncoding regulator")
+  data = data.frame("values" = as.factor(degree(nwNC, which(V(nwNC)$nodetype == "NCreg"), mode = "out")))
+  g = ggplot(data, aes(x = values))+geom_bar()+ggtitle("Out-degree of noncoding regulators") + xlab("Number of targets per noncoding regulator") + ylab("Noncoding regulator")
+  print(ggbarplot(degree(nwNC, which(V(nwNC)$nodetype == "NCreg"), mode = "out"), "Out-degree of noncoding regulators", "Number of targets per noncoding regulator", "Noncoding regulator"))
+
+  data = data.frame("protreg" = degree(nwPC, mode = "in"), "ncreg" = degree(nwNC, mode = "in"))  
+  g = ggplot(data, aes(x = protreg, y = ncreg)) + geom_jitter() + ggtitle("Respective number of protein and noncoding regulators for each gene") + xlab("Number of protein regulators") + ylab("Number of noncoding regulators")
+  print(g)
 }
+
+
 
 ##########################################################################################################################
 ###                                                      R CODE                                                        ###
@@ -119,7 +145,7 @@ G.nameid = sapply(1:G, function(i){paste0("G_",i)})
 
 ## nod is the vertices data frame (1st column "id" = an integer value (faster for computation), 2nd column "name", 3rd column "coding" (values "NC" or "PC"),  
 ##  4rd column "TargetReaction" (values "TC", "TL", "RD", "PTM", "PD", "MR"), next columns: kinetic parameters (transcription rate, translation rate, RNA decay rate, protein decay rate))
-nod = data.frame("id" = 1:G, "nameid" = G.nameid, "coding" = rep("", G), "TargetReaction" = rep("", G),  "PTMform" = rep("", G),
+nod = data.frame("id" = 1:G, "nameid" = G.nameid, "coding" = rep("", G), "TargetReaction" = rep("", G),  "PTMform" = rep("", G), "ActiveForm" = rep("", G),
                  "TCrate" = rep(0,G), "TLrate" = rep(0,G), "RDrate" = rep(0,G), "PDrate" = rep(0,G), stringsAsFactors = F)
 rownames(nod) = nod$id
 
@@ -147,6 +173,10 @@ nod$TargetReaction = sub("^[[:alpha:]]+\\.", "", func)
 nod$PTMform[nod$coding == "PC"] = sample(c("1","0"), sum(nod$coding == "PC"), prob = c(PC.PTM.form.p, 1-PC.PTM.form.p), replace = T)
 nod$PTMform[nod$coding == "NC"] = "0"
 
+## In nod, state which form (i.e. RNA, protein, activated protein) is performing the regulation
+nod$ActiveForm[nod$coding == "NC"] = "R" ## noncoding genes act through their RNA
+nod$PTMform[nod$coding == "PC" | nod$PTMform = "0"] = "P" ## protein-coding genes act through their protein
+nod$PTMform[nod$coding == "PC" | nod$PTMform = "1"] = "Pa" ## For proteins undergoing a post-translational modification, only the PTM form is active
 
 # ----------------------------------------------------------
 #### STEP 2: sample the kinetic parameters of each gene ----
@@ -187,7 +217,7 @@ TCRN.edg = TCRN[["edg"]]
 
 ## Create corresponding igraph object
 TCRN.nw = igraph::graph_from_data_frame(d = TCRN.edg, directed = T, vertices = TCRN.nod)
-
+shownw(TCRN.nw)
 
 # ## Construct the network nodes and edges data.frame
 # TCRN.nod = nod[nod$id %in% c(TF.id, ncRNA.id, targetTF.id, targetncRNA.id),]
@@ -276,7 +306,7 @@ NCtarget.id = nod$id[nod$coding == "PC"]
 
 ## Construct the regulatory network
 PDRN = getregnw(regsList = list("PC" = PCreg.id, "NC" = NCreg.id), tarsList = list("PC" = PCtarget.id, "NC" = NCtarget.id), reaction = "PD", nod = nod)
-PDRN.nod = PDRN[["nod"]]
+PDRN.nod = PDRN[["nod"]]p
 PDRN.edg = PDRN[["edg"]]
 
 ## Create corresponding igraph object

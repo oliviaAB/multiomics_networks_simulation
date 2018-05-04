@@ -114,13 +114,13 @@ TC.PC.outdeg.distr = "powerlaw"
 TC.NC.outdeg.distr = "powerlaw"
 
 ## exponent of the distribution for the out-degree of the TFs in the transcription graph
-TC.PC.outdeg.exp = 2.2
+TC.PC.outdeg.exp = 3
 ## exponent of the distribution for the out-degree of the noncoding RNAs in the transcription graph
 TC.NC.outdeg.exp = 1
 ## Type of preferential attachment for the targets of TFs in the transcription graph
 TC.PC.indeg.distr = "exponential"
 ## Type of preferential attachment for the targets of ncRNAs in the transcription graph
-TC.NC.indeg.distr = "powerlaw"
+TC.NC.indeg.distr = "exponential"
 
 ## Probability of TFs to perform autoregulation
 TC.PC.autoregproba = 0.2
