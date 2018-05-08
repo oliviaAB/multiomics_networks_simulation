@@ -140,8 +140,8 @@ TCbindingrate = "TCbindingrate_default"
 TCunbindingrate_default = function(x){ runif(x, 0.001, 0.01) } ## default: transcription factor unbinding rate chosen from a uniform distribution ranging from ??????
 TCunbindingrate = "TCunbindingrate_default"
 
-TCFoldChange_default = function(x){ sample(2:30, x, replace = T)  } ## default: transcription factor fold change from a discrete uniform distribution ranging from ??????
-TCFoldChange = "TCFoldChange_default"
+TCfoldchange_default = function(x){ sample(2:30, x, replace = T)  } ## default: transcription factor fold change from a discrete uniform distribution ranging from ??????
+TCfoldchange = "TCfoldchange_default"
 
 
 
@@ -182,8 +182,8 @@ TLbindingrate = "TLbindingrate_default"
 TLunbindingrate_default = function(x){ runif(x, 0.001, 0.01) } ## default: translation factor unbinding rate chosen from a uniform distribution ranging from ??????
 TLunbindingrate = "TLunbindingrate_default"
 
-TLFoldChange_default = function(x){ sample(2:30, x, replace = T)  } ## default: translation factor fold change from a discrete uniform distribution ranging from ??????
-TLFoldChange = "TLFoldChange_default"
+TLfoldchange_default = function(x){ sample(2:30, x, replace = T)  } ## default: translation factor fold change from a discrete uniform distribution ranging from ??????
+TLfoldchange = "TLfoldchange_default"
 
 
 #### RD reg. network properties ----
@@ -220,7 +220,6 @@ RDbindingrate = "RDbindingrate_default"
 
 RDunbindingrate_default = function(x){ runif(x, 0.001, 0.01) } ## default: regulator unbinding rate chosen from a uniform distribution ranging from ??????
 RDunbindingrate = "RDunbindingrate_default"
-
 
 
 #### PD reg. network properties ----

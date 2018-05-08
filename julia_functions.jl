@@ -310,6 +310,84 @@ function nwgenerationSR(regList, target, indeg, outdegList, outdegexpList, autor
 end
 
 
+#=
+
+## TO BE REMOVED
+function findregsOLD(nodid, edg)
+  res = Dict()
+  edg = edg[sortperm(edg[:,2]), :] ## sort the edg Array according the "to" (destination node) id
+  for n in nodid
+    res[n] = edg[searchsorted(edg[:,2], n),1]
+  end
+
+  return res
+
+end
+
+
+function findregs(nodid, edg)
+  temp = sortperm(edg["to"])
+  temp2 = searchsorted(sort(edg["to"]), nodid)
+  edgind = temp[temp2]
+  res = Dict(Dict(k => edg[k][edgind] for k in Base.keys(edg)))
+  return res
+
+end
+
+
+function createTC(id, TCRNedg, nod, funcform)
+  
+  ## Create basal transcription
+  spec = [string("Pr.", id), string("R.", id)] ## Different species for the gene id
+  reac = [string("Pr.", id, " --> ", "R.", id)]
+  rat = [nod["TCrate"][id]]
+
+  TCregs = findregs(id, TCRNedg) ## find the regulators of the gene
+
+  if length(TCregs["from"]) == 0 ## if no regulator only return the basal transcription reaction
+    return Dict("species" = spec, "reactions" = reac, "rates" = rat)
+
+  elseif length(TCregs["from"]) == 1 ## if only one regulator, create the different reactions for regulation
+    push!(spec, string("Pr.", id, "_", funcform[TCregs["from"][1]])) # new species: promoter bound to regulator molecule
+    push!(reac, string("Pr.", id, " + ", funcform[TCregs["from"][1]], " --> PR.",id, "_", funcform[TCregs["from"][1]]))
+  else 
+
+  end
+
+
+
+end
+
+function reactionList(nod, TCRNedg, TLRNedg , RDRNedg, PDRNedg, PTMedg)
+## Input:
+##    - nod: a dictionary (named list in R) corresponding to the nod data frame in R: for each gene gives its id, function, active form....
+##    - XXRNedg: for each expression step gives the list of regulatory interactions
+
+
+## Output:
+##    - species: an Array of all species in the system
+##    - stochmat: the stochiometry matrix? or an array with string reactions? to be decided 
+##    - rate: the rate of each reaction
+  
+  species = []
+
+  ## Dictionary of functional forms for each gene
+  funcform = Dict(zip(nod["id"], nod["ActiveForm"]))
+
+
+  ## Create the set of species and reactions involved in the expression of each gene
+
+  for g in nodid
+
+  end
+
+
+
+end
+
+=#
+
+
 function whatisit(x)
   println(x)
   println(typeof(x))
@@ -341,4 +419,8 @@ outdegList = ["powerlaw", "powerlaw"]
 outdegexpList = [2.2, 1]
 autoregprobaList = [0.2, 0.9]
 twonodesloop = false
+
+
+edg = [sample(collect(1:5),10) sample(collect(1:20),10)]
+edg = Dict("from" => sample(collect(1:5), 10), "to" => sample(collect(1:20), 10), "Reaction" => fill("TC", 10), "Rate" => randn(10))
 =#
