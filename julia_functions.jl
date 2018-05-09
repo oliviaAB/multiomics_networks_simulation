@@ -310,6 +310,74 @@ function nwgenerationSR(regList, target, indeg, outdegList, outdegexpList, autor
 end
 
 
+
+
+
+
+function combreg(target, edgfrom, edgto, edgsign, p, complexsize, reac)
+
+  edg = [edgfrom edgto edgsign]
+  edg = edg[sortperm(edg[:,2]),:] ## sort edges according to the target ids
+  complexes = Dict()
+  complexesid = 1 ## to give a unique ID to each created complex
+  rowstoremove = []
+  edgtoadd = Array{Any}(0,3)
+  complexsize = Int(complexsize)
+
+  for tar in target
+    temp = searchsorted(edg[:, 2], tar)
+    regs = edg[temp, :] ## look for the edges coming to tar
+    
+    # regspos = regs[regs[:,3] .== "1", :] ## look for the edges coming to tar representing positive regulation
+    edgpos = temp[regs[:,3] .== "1"] ## stock the row number of the positive edges
+    # regsneg = regs[regs[:,3] .== "-1", :] ## look for the edges coming to tar representing negative regulation
+    edgneg = temp[regs[:,3] .== "-1"] ## stock the row number of the negative edges
+
+    ntrypos = div(length(edgpos), complexsize) ## max number of complexes you can simultaneously create from the positive regulators of tar
+    ntryneg = div(length(edgneg), complexsize) ## max number of complexes you can simultaneously create from the negative regulators of tar
+
+    for i in 1:ntrypos
+      if rand()<= p ## with probability p form a complex
+        compo = sample(edgpos, complexsize, replace=false) ## sample the components of the complex (in fact sample rows in the edg matrix)
+        edgpos = setdiff(edgpos, compo) ## remove the selected rows (regulators) for possible components (future sampling)
+        append!(rowstoremove, compo) ## the edges correpsponding to the selected components of the complex will be removed
+        compid = string("C", reac, complexesid) ## create the new complex ID
+        complexesid +=1
+        complexes[compid] = edg[compo, 1] ## in the dictionnary of complexes add the composition (ie array of components) of the new complex
+        edgtoadd = vcat(edgtoadd, [compid tar "1"]) ## create a new regulatory edge from the complex to the target, with positive regulation
+      end
+    end
+
+    ## repeat for the negative regulation
+    for i in 1:ntryneg
+      if rand()<= p ## with probability p form a complex
+        compo = sample(edgneg, complexsize, replace=false) ## sample the components of the complex (in fact sample rows in the edg matrix)
+        edgneg = setdiff(edgneg, compo) ## remove the selected rows (regulators) for possible components (future sampling)
+        append!(rowstoremove, compo) ## the edges correpsponding to the selected components of the complex will be removed
+        compid = string("C", reac, complexesid) ## create the new complex ID
+        complexesid +=1
+        complexes[compid] = edg[compo, 1] ## in the dictionnary of complexes add the composition (ie array of components) of the new complex
+        edgtoadd = vcat(edgtoadd, [compid tar "-1"]) ## create a new regulatory edge from the complex to the target, with positive regulation
+      end
+    end
+
+  end
+
+
+  ## remove the individual edges from regulators forming a complex
+  edg = edg[setdiff(collect(1:size(edg)[1]), rowstoremove), :]
+  ## add the new edges corresponding to regulation by complexes
+  edg = vcat(edg, edgtoadd)
+
+  edg[:,1] = [string(i) for i in edg[:,1]] ## Transform the integer ID into String ID 
+
+  return Dict("newedg" => edg, "Complexes" => complexes)
+
+end
+
+
+
+
 #=
 
 ## TO BE REMOVED

@@ -158,7 +158,8 @@ creationsystem = function(){
   ##edg is the edges data frame (1st column "from", 2nd column "to", 3rd column "TargetReaction" (values "TC", "TL", "RD", "PTM", "PD", "MR"), 4th column "RegSign" (value +1 or -1))
   edg = data.frame("from" = NULL, "to" = NULL, "TargetReaction" = NULL, "RegSign" = NULL, stringsAsFactors = F)
   
-  
+  ## complexes is a list where each element gives the components of a regulatory complex, whose id is the name of the element of the list
+  complexes = list()
   
   
   
@@ -223,13 +224,44 @@ creationsystem = function(){
   TCRN.nod = TCRN[["nod"]]
   TCRN.edg = TCRN[["edg"]]
   
+  ## Create corresponding igraph object (to save the regulatory interactions as is, before the creation of the combinatorial regulation)
+  TCRN.nw = igraph::graph_from_data_frame(d = TCRN.edg, directed = T, vertices = TCRN.nod)
+  
+  ## Creation of combinatiorial regulation
+  ## if regcomplexes != 'none', if several regulators control a common target they can form regulatory complexes
+  ## The composition of each complex is stored in complexes
+  ## Complexes can be composed only of proteins if recomplexes = "prot" or protein and noncoding regulators if regcomplexes = "both"
+  
+  if(regcomplexes == "none"){ ## If regulators controlling a same target are not allowed to form a regulatory complex, simply reformat the edg and nod dataframes
+    
+    TCRN.edg$from = sapply(TCRN.edg$from, toString) ## transform the id of regulators from integer to string (not the id of target because we need it to be integer for computational speed later)
+
+  }else if(regcomplexes == "prot"){ ## If the regulatory complexes can only be protein complexes
+    
+      temp = TCRN.edg[TCRN.edg$RegBy =="PCreg", ]
+      tempregcom = juliaGet(juliaCall("combreg", PCtarget.id, temp$from, temp$to, temp$RegSign, regcomplexes.p, regcomplexes.size, "TC"))
+      ## only keep the noncoding regulators (the regulation from protein-coding regulators is given by the Julia function combreg)
+      TCRN.edg = TCRN.edg[TCRN.edg$RegBy =="NCreg", c("from", "to", "TargetReaction", "RegSign")]
+      TCRN.edg = rbind(TCRN.edg, data.frame("from" = unlist(tempregcom$newedg[,1]), "to" = unlist(tempregcom$newedg[,2]), "TargetReaction" = rep("TC", nrow(tempregcom$newedg)), "RegSign" = unlist(tempregcom$newedg[,3])))
+      rownames(TCRN.edg) = NULL
+      complexes = c(complexes, lapply(tempregcom$Complexes, unlist))
+      
+  }else if(regcomplexes == "both"){ ## If the regulatory complexes can be protein/noncoding complexes
+    
+    tempregcom = juliaGet(juliaCall("combreg", unique(c(PCtarget.id, NCtarget.id)), TCRN.edg$from, TCRN.edg$to, TCRN.edg$RegSign, regcomplexes.p, regcomplexes.size, "TC"))
+    TCRN.edg = data.frame("from" = unlist(tempregcom$newedg[,1]), "to" = unlist(tempregcom$newedg[,2]), "TargetReaction" = rep("TC", nrow(tempregcom$newedg)), "RegSign" = unlist(tempregcom$newedg[,3]))
+    rownames(TCRN.edg) = NULL
+    complexes = c(complexes, lapply(tempregcom$Complexes, unlist))
+    
+  }
+    
+  
+  
   ## Sample the kinetic parameters of each regulatory interaction
   ##    Kinetic parameters for transcription regulation include the binding and unbinding rate of regulators to gene promoter, and the fold change induced on transcription rate by a regulator bound to the promoter
   TCRN.edg = data.frame(TCRN.edg, "TCbindingrate" = get(TCbindingrate)(nrow(TCRN.edg)), "TCunbindingrate" = get(TCunbindingrate)(nrow(TCRN.edg)), "TCfoldchange" = rep(0, nrow(TCRN.edg)), stringsAsFactors = F)
   TCRN.edg$TCfoldchange[TCRN.edg$RegSign == "1"] = get(TCfoldchange)(sum(TCRN.edg$RegSign == "1"))  ## Repressors induce a fold change of 0
   
-  ## Create corresponding igraph object
-  TCRN.nw = igraph::graph_from_data_frame(d = TCRN.edg, directed = T, vertices = TCRN.nod)
 
   # ## Construct the network nodes and edges data.frame
   # TCRN.nod = nod[nod$id %in% c(TF.id, ncRNA.id, targetTF.id, targetncRNA.id),]
@@ -272,15 +304,42 @@ creationsystem = function(){
   TLRN.nod = TLRN[["nod"]]
   TLRN.edg = TLRN[["edg"]]
   
+  ## Create corresponding igraph object
+  TLRN.nw = igraph::graph_from_data_frame(d = TLRN.edg, directed = T, vertices = TLRN.nod)
+  
+  ## Creation of combinatorial regulation
+  ## if regcomplexes != 'none', if several regulators control a common target they can form regulatory complexes
+  ## The composition of each complex is stored in complexes
+  ## Complexes can be composed only of proteins if recomplexes = "prot" or protein and noncoding regulators if regcomplexes = "both"
+  
+  if(regcomplexes == "none"){ ## If regulators controlling a same target are not allowed to form a regulatory complex, simply reformat the edg and nod dataframes
+    
+    TLRN.edg$from = sapply(TLRN.edg$from, toString) ## transform the id of regulators from integer to string (not the id of target because we need it to be integer for computational speed later)
+
+  }else if(regcomplexes == "prot"){ ## If the regulatory complexes can only be protein complexes
+    
+    temp = TLRN.edg[TLRN.edg$RegBy =="PCreg", ]
+    tempregcom = juliaGet(juliaCall("combreg", PCtarget.id, temp$from, temp$to, temp$RegSign, regcomplexes.p, regcomplexes.size, "TL"))
+    ## only keep the noncoding regulators (the regulation from protein-coding regulators is given by the Julia function combreg)
+    TLRN.edg = TLRN.edg[TLRN.edg$RegBy =="NCreg", c("from", "to", "TargetReaction", "RegSign")]
+    TLRN.edg = rbind(TLRN.edg, data.frame("from" = unlist(tempregcom$newedg[,1]), "to" = unlist(tempregcom$newedg[,2]), "TargetReaction" = rep("TL", nrow(tempregcom$newedg)), "RegSign" = unlist(tempregcom$newedg[,3])))
+    rownames(TLRN.edg) = NULL
+    complexes = c(complexes, lapply(tempregcom$Complexes, unlist))
+    
+  }else if(regcomplexes == "both"){ ## If the regulatory complexes can be protein/noncoding complexes
+    
+    tempregcom = juliaGet(juliaCall("combreg", unique(c(PCtarget.id, NCtarget.id)), TLRN.edg$from, TLRN.edg$to, TLRN.edg$RegSign, regcomplexes.p, regcomplexes.size, "TL"))
+    TLRN.edg = data.frame("from" = unlist(tempregcom$newedg[,1]), "to" = unlist(tempregcom$newedg[,2]), "TargetReaction" = rep("TL", nrow(tempregcom$newedg)), "RegSign" = unlist(tempregcom$newedg[,3]))
+    rownames(TLRN.edg) = NULL
+    complexes = c(complexes, lapply(tempregcom$Complexes, unlist))
+    
+  }
+  
+  
   ## Sample the kinetic parameters of each regulatory interaction
   ##    Kinetic parameters for translation regulation include the binding and unbinding rate of regulators to mRNA binding sequence, and the fold change induced on transcription rate by a regulator bound to the mRNA
   TLRN.edg = data.frame(TLRN.edg, "TLbindingrate" = get(TLbindingrate)(nrow(TLRN.edg)), "TLunbindingrate" = get(TLunbindingrate)(nrow(TLRN.edg)), "TLfoldchange" = rep(0, nrow(TLRN.edg)), stringsAsFactors = F)
   TLRN.edg$TLfoldchange[TLRN.edg$RegSign == "1"] = get(TLfoldchange)(sum(TLRN.edg$RegSign == "1")) ## Repressors induce a fold change of 0
-  
-  
-  ## Create corresponding igraph object
-  TLRN.nw = igraph::graph_from_data_frame(d = TLRN.edg, directed = T, vertices = TLRN.nod)
-  
   
   
   # -----------------------------------------------------------------
@@ -302,14 +361,41 @@ creationsystem = function(){
   RDRN.nod = RDRN[["nod"]]
   RDRN.edg = RDRN[["edg"]]
   
+  ## Create corresponding igraph object
+  RDRN.nw = igraph::graph_from_data_frame(d = RDRN.edg, directed = T, vertices = RDRN.nod)
+  
+  ## Creation of combinatorial regulation
+  ## if regcomplexes != 'none', if several regulators control a common target they can form regulatory complexes
+  ## The composition of each complex is stored in complexes
+  ## Complexes can be composed only of proteins if recomplexes = "prot" or protein and noncoding regulators if regcomplexes = "both"
+  
+  if(regcomplexes == "none"){ ## If regulators controlling a same target are not allowed to form a regulatory complex, simply reformat the edg and nod dataframes
+    
+    RDRN.edg$from = sapply(RDRN.edg$from, toString) ## transform the id of regulators from integer to string (not the id of target because we need it to be integer for computational speed later)
+    
+  }else if(regcomplexes == "prot"){ ## If the regulatory complexes can only be protein complexes
+    
+    temp = RDRN.edg[RDRN.edg$RegBy =="PCreg", ]
+    tempregcom = juliaGet(juliaCall("combreg", PCtarget.id, temp$from, temp$to, temp$RegSign, regcomplexes.p, regcomplexes.size, "RD"))
+    ## only keep the noncoding regulators (the regulation from protein-coding regulators is given by the Julia function combreg)
+    RDRN.edg = RDRN.edg[RDRN.edg$RegBy =="NCreg", c("from", "to", "TargetReaction", "RegSign")]
+    RDRN.edg = rbind(RDRN.edg, data.frame("from" = unlist(tempregcom$newedg[,1]), "to" = unlist(tempregcom$newedg[,2]), "TargetReaction" = rep("RD", nrow(tempregcom$newedg)), "RegSign" = unlist(tempregcom$newedg[,3])))
+    rownames(RDRN.edg) = NULL
+    complexes = c(complexes, lapply(tempregcom$Complexes, unlist))
+    
+  }else if(regcomplexes == "both"){ ## If the regulatory complexes can be protein/noncoding complexes
+    
+    tempregcom = juliaGet(juliaCall("combreg", unique(c(PCtarget.id, NCtarget.id)), RDRN.edg$from, RDRN.edg$to, RDRN.edg$RegSign, regcomplexes.p, regcomplexes.size, "RD"))
+    RDRN.edg = data.frame("from" = unlist(tempregcom$newedg[,1]), "to" = unlist(tempregcom$newedg[,2]), "TargetReaction" = rep("RD", nrow(tempregcom$newedg)), "RegSign" = unlist(tempregcom$newedg[,3]))
+    rownames(RDRN.edg) = NULL
+    complexes = c(complexes, lapply(tempregcom$Complexes, unlist))
+    
+  }
+  
   ## Sample the kinetic parameters of each regulatory interaction
   ##    Kinetic parameters for RNA decay includes the binding (and unbinding for repressors of decay) rate of the regulator on the RNA 
   RDRN.edg = data.frame(RDRN.edg, "RDbindingrate" = get(RDbindingrate)(nrow(RDRN.edg)), "RDunbindingrate" = rep(0, nrow(RDRN.edg)))
   RDRN.edg$RDunbindingrate[RDRN.edg$RegSign == "-1"] = get(RDunbindingrate)(sum(RDRN.edg$RegSign == "-1")) ## only the repressors (i.e. protecting the target from decay) can unbind the target
-  
-  ## Create corresponding igraph object
-  RDRN.nw = igraph::graph_from_data_frame(d = RDRN.edg, directed = T, vertices = RDRN.nod)
-  
   
   
   
@@ -332,13 +418,49 @@ creationsystem = function(){
   PDRN.nod = PDRN[["nod"]]
   PDRN.edg = PDRN[["edg"]]
   
+  ## Create corresponding igraph object
+  PDRN.nw = igraph::graph_from_data_frame(d = PDRN.edg, directed = T, vertices = PDRN.nod)
+  
+  
+  ## Creation of combinatorial regulation
+  ## if regcomplexes != 'none', if several regulators control a common target they can form regulatory complexes
+  ## The composition of each complex is stored in complexes
+  ## Complexes can be composed only of proteins if recomplexes = "prot" or protein and noncoding regulators if regcomplexes = "both"
+  
+  if(regcomplexes != "none"){ ## If regulators controlling a same target are not allowed to form a regulatory complex, simply reformat the edg and nod dataframes
+    
+    PDRN.edg$from = sapply(PDRN.edg$from, toString) ## transform the id of regulators from integer to string (not the id of target because we need it to be integer for computational speed later)
+    
+  }else if(regcomplexes == "prot"){ ## If the regulatory complexes can only be protein complexes
+    
+    temp = PDRN.edg[PDRN.edg$RegBy =="PCreg", ]
+    tempregcom = juliaGet(juliaCall("combreg", PCtarget.id, temp$from, temp$to, temp$RegSign, regcomplexes.p, regcomplexes.size, "PD"))
+    ## only keep the noncoding regulators (the regulation from protein-coding regulators is given by the Julia function combreg)
+    PDRN.edg = PDRN.edg[PDRN.edg$RegBy =="NCreg", c("from", "to", "TargetReaction", "RegSign")]
+    PDRN.edg = rbind(PDRN.edg, data.frame("from" = unlist(tempregcom$newedg[,1]), "to" = unlist(tempregcom$newedg[,2]), "TargetReaction" = rep("PD", nrow(tempregcom$newedg)), "RegSign" = unlist(tempregcom$newedg[,3])))
+    rownames(PDRN.edg) = NULL
+    complexes = c(complexes, lapply(tempregcom$Complexes, unlist))
+    
+  }else if(regcomplexes == "both"){ ## If the regulatory complexes can be protein/noncoding complexes
+    
+    tempregcom = juliaGet(juliaCall("combreg", unique(c(PCtarget.id, NCtarget.id)), PDRN.edg$from, PDRN.edg$to, PDRN.edg$RegSign, regcomplexes.p, regcomplexes.size, "PD"))
+    PDRN.edg = data.frame("from" = unlist(tempregcom$newedg[,1]), "to" = unlist(tempregcom$newedg[,2]), "TargetReaction" = rep("PD", nrow(tempregcom$newedg)), "RegSign" = unlist(tempregcom$newedg[,3]))
+    rownames(PDRN.edg) = NULL
+    complexes = c(complexes, lapply(tempregcom$Complexes, unlist))
+    
+  }
+  
   ## Sample the kinetic parameters of each regulatory interaction
   ##    Kinetic parameters for protein decay includes the binding (and unbinding for repressors of decay) rate of the regulator on the protein 
   PDRN.edg = data.frame(PDRN.edg, "PDbindingrate" = get(PDbindingrate)(nrow(PDRN.edg)), "PDunbindingrate" = rep(0, nrow(PDRN.edg)))
   PDRN.edg$PDunbindingrate[PDRN.edg$RegSign == "-1"] = get(PDunbindingrate)(sum(PDRN.edg$RegSign == "-1")) ## only the repressors (i.e. protecting the target from decay) can unbind the target
   
-  ## Create corresponding igraph object
-  PDRN.nw = igraph::graph_from_data_frame(d = PDRN.edg, directed = T, vertices = PDRN.nod)
+  
+  # -----------------------------------------------------------------
+  ####                          RETURN                           ----
+  # -----------------------------------------------------------------
+  
+  
   
   ## save all the interactions in edg
   temp = list(TCRN.edg, TLRN.edg, RDRN.edg, PDRN.edg)
@@ -349,10 +471,11 @@ creationsystem = function(){
   ## Return
   res = list("nod" = nod, 
              "edg" = edg,
-             "TCRN" = list("TCRN.nod" = TCRN.nod, "TCRN.edg" = TCRN.edg, "TCRN.nw" = TCRN.nw),
-             "TLRN" = list("TLRN.nod" = TLRN.nod, "TLRN.edg" = TLRN.edg, "TLRN.nw" = TLRN.nw),
-             "RDRN" = list("RDRN.nod" = RDRN.nod, "RDRN.edg" = RDRN.edg, "RDRN.nw" = RDRN.nw),
-             "PDRN" = list("PDRN.nod" = PDRN.nod, "PDRN.edg" = PDRN.edg, "PDRN.nw" = PDRN.nw))
+             "complexes" = complexes,
+             "TCRN" = list("TCRN.edg" = TCRN.edg, "TCRN.nw" = TCRN.nw),
+             "TLRN" = list("TLRN.edg" = TLRN.edg, "TLRN.nw" = TLRN.nw),
+             "RDRN" = list("RDRN.edg" = RDRN.edg, "RDRN.nw" = RDRN.nw),
+             "PDRN" = list("PDRN.edg" = PDRN.edg, "PDRN.nw" = PDRN.nw))
   
   return(res)
 }

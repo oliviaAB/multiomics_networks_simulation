@@ -4,7 +4,7 @@
 
 
 ## G : number of genes in the system
-G = 50
+G = 100
 
 ## M : number of metabolites in the system
 M = 5
@@ -258,4 +258,9 @@ PDunbindingrate_default = function(x){ runif(x, 0.001, 0.01) } ## default: regul
 PDunbindingrate = "PDunbindingrate_default"
 
 
+
+#### Probability of forming regulatory complexes ----
+regcomplexes = 'prot' ## can be 'none', 'prot' or 'both'
+regcomplexes.p = 0.8 ## ignore if regcomplexes = 'none'
+regcomplexes.size = 2 ## ignore if regcomplexes = 'none'
 # ----
