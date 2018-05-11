@@ -4,7 +4,7 @@
 
 
 ## G : number of genes in the system
-G = 100
+G = 50
 
 ## M : number of metabolites in the system
 M = 5
