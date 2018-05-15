@@ -183,7 +183,7 @@ creationsystem = function(){
   ## In nod, state which form (i.e. RNA, protein, activated protein) is performing the regulation
   nod$ActiveForm[nod$coding == "NC"] = "R" ## noncoding genes act through their RNA
   nod$ActiveForm[nod$coding == "PC" & nod$PTMform == "0"] = "P" ## protein-coding genes act through their protein
-  nod$ActiveForm[nod$coding == "PC" & nod$PTMform == "1"] = "Pa" ## For proteins undergoing a post-translational modification, only the PTM form is active
+  nod$ActiveForm[nod$coding == "PC" & nod$PTMform == "1"] = "Pm" ## For proteins undergoing a post-translational modification, only the PTM form is active
   nod$ActiveForm = sapply(1:nrow(nod), function(x){paste0(nod$ActiveForm[x],".",nod$id[x])})
   
   

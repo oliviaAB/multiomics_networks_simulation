@@ -9,8 +9,6 @@ G = 50
 ## M : number of metabolites in the system
 M = 5
 
-## Mod : number of modules in the system
-Mod = 15
 
 #### Ratio of the different gene functions in the system ----
 
