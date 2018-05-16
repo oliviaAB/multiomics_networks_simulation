@@ -400,10 +400,25 @@ end
 ##              FUNCTIONS FOR CREATING THE REACTION LIST AND PROPENSITY LIST                      ##
 # ------------------------------------------------------------------------------------------------ #
 
-
-## Generate all possible combinations of promoter states given the number of promoter and their regulatory effect (activtor or repressor)
 ## Input:
-##    - edgSign: array with for each regulator the sign of its regulation ("1" for activation and "-1" for repression)
+##    - promList: an 1D array, each elemnt being a 2D array. Each elements correspond to the possible active states of a given promoter binding site (1st column) and the associated fold change (2nd column)
+function combinpromstates(promList)
+  proms = [t[:, 1] for t in promList]
+  fcs = [t[:, 2] for t in promList]
+  elsize = [length(t) for t in proms]
+  combproms = Array{String}(prod(elsize), length(elsize))
+  combfcs = Array{Float64}(prod(elsize), length(elsize))
+
+  for i in eachindex(elsize)
+    combproms[:, i] = repeat(proms[i], inner = prod(elsize[(i+1):end]), outer = prod(elsize[1:(i-1)]))
+    combfcs[:, i] = repeat(fcs[i], inner = prod(elsize[(i+1):end]), outer = prod(elsize[1:(i-1)]))
+  end
+
+  return Dict("proms" => combproms, "fcs" => combfcs)
+
+end
+
+## Gives all the possible combinations of length elem of the vector vect
 function allposscomb(vect, elem)
 
   nb = length(vect)
@@ -436,7 +451,7 @@ end
 
 
 ## Generate a string corresponding to the reaction, using the BioSimulator package rules 
-function reactBioSim(reacList, prodList)
+function reactBioSimOld(reacList, prodList)
   res = reacList[1]
   for r in reacList[2:end]
     res *= " + "* r 
@@ -450,6 +465,9 @@ function reactBioSim(reacList, prodList)
 
 end
 
+function reactBioSim(reacList, prodList)
+  return join(reacList, " + ") * " --> " * join(prodList, " + ")
+end
 
 ## Generate the list of reactions for the transcription of a gene
 ## Input :
@@ -721,6 +739,102 @@ function generateReactionListOld(nod, edgTCRN, edgTLRN, edgRDRN, edgPDRN, edgPTM
 end
 
 
+function createbindingpromreactions(edg, exprstep, promPrefix, nod, functform, complexes, complexeskinetics, complexsize, complexvariants)
+
+  spec = []
+  react = []
+  reactnames = []
+  propens = []
+
+  regsingl = find( x -> !in('C', x), edg["from"]) ## identify single-molecule regulators (i.e. not regulatory complexes)
+  regcompl = find( x -> in('C', x), edg["from"]) ## identify regulatory complexes
+
+  promNodes = Dict(string(i)*j => [] for i in nod["id"], j in gcnList)
+
+  ## Generate the binding of single TL regulators on RNA-binding sites of targets
+  for r in regsingl, gcn in gcnList
+    tarid = edg["to"][r]
+    tar = string(tarid) * gcn
+    reg = edg["from"][r]
+
+    ## Create the binding site for regulator
+    prom = promPrefix * tar* "reg" * reg
+    ## Add the binding site and the sign of the regulatory interactions to the dictionary promTL
+    #promTL[tar] = vcat(promTL[tar], [prom edg["RegSign"][r]])
+    
+    ## temppromstates is a matrix where each lign correspond to an active state of the promoter: 
+    ##    1st column = name of species corresponding to the promoter state, 2nd column = fold change associated with the promoter state
+    temppromstates = [prom*"F" 1]
+    boundactive = edg["RegSign"][r] == "1" ## are the bound states of the promoter actives i.e. able to transcribe? No if the regulator is a repressor
+
+    ## Add the free form of the promoter to the list of species (the bound form is specific to the bound molecule)
+    push!(spec, prom*"F")
+
+    for gcnreg in gcnList
+      prombound = prom*gcnreg*"B"
+      ## add the binding reaction to the list
+      push!(spec, prombound) ## add the bound promoter to the list of species
+      if boundactive
+        temppromstates = vcat(temppromstates, [prombound edg[exprstep*"foldchange"][r]])
+      end
+      push!(react, reactBioSim([prom*"F", functform[reg]*gcnreg], [prombound])) ## promF + reg -> promregB
+      push!(reactnames, "binding"*prom*gcnreg)
+      push!(propens, :($(edg[exprstep*"bindingrate"][r])*QTLeffects[$(gcn)][$("qtl"*exprstep*"regbind")][$(tarid)]*QTLeffects[$(gcnreg)]["qtlactivity"][$(parse(Int64, reg))]))
+      ## add the unbinding reaction to the list 
+      push!(react, reactBioSim([prombound], [prom*"F", functform[reg]*gcnreg])) ## promregB -> promF + reg
+      push!(reactnames, "unbinding"*prom*gcnreg)
+      push!(propens, :($(edg[exprstep*"unbindingrate"][r])))
+    end
+    # println(promNodes[tar])
+    # println(temppromstates)
+    # println(" --- \n")
+    push!(promNodes[tar], temppromstates)
+
+  end
+
+  ## Generate the binding of TL regulatory complexes on RNA-binding sites of targets
+  for r in regcompl, gcn in gcnList
+    tarid = edg["to"][r]
+    tar = string(tarid) * gcn
+    compl = edg["from"][r]
+
+    ## Create the binding site for regulator
+    prom = promPrefix * tar* "reg" * compl
+
+    ## temppromstates is a matrix where each lign correspond to an active state of the promoter: 
+    ##    1st column = name of species corresponding to the promoter state, 2nd column = fold change associated with the promoter state
+    temppromstates = [prom*"F" 1]
+    boundactive = edg["RegSign"][r] == "1" ## are the bound states of the promoter actives i.e. able to transcribe? No if the regulator is a repressor
+
+    ## Add the free and bound forms of the promoter to the list of species
+    push!(spec, prom*"F")
+
+    for t in 1:size(complexvariants)[1]
+      complvar = compl*"comp"*join([string(complexes[compl][i])*complexvariants[t, i] for i in 1:complexsize])
+      ## Create the binding of the complex on the binding site
+      prombound = prom*join(complexvariants[t, :])*"B"
+      push!(spec, prombound)
+      if boundactive
+        temppromstates = vcat(temppromstates, [prombound edg[exprstep*"foldchange"][r]])
+      end
+      push!(react, reactBioSim([prom*"F", complvar], [prombound])) ## promF + complvar -> promB
+      push!(reactnames, "binding"*prom*complvar)
+      prop = """$(edg[exprstep*"bindingrate"][r])*QTLeffects[$(gcn)][$("qtl"*exprstep*"regbind")][$(tarid)]"""*join(["""*QTLeffects[$(complexvariants[t, i])]["qtlactivity"][complexes[compl][i]]""" for i in 1:complexsize])
+      push!(propens, parse(prop))
+      ## add the unbinding of the complex from the binding site
+      push!(react, reactBioSim([prombound], [prom*"F", complvar])) ## promB -> promF + complvar
+      push!(reactnames, "unbinding"*prom*complvar)
+      push!(propens, :($(edg[exprstep*"unbindingrate"][r])))
+    end
+
+    push!(promNodes[tar], temppromstates)
+
+  end
+
+  return Dict("species" => spec, "reactions" => react, "reactionsnames" => reactnames, "propensities" => propens, "promNodes" => promNodes)
+
+end
+
 
 function generateReactionList(nod, edgTCRN, edgTLRN, edgRDRN, edgPDRN, edgPTMRN, complexes, complexeskinetics, complexsize, gcnList, QTLeffects)
   
@@ -737,82 +851,90 @@ function generateReactionList(nod, edgTCRN, edgTLRN, edgRDRN, edgPDRN, edgPTMRN,
   ## Create all possible allele combinations of the component of a complex
   complexvariants = allposscomb(gcnList, complexsize)
 
-  ## --------------------------------------------------------------------------
-  ## GENERATION OF THE BINDING OF TL REGULATORS ON RNA-BINDING SITES OF TARGETS
-  ## --------------------------------------------------------------------------
+  ## Generate the formation and dissociation reactions of the different regulatory complexes
 
-  regsingl = find( x -> !in('C', x), edgTLRN["from"]) ## identify single-molecule regulators (i.e. not regulatory complexes)
-  regcompl = find( x -> in('C', x), edgTLRN["from"]) ## identify regulatory complexes
-
-  promTL = Dict(string(i)*j => [[] []] for i in nod["id"], j in gcnList)
-
-  ## Generate the binding of single TL regulators on RNA-binding sites of targets
-  for r in regsingl, gcn in gcnList
-    tarid = edgTLRN["to"][r]
-    tar = string(tarid) * gcn
-    reg = edgTLRN["from"][r]
-
-    ## Create the binding site for regulator
-    prom = "RBS" * tar* "reg" * reg
-    ## Add the binding site and the sign of the regulatory interactions to the dictionary promTL
-    promTL[tar] = vcat(promTL[tar], [prom edgTLRN["RegSign"][r]])
-    ## Add the free and bound forms of the promoter to the list of species
-    push!(species, prom*"F")
-    push!(species, prom*"B")
-
-    for gcnreg in gcnList
-      ## add the binding reaction to the list
-      push!(reactions, reactBioSim([prom*"F", functform[reg]*gcnreg], [prom*"B"])) ## promF + reg -> promB
-      push!(reactionsnames, "binding"*prom*"Reg"*gcnreg)
-      push!(propensities, :($(edgTLRN["TLbindingrate"][r])*QTLeffects[$(gcn)]["qtlTLregbind"][$(tarid)]*QTLeffects[$(gcnreg)]["qtlactivity"][$(parse(Int64, reg))]))
-      ## add the unbinding reaction to the list 
-      push!(reactions, reactBioSim([prom*"B"], [prom*"F", functform[reg]*gcnreg])) ## promB -> promF + reg
-      push!(reactionsnames, "unbinding"*prom*"Reg"*gcnreg)
-      push!(propens, :($(edgTLRN["TLunbindingrate"][r])))
-    end
-
+  for compl in keys(complexes), t in 1:size(complexvariants)[1]
+    complvar = compl*"comp"*join([string(complexes[compl][i])*complexvariants[t, i] for i in 1:complexsize])
+    push!(species, complvar)
+    ## Create the reaction of complex formation
+    push!(reactions, reactBioSim([functform[string(complexes[compl][i])]*complexvariants[t, i] for i in 1:complexsize], [complvar])) ## sum of complex components -> compl
+    push!(reactionsnames, "formation"*complvar) 
+    push!(propensities, :($(complexeskinetics[compl]["formationrate"])))
+    ## Create the reaction of complex dissociation
+    push!(reactions, reactBioSim([complvar], [functform[string(complexes[compl][i])]*complexvariants[t, i] for i in 1:complexsize])) ## sum of complex components -> compl
+    push!(reactionsnames, "dissociation"*complvar) 
+    push!(propensities, :($(complexeskinetics[compl]["dissociationrate"])))
   end
 
-  ## Generate the binding of TL regulatory complexes on RNA-binding sites of targets
-  for r in regcompl, gcn in gcnList
-    tarid = edgTLRN["to"][r]
-    tar = string(tarid) * gcn
-    compl = edgTLRN["from"][r]
 
-    ## Create the binding site for regulator
-    prom = "RBS" * tar* "reg" * reg
 
-    ## Add the binding site and the sign of the regulatory interactions to the dictionary promTL
-    promTL[tar] = vcat(promTL[tar], [prom edgTLRN["RegSign"][r]])
-    ## Add the free and bound forms of the promoter to the list of species
-    push!(species, prom*"F")
-    push!(species, prom*"B")
+  TLbinding = createbindingpromreactions(edgTLRN, "TL", "RBS", nod, functform, complexes, complexeskinetics, complexsize, complexvariants)
+  promTL = TLbinding["promNodes"]
 
-    for t in size(complexvariants)[2]
-      complvar = compl*join([string(complexes[compl][i])*complexvariants[t, i] for i in 1:complexsize])
-      ## Create the reaction of complex formation
-      push!(reactions, reactBioSim([functform[string(i)] for i in complexes[compl]], [complvar])) ## sum of complex components -> compl
-      push!(reactionsnames, "formation"*complvar) 
-      push!(propensities, :($(complexeskinetics[compl]["formationrate"])))
-      ## Create the reaction of complex dissociation
-      push!(reactions, reactBioSim([compl], [complexes[compl]])) ## sum of complex components -> compl
-      push!(reactionsnames, "dissociation"*complvar) 
-      push!(propensities, :($(complexeskinetics[compl]["dissociationrate"])))
+  TCbinding = createbindingpromreactions(edgTCRN, "TC", "Pr", nod, functform, complexes, complexeskinetics, complexsize, complexvariants)
+  promTC = TCbinding["promNodes"]
 
-      ## Create the binding of the complex on the binding site
-      push!(reactions, reactBioSim([prom*"F", complvar], [prom*"B"])) ## promF + complvar -> promB
-      push!(reactionsnames, "binding"*prom*"Reg"*complvar)
-      prop = """$(edgTLRN["TLbindingrate"][r])*QTLeffects[$(gcn)]["qtlTLregbind"][$(tarid)]"""*join(["""*QTLeffects[$(complexvariants[t, i])]["qtlactivity"][complexes[compl][i]]""" for i in 1:complexsize])
-      push!(propensities, parse(prop))
-      ## add the unbinding of the complex from the binding site
-      push!(reactions, reactBioSim([prom*"B"], [prom*"F", complvar])) ## promB -> promF + complvar
-      push!(reactionsnames, "unbinding"*prom*"Reg"*complvar)
-      push!(propens, :($(edgTLRN["TLunbindingrate"][r])))
+  species  = vcat(species, TCbinding["species"], TLbinding["species"])
+  reactions  = vcat(reactions, TCbinding["reactions"], TLbinding["reactions"])
+  reactionsnames  = vcat(reactionsnames, TCbinding["reactionsnames"], TLbinding["reactionsnames"])
+  propensities  = vcat(propensities, TCbinding["propensities"], TLbinding["propensities"])
+
+
+  ## CREATE TRANSCRIPTION REACTIONS
+
+  for g in nod["id"], gcn in gcnList
+    gname = string(g) * gcn
+    TCreg = promTC[gname]
+    TLreg = promTL[gname]
+
+    ## What is the RNA form of the gene? R[gene] if the gene is not controlled at the translation level; otherwise transcription produce the free (unbound) form of each binding site present on the RNA (1 site per TL regulator)
+    if length(TLreg) == 0
+      RNAform = ["R"*gname]
+      push!(species, "R"*gname)
+    else
+      RNAform = [t[1,1] for t in TLreg] ## The promTL dictionary is constructed such as each free binding site name is at the position 1,1
+    end
+
+    if length(TCreg) == 0
+      push!(reactions, reactBioSim([0], [RNAform]))
+      push!(reactionsnames, "transcription"*gname)
+      push!(propensities, :($(nod["TCrate"][g])*QTLeffects[$(gcn)]["qtlTCrate"][$(g)]))
+    else
+      promcomb = combinpromstates(TCreg) ## gives all possible active combinations of the different binding site states
+      for t in 1:size(promcomb["proms"])[1]
+          push!(reactions, reactBioSim(promcomb["proms"][t,:], vcat(promcomb["proms"][1,:], RNAform)))
+          push!(reactionsnames, "transcription"*join(promcomb["proms"][t,:]))
+          prop = """$(nod["TCrate"][g])*QTLeffects[$(gcn)]["qtlTCrate"][$(g)]*$(prod(promcomb["proms"][t,:]))"""
+          push!(propensities, :($(nod["TCrate"][g])*QTLeffects[$(gcn)]["qtlTCrate"][$(g)]*$(prod(promcomb["proms"][t,:]))))
+      end
     end
 
   end
 
 end
+
+
+
+#=
+
+## system of 20 nodes
+workspace()
+nod = Dict{String,Any}(Pair{String,Any}("TargetReaction", String["TL", "TL", "TL", "TC", "TC", "RD", "TC", "TL", "TC", "TC", "TL", "TC", "TC", "TC", "TL", "RD", "RD", "MR", "TL", "TL", "RD", "RD", "RD", "TC", "TL", "TL", "TC", "TC", "TL", "TC", "TL", "TL", "TC", "TL", "TC", "TL", "TC", "TC", "RD", "TL", "TL", "TC", "PTM", "RD", "TC", "TL", "TL", "PD", "RD", "RD"]),Pair{String,Any}("TCrate", [0.0383058, 0.0354193, 0.069086, 0.0617387, 0.0369238, 0.0624596, 0.0773182, 0.0833146, 0.0502687, 0.0313804, 0.0527055, 0.0432903, 0.0856088, 0.0585721, 0.0452048, 0.0356704, 0.0208695, 0.0670213, 0.0835078, 0.0779509, 0.0776592, 0.0541112, 0.0537629, 0.050601, 0.0935788, 0.0785906, 0.0299127, 0.0495242, 0.0799262, 0.0830136, 0.0184689, 0.0875529, 0.024178, 0.0702895, 0.0728294, 0.0295397, 0.0367362, 0.0986029, 0.011211, 0.0592016, 0.0767439, 0.0478291, 0.04266, 0.0607304, 0.0426131, 0.0921907, 0.0305072, 0.0778754, 0.0362273, 0.0529586]),Pair{String,Any}("RDrate", [0.000413907, 0.000396511, 0.000516262, 0.000287356, 0.000577367, 0.000364166, 0.000644745, 0.000420521, 0.000540833, 0.00100604, 0.00361011, 0.000694444, 0.000315856, 0.000350877, 0.00041425, 0.003663, 0.000322789, 0.000588582, 0.01, 0.00040016, 0.000402576, 0.000288517, 0.00215517, 0.000422654, 0.000745156, 0.0108696, 0.000290951, 0.00157729, 0.00030003, 0.000286287, 0.000786782, 0.000357782, 0.000281611, 0.00038432, 0.000336587, 0.000567215, 0.000361141, 0.000417188, 0.000470367, 0.000331675, 0.000787402, 0.00102354, 0.000865801, 0.000551268, 0.000450248, 0.000684463, 0.00077821, 0.00137174, 0.0025974, 0.000648508]),Pair{String,Any}("id", [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50]),Pair{String,Any}("ActiveForm", String["Pm1", "R2", "R3", "Pm4", "Pm5", "P6", "Pm7", "P8", "R9", "P10", "Pm11", "P12", "Pm13", "Pm14", "Pm15", "P16", "Pm17", "P18", "P19", "R20", "R21", "R22", "Pm23", "P24", "R25", "P26", "R27", "Pm28", "Pm29", "R30", "Pm31", "P32", "Pm33", "R34", "R35", "R36", "Pm37", "R38", "R39", "Pm40", "R41", "Pm42", "Pm43", "Pm44", "P45", "Pm46", "Pm47", "P48", "P49", "R50"]),Pair{String,Any}("coding", String["PC", "NC", "NC", "PC", "PC", "PC", "PC", "PC", "NC", "PC", "PC", "PC", "PC", "PC", "PC", "PC", "PC", "PC", "PC", "NC", "NC", "NC", "PC", "PC", "NC", "PC", "NC", "PC", "PC", "NC", "PC", "PC", "PC", "NC", "NC", "NC", "PC", "NC", "NC", "PC", "NC", "PC", "PC", "PC", "PC", "PC", "PC", "PC", "PC", "NC"]),Pair{String,Any}("TLrate", [4.26806, 0.0, 0.0, 0.620594, 2.80055, 4.59256, 1.04708, 2.53738, 0.0, 1.42765, 0.910486, 0.591064, 4.53948, 2.94196, 1.39797, 3.28256, 0.998617, 4.0215, 2.9922, 0.0, 0.0, 0.0, 1.75604, 4.17647, 0.0, 4.12805, 0.0, 2.73211, 3.54725, 0.0, 4.38978, 3.06126, 4.33202, 0.0, 0.0, 0.0, 3.14571, 0.0, 0.0, 4.79517, 0.0, 0.658, 2.52966, 2.13485, 1.68262, 3.07637, 3.53223, 3.55141, 3.73643, 0.0]),Pair{String,Any}("nameid", String["G_1", "G_2", "G_3", "G_4", "G_5", "G_6", "G_7", "G_8", "G_9", "G_10", "G_11", "G_12", "G_13", "G_14", "G_15", "G_16", "G_17", "G_18", "G_19", "G_20", "G_21", "G_22", "G_23", "G_24", "G_25", "G_26", "G_27", "G_28", "G_29", "G_30", "G_31", "G_32", "G_33", "G_34", "G_35", "G_36", "G_37", "G_38", "G_39", "G_40", "G_41", "G_42", "G_43", "G_44", "G_45", "G_46", "G_47", "G_48", "G_49", "G_50"]),Pair{String,Any}("PTMform", String["1", "0", "0", "1", "1", "0", "1", "0", "0", "0", "1", "0", "1", "1", "1", "0", "1", "0", "0", "0", "0", "0", "1", "0", "0", "0", "0", "1", "1", "0", "1", "0", "1", "0", "0", "0", "1", "0", "0", "1", "0", "1", "1", "1", "0", "1", "1", "0", "0", "0"]),Pair{String,Any}("PDrate", [8.76424e-5, 0.0, 0.0, 0.000133529, 0.000127551, 7.11136e-5, 9.59049e-5, 8.21085e-5, 0.0, 0.000140568, 0.000113109, 9.72479e-5, 8.62069e-5, 0.000105809, 9.37207e-5, 8.05737e-5, 0.00017304, 8.85426e-5, 7.62195e-5, 0.0, 0.0, 0.0, 0.000134517, 0.000146327, 0.0, 8.09323e-5, 0.0, 0.000121197, 0.00014453, 0.0, 7.36485e-5, 0.000121374, 8.54555e-5, 0.0, 0.0, 0.0, 7.60572e-5, 0.0, 0.0, 0.000140115, 0.0, 8.66551e-5, 0.000111532, 0.000106849, 7.32172e-5, 0.000160179, 0.000104232, 0.000107504, 7.64117e-5, 0.0]))
+
+edgTCRN = Dict{String,Any}(Pair{String,Any}("TCbindingrate", [0.00321405, 0.00473435, 0.00298111, 0.00997359, 0.00291898, 0.00353278, 0.00401311, 0.00918377, 0.00882659, 0.00991747, 0.00986185, 0.00773114, 0.00469209, 0.00833767, 0.00769984, 0.00308694, 0.0092009, 0.00546315, 0.00678325, 0.00528333, 0.00498977, 0.00628615, 0.00391206, 0.00753273, 0.00601903, 0.0036557, 0.0084864, 0.00780943, 0.00222953, 0.00341767, 0.00862045, 0.00686601, 0.00132944, 0.00947477, 0.0052604, 0.00279102, 0.00649986, 0.00375578, 0.00460729, 0.00232223, 0.00508685, 0.00581595, 0.00475835]),Pair{String,Any}("TCunbindingrate", [0.00953332, 0.00153581, 0.00438116, 0.00426973, 0.00776465, 0.00440608, 0.00537871, 0.00877117, 0.00303946, 0.00433087, 0.00435096, 0.00107793, 0.00760973, 0.00725071, 0.00517657, 0.00694052, 0.00655797, 0.00328065, 0.00940147, 0.0037251, 0.00747392, 0.00848613, 0.00760885, 0.0058852, 0.00403472, 0.00363345, 0.00683965, 0.00949643, 0.00515598, 0.00686772, 0.00853534, 0.00479064, 0.0057276, 0.00617271, 0.0040537, 0.0011888, 0.00258087, 0.00234804, 0.00195996, 0.00905108, 0.00372552, 0.00246426, 0.00836741]),Pair{String,Any}("TargetReaction", String["TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC"]),Pair{String,Any}("RegSign", String["1", "1", "1", "1", "1", "1", "1", "-1", "-1", "-1", "1", "1", "1", "-1", "1", "1", "-1", "-1", "-1", "-1", "1", "1", "1", "-1", "1", "1", "1", "1", "-1", "1", "-1", "-1", "-1", "-1", "1", "-1", "-1", "-1", "1", "1", "-1", "-1", "1"]),Pair{String,Any}("to", [46, 33, 4, 31, 26, 37, 44, 14, 1, 23, 45, 28, 32, 18, 17, 8, 6, 24, 16, 26, 47, 8, 19, 24, 43, 46, 14, 7, 7, 9, 22, 23, 27, 31, 33, 36, 40, 43, 44, 48, 49, 24, 40]),Pair{String,Any}("from", String["9", "9", "9", "9", "9", "9", "9", "9", "9", "27", "27", "27", "27", "27", "27", "27", "27", "30", "30", "30", "30", "30", "30", "35", "35", "35", "38", "5", "42", "10", "33", "5", "14", "12", "4", "4", "37", "13", "4", "28", "7", "CTC1", "CTC2"]),Pair{String,Any}("TCfoldchange", [20.0, 2.0, 29.0, 10.0, 24.0, 20.0, 13.0, 0.0, 0.0, 0.0, 5.0, 13.0, 12.0, 0.0, 21.0, 9.0, 0.0, 0.0, 0.0, 0.0, 23.0, 8.0, 2.0, 0.0, 3.0, 11.0, 6.0, 24.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 14.0, 0.0, 0.0, 0.0, 23.0, 19.0, 0.0, 0.0, 4.0]))
+edgTLRN = Dict{String,Any}(Pair{String,Any}("TLbindingrate", [0.0075634, 0.00899251, 0.00914503, 0.00456027, 0.00866226, 0.00804967, 0.00706122, 0.00706322, 0.00907255, 0.00944675, 0.00577241, 0.00354473, 0.00517906, 0.00873183, 0.00656527, 0.00351437, 0.00115263, 0.00213262, 0.00395243, 0.00406976, 0.0048827, 0.00555369, 0.00323992, 0.00846262, 0.00549503, 0.00416131, 0.00727439, 0.00981221, 0.00233314, 0.00859894, 0.00359648, 0.00142693, 0.00249592, 0.00712456, 0.00172458, 0.00782158, 0.00392808]),Pair{String,Any}("TargetReaction", String["TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL"]),Pair{String,Any}("TLunbindingrate", [0.00487906, 0.00538211, 0.00634111, 0.00801036, 0.00602788, 0.00736443, 0.00988095, 0.0019663, 0.00963572, 0.00709988, 0.00963074, 0.00309585, 0.00739528, 0.00336303, 0.00119043, 0.008372, 0.00958686, 0.00171852, 0.00974889, 0.00771954, 0.00842176, 0.00285371, 0.00383953, 0.00978057, 0.00262683, 0.00275653, 0.00125189, 0.00166714, 0.00178441, 0.00221861, 0.00592483, 0.00340203, 0.00730519, 0.00985448, 0.00845491, 0.0023016, 0.00690244]),Pair{String,Any}("TLfoldchange", [0.0, 0.0, 3.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 5.0, 0.0, 29.0, 0.0, 28.0, 0.0, 20.0, 16.0, 11.0, 25.0, 0.0, 25.0, 0.0, 0.0, 0.0, 19.0]),Pair{String,Any}("RegSign", String["-1", "-1", "1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "1", "-1", "1", "-1", "1", "-1", "1", "1", "1", "1", "-1", "1", "-1", "-1", "-1", "1"]),Pair{String,Any}("to", [49, 45, 26, 23, 33, 19, 6, 16, 23, 49, 33, 18, 16, 32, 17, 29, 31, 17, 12, 28, 40, 7, 7, 10, 11, 12, 15, 15, 17, 28, 29, 29, 37, 40, 44, 47, 10]),Pair{String,Any}("from", String["2", "2", "2", "2", "2", "2", "3", "3", "3", "3", "3", "3", "20", "20", "20", "25", "25", "25", "34", "36", "41", "1", "19", "32", "26", "31", "11", "46", "40", "15", "1", "29", "29", "8", "1", "47", "CTL1"]))
+edgRDRN = Dict{String,Any}(Pair{String,Any}("TargetReaction", String["RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD"]),Pair{String,Any}("RDbindingrate", [0.00697804, 0.00774964, 0.00449371, 0.00691126, 0.00959166, 0.00921492, 0.00198896, 0.00931222, 0.00596598, 0.00868057, 0.00212075, 0.00382286, 0.00546214, 0.00956411, 0.00476764, 0.00695973, 0.00762754, 0.00366035, 0.00382369, 0.00257641, 0.0045423, 0.00148735, 0.00206899, 0.00265115, 0.00646582, 0.00915574, 0.00710227]),Pair{String,Any}("RDunbindingrate", [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.00255529, 0.0, 0.0, 0.0, 0.0, 0.00489535, 0.00824349, 0.0, 0.0, 0.00915262, 0.00921839, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.00705485, 0.0]),Pair{String,Any}("RegSign", String["1", "1", "1", "1", "1", "1", "1", "1", "-1", "1", "1", "1", "1", "-1", "-1", "1", "1", "-1", "-1", "1", "1", "1", "1", "1", "1", "-1", "1"]),Pair{String,Any}("to", [4, 28, 22, 10, 46, 11, 29, 5, 7, 16, 17, 18, 19, 21, 25, 26, 27, 29, 30, 30, 33, 39, 46, 49, 50, 24, 42]),Pair{String,Any}("from", String["21", "21", "21", "22", "22", "39", "50", "16", "6", "16", "6", "16", "6", "17", "6", "6", "6", "44", "6", "49", "17", "23", "17", "49", "23", "CRD1", "CRD2"]))
+edgPDRN = Dict{String,Any}(Pair{String,Any}("TargetReaction", String["PD", "PD", "PD"]),Pair{String,Any}("RegBy", String["PCreg", "PCreg", "PCreg"]),Pair{String,Any}("RegSign", String["-1", "1", "1"]),Pair{String,Any}("to", [31, 14, 48]),Pair{String,Any}("from", String["48", "48", "48"]),Pair{String,Any}("PDunbindingrate", [0.00570818, 0.0, 0.0]),Pair{String,Any}("PDbindingrate", [0.00289001, 0.00727593, 0.00850916]))
+
+complexes = Dict("CRD2"=>[6, 23],"CRD1"=>[6, 16],"CTC1"=>[24, 5],"CTC2"=>[24, 45],"CTL1"=>[8, 47])
+complexeskinetics = Dict("CRD2"=>Dict("formationrate"=>0.00604369,"dissociationrate"=>0.00756089),"CRD1"=>Dict("formationrate"=>0.00493894,"dissociationrate"=>0.00610697),"CTC1"=>Dict("formationrate"=>0.00410344,"dissociationrate"=>0.00283723),"CTC2"=>Dict("formationrate"=>0.00346069,"dissociationrate"=>0.00521991),"CTL1"=>Dict("formationrate"=>0.00449745,"dissociationrate"=>0.00485848))
+complexsize = 2
+
+xploidy = 4
+gcnList = ["GCN"*string(i) for i in 1:xploidy]
+
+=#
+
 
 
 #=

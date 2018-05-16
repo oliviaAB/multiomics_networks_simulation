@@ -456,6 +456,22 @@ creationsystem = function(){
   PDRN.edg$PDunbindingrate[PDRN.edg$RegSign == "-1"] = get(PDunbindingrate)(sum(PDRN.edg$RegSign == "-1")) ## only the repressors (i.e. protecting the target from decay) can unbind the target
   
   
+  # ------------------------------------------------------------------------------------------
+  #### STEP 7 : Define protein post-translational modification regulatory network (PTMRN) ----
+  # ------------------------------------------------------------------------------------------
+  
+  
+  # ---------------------------------------------------------------
+  #### STEP 8 : Define regulatory complexes kinetic parameters ----
+  # ---------------------------------------------------------------
+  
+  complexeskinetics = list()
+  formrates = get(complexesformationrate)(length(complexes))
+  dissrates = get(complexesdissociationrate)(length(complexes))
+  for(c in 1:length(complexes)){
+    complexeskinetics[[names(complexes)[c]]] = list("formationrate" = formrates[c], "dissociationrate" = dissrates[c])
+  }
+  
   # -----------------------------------------------------------------
   ####                          RETURN                           ----
   # -----------------------------------------------------------------
@@ -467,15 +483,32 @@ creationsystem = function(){
   for(t in temp){
     edg = rbind(edg, t[,c("from", "to", "TargetReaction", "RegSign")])
   }
-
+  
+  ## Create the lists to be sent to Julia
+  nodDF = nod
+  temp = list("nod", "TCRN.edg", "TLRN.edg", "RDRN.edg", "PDRN.edg")
+  for(t in temp){
+    new = list()
+    for(cols in colnames(get(t))){
+      new[[cols]] = get(t)[,cols]
+    }
+    assign(t, new)
+  }
+  
   ## Return
-  res = list("nod" = nod, 
+  res = list("nod" = nodDF, 
              "edg" = edg,
              "complexes" = complexes,
-             "TCRN" = list("TCRN.edg" = TCRN.edg, "TCRN.nw" = TCRN.nw),
-             "TLRN" = list("TLRN.edg" = TLRN.edg, "TLRN.nw" = TLRN.nw),
-             "RDRN" = list("RDRN.edg" = RDRN.edg, "RDRN.nw" = RDRN.nw),
-             "PDRN" = list("PDRN.edg" = PDRN.edg, "PDRN.nw" = PDRN.nw))
+             "RN.edg" = list("TCRN.edg" = TCRN.edg,
+                            "TLRN.edg" = TLRN.edg,
+                            "RDRN.edg" = RDRN.edg,
+                            "RDRN.edg" = RDRN.edg,
+                            "PDRN.edg" = PDRN.edg),
+             "RN.nw" = list("TCRN.nw" = TCRN.nw,
+                            "TLRN.nw" = TLRN.nw,
+                            "RDRN.nw" = RDRN.nw,
+                            "RDRN.nw" = RDRN.nw,
+                            "PDRN.nw" = PDRN.nw))
   
   return(res)
 }
@@ -488,8 +521,8 @@ systemvisualize = function(mysystem){
   hist(degree(sys.nw, mode = "in"), main = "In-degree distribution of the global regulatory network", xlab = "Number of regulators")
   
   for(n in c("TCRN", "TLRN", "RDRN", "PDRN")){
-    hist(degree(mysystem[[n]][[paste0(n,".nw")]], mode = "out"), main = paste("Out-degree distribution of the", n, "network", sep = " "), xlab = "Number of targets")
-    hist(degree(mysystem[[n]][[paste0(n,".nw")]], mode = "in"), main = paste("In-degree distribution of the", n, "network", sep = " "), xlab = "Number of regulators")
+    hist(degree(mysystem[["RN.nw"]][[paste0(n,".nw")]], mode = "out"), main = paste("Out-degree distribution of the", n, "network", sep = " "), xlab = "Number of targets")
+    hist(degree(mysystem[["RN.nw"]][[paste0(n,".nw")]], mode = "in"), main = paste("In-degree distribution of the", n, "network", sep = " "), xlab = "Number of regulators")
   }
   
 }

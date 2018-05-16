@@ -259,6 +259,13 @@ PDunbindingrate = "PDunbindingrate_default"
 
 #### Probability of forming regulatory complexes ----
 regcomplexes = 'prot' ## can be 'none', 'prot' or 'both'
-regcomplexes.p = 0.8 ## ignore if regcomplexes = 'none'
+regcomplexes.p = 1 ## ignore if regcomplexes = 'none'
 regcomplexes.size = 2 ## ignore if regcomplexes = 'none'
+
+complexesformationrate_default = function(x){ runif(x, 0.001, 0.01) } 
+complexesformationrate = "complexesformationrate_default"
+
+complexesdissociationrate_default = function(x){ runif(x, 0.001, 0.01) } 
+complexesdissociationrate = "complexesdissociationrate_default"
+
 # ----
