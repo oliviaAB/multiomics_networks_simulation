@@ -402,7 +402,7 @@ end
 
 ## Input:
 ##    - promList: an 1D array, each elemnt being a 2D array. Each elements correspond to the possible active states of a given promoter binding site (1st column) and the associated fold change (2nd column)
-function combinpromstates(promList)
+function combinactivepromstates(promList)
   proms = [t[:, 1] for t in promList]
   fcs = [t[:, 2] for t in promList]
   elsize = [length(t) for t in proms]
@@ -417,6 +417,23 @@ function combinpromstates(promList)
   return Dict("proms" => combproms, "fcs" => combfcs)
 
 end
+
+
+## Input:
+##    - promList: an 1D array, each elemnt being an array. Each elements correspond to all possible states of the binding site
+function combinallpromstates(proms)
+  elsize = [length(t) for t in proms]
+  combproms = Array{String}(prod(elsize), length(elsize))
+
+  for i in eachindex(elsize)
+    combproms[:, i] = repeat(proms[i], inner = prod(elsize[(i+1):end]), outer = prod(elsize[1:(i-1)]))
+  end
+
+  return combproms
+
+end
+
+
 
 ## Gives all the possible combinations of length elem of the vector vect
 function allposscomb(vect, elem)
@@ -450,293 +467,12 @@ function allactivepromstates(edgSign)
 end
 
 
-## Generate a string corresponding to the reaction, using the BioSimulator package rules 
-function reactBioSimOld(reacList, prodList)
-  res = reacList[1]
-  for r in reacList[2:end]
-    res *= " + "* r 
-  end
-  res *= " --> " * prodList[1]
-  for p in prodList[2:end]
-    res *= " + " * p
-  end
-
-  return res
-
-end
-
 function reactBioSim(reacList, prodList)
   return join(reacList, " + ") * " --> " * join(prodList, " + ")
 end
 
-## Generate the list of reactions for the transcription of a gene
-## Input :
-##    - tarid: integer, the ID of the target gene
-##    - regedg: the indices (from edg) of the edges correponding to regulation of the target
-##    - regTL: the ids of translational regulator for the gene (if no regulator/gene is noncoding => 0-length array)
-##    - nod, edgTCRN, functform
-function createTranscription(tarid, regedg, regTL, nod, edgTCRN, functform, gcnList)
-
-  spec = []
-  reac = []
-  reacnames = []
-  propens = []
-
-  for gcn in gcnList ## for each allele of the gene
-
-    tar = string(tarid)*gcn
-
-    ## construct the RNA species
-    ##    If no regulators of translation, the product of transcription is "R" (a molecule of RNA)
-    ##    But if there are regulators of translation, the product of transcription is a list of RNA-binding sites. one for each translation regulator
-    if length(regTL) !=0
-      RNAform = ["RBS"*tar*"reg"*string(j)*"F" for j in regTL]
-    else
-      RNAform = ["R"*tar]
-    end
-
-    ## This/these species are already added to the main species list, except if the gene is a noncoding protein
-    if nod["coding"][tarid] =="NC"
-      push!(spec, "R"*tar)
-    end
-
-    if length(regedg) == 0 ## If no regulator of transcription
-      ## no need for explicit promoter
-      push!(reac, reactBioSim(["0"], RNAform))
-      push!(reacnames, "transcriptionGene"*tar)
-      push!(propens, :($(nod["TCrate"][tarid])*QTLeffects[]))
-
-    else
-
-      promList = [] ## list of the different promoter binding sites
-      ## generate the reactions of binding and unbinding to the promoter site specific to the regulator
-      for r in regedg
-        prom = "Pr" * tar * "reg" * edgTCRN["from"][r] ## name of the promoter binding site for this regulator. prom*"F" => free promoter site, prom*"S" => bound promoter site
-        push!(promList, prom)
-        push!(spec, prom*"F")
-        push!(spec, prom*"B") ## do not add the functional form of the regulator in the list as it will be added during the generation of the regulator's reactions
-        
-        for gcnreg in gcnList ## each allelic version of the regulator can bind the promoter binding site    
-          ## add the binding reaction to the list
-          push!(reac, reactBioSim([prom*"F", functform[edgTCRN["from"][r]]*gcnreg], [prom*"B"])) ## promF + reg -> promB
-          push!(reacnames, "binding"*prom*"Reg"*gcnreg)
-          push!(propens, :($(edgTCRN["TCbindingrate"][r])*QTLeffects[]))
-          ## add the unbinding reaction to the list 
-          push!(reac, reactBioSim([prom*"B"], [prom*"F", functform[edgTCRN["from"][r]]*gcnreg])) ## promB -> promF + reg
-          push!(reacnames, "unbinding"*prom*"Reg"*gcnreg)
-          push!(propens, :($(edgTCRN["TCunbindingrate"][r])*QTLeffects[]))
-        end
-      end 
-
-      ## generate the transcription reactions according to all possible combinations of the promoter site states (except combinations where repressors are bound)
-      temp = allactivepromstates(edgTCRN["RegSign"][regedg]) ## 2-D array with all possible combinations of promoter sites states (rows = combinations, columns = promoter binding site states (1 for each regulator))
-
-      for i in 1:size(temp)[1]
-        promstates = [promList[j]*"F"^(1-temp[i,j])*"B"^temp[i,j] for j in 1:length(promList)]
-        push!(reac, reactBioSim(promstates, vcat(promstates, RNAform)))
-        push!(reacnames, "transcriptionGene"*tar*join([("Reg"*edgTCRN["from"][j])^temp[i, j] for j in 1:size(temp)[2]])) ## name of the reaction: transcriptionGene[tarid]RegARegB... with RegA indicating bound regulators
-        mypropens = """$(nod["TCrate"][tarid])*QTLeffects[]""" * join(["""*$(edgTCRN["TCfoldchange"][regedg[j]])*QTLeffects[]"""^temp[i,j] for j in 1:length(regedg)])
-        push!(propens, parse(mypropens))
-      end
-    end
-  end
-
-  return Dict("species" => spec, "reactions" => reac, "reactionsnames" => reacnames, "propensities" => propens)
-
-end
 
 
-
-
-## Generate the list of reactions for the translation of a gene
-## Input :
-##    - tarid: integer, the ID of the target gene
-##    - regedg: the indices (from edg) of the edges correponding to regulation of the target
-##    - nod, edgTLRN, functform
-function createTranslation(tarid, regedg, nod, edgTLRN, functform, gcnList, complexes, complexvariants)
-
-  spec = []
-  reac = []
-  reacnames = []
-  propens = []
-
-  # regsingl = regedg[map( x -> !in('C', x), edgTLRN["from"][regedg])] ## identify single-molecule regulators (i.e. not regulatory complexes)
-  # regcompl = regedg[map( x -> in('C', x), edgTLRN["from"][regedg])] ## identify regulatory complexes
-
-  for gcn in gcnList ## for each allele of the gene
-
-    tar = string(tarid)*gcn
-    
-    if length(regedg) == 0 ## If no regulator of translation
-      ## no need for explicit promoter
-      push!(reac, reactBioSim(["R"*tar], ["R"*tar, "P"*tar]))
-      push!(reacnames, "translationGene"*tar)
-      push!(propens, :($(nod["TLrate"][tarid])*QTLeffects[]))
-      push!(spec, "R"*tar)
-      push!(spec, "P"*tar)
-    else
-    
-      promList = [] ## list of the different promoter binding sites
-      ## generate the reactions of binding and unbinding to the promoter site specific to the regulator  
-      for r in regedg#regsingl
-        prom = "RBS" * tar * "reg" * edgTLRN["from"][r] ## name of the promoter binding site for this regulator. prom*"F" => free promoter site, prom*"S" => bound promoter site
-        push!(promList, prom)
-        push!(spec, prom*"F")
-        push!(spec, prom*"B") ## do not add the functional form of the regulator in the list as it will be added during the generation of the regulator's reactions
-        
-        for gcnreg in gcnList ## each allelic version of the regulator can bind the promoter binding site    
-          ## add the binding reaction to the list
-          push!(reac, reactBioSim([prom*"F", functform[edgTLRN["from"][r]]*gcnreg], [prom*"B"])) ## promF + reg -> promB
-          push!(reacnames, "binding"*prom*"Reg"*gcnreg)
-          push!(propens, :($(edgTLRN["TLbindingrate"][r])*QTLeffects[]))
-          ## add the unbinding reaction to the list 
-          push!(reac, reactBioSim([prom*"B"], [prom*"F", functform[edgTLRN["from"][r]]*gcnreg])) ## promB -> promF + reg
-          push!(reacnames, "unbinding"*prom*"Reg"*gcnreg)
-          push!(propens, :($(edgTLRN["TLunbindingrate"][r])*QTLeffects[]))
-        end
-      end 
-
-#=      ## idem but for regulatory complexes
-      for r in regcompl
-        prom = "RBS" * tar * "reg" * edgTLRN["from"][r] ## name of the promoter binding site for this regulator. prom*"F" => free promoter site, prom*"S" => bound promoter site
-                push!(promList, prom)
-                push!(spec, prom*"F")
-                push!(spec, prom*"B") ## do not add the functional form of the regulator in the list as it will be added during the generation of the regulator's reactions
-        
-        # complexvariants = allposscomb(gcnList, complexsize)
-        for i in 1:size(complexvariants)[1]
-
-        end
-
-      end=#
-
-      ## generate the transcription reactions according to all possible combinations of the promoter site states 
-      temp = allactivepromstates(edgTLRN["RegSign"][regedg])
-      push!(spec, "P"*tar)
-
-      for i in 1:size(temp)[1]
-        promstates = [promList[j]*"F"^(1-temp[i,j])*"B"^temp[i,j] for j in 1:length(promList)]
-        push!(reac, reactBioSim(promstates, vcat(promstates, "R"*tar)))
-        push!(reacnames, "translationGene"*tar*join([("Reg"*edgTLRN["from"][j])^temp[i, j] for j in 1:size(temp)[2]])) ## name of the reaction: transcriptionGene[tarid]RegARegB... with RegA indicating bound regulators
-        mypropens = """$(nod["TLrate"][tarid])*QTLeffects[]""" * join(["""*$(edgTLRN["TLfoldchange"][regedg[j]])*QTLeffects[]"""^temp[i,j] for j in 1:length(regedg)])
-        push!(propens, parse(mypropens))
-      end
-    end
-  end
-
-  return Dict("species" => spec, "reactions" => reac, "reactionsnames" => reacnames, "propensities" => propens)
-
-end
-
-
-
-## Generate the list of reactions for the posttranslational modification of a protein
-## Input :
-##    - tarid: integer, the ID of the target gene
-##    - regedg: the indices (from edg) of the edges correponding to regulation of the target
-##    - nod, edgPTMRN, functform
-
-function createPTM(tarid, regedg, nod, edgPTMRN, functform, gcnList)
-
-  spec = []
-  reac = []
-  reacnames = []
-  propens = []
-
-  regpos = regedg[edgPTMRN["RegSign"][regedg] .== "1"]
-  regneg = regedg[edgPTMRN["RegSign"][regedg] .== "-1"]
-
-
-  for gcn in gcnList
-    tar = string(tarid) * gcn
-    push!(spec, "Pm"*tar)
-
-    ## "positive" regulators turn the protein into its PTM form
-    for r in regpos
-      push!(reac, reactBioSim(["P"*tar, functform[edgPTMRN["from"][r]]],["Pm"*tar, functform[edgPTMRN["from"][r]]]))
-      push!(reacnames, "PTM"*tar*"reg"*edgPTMRN["from"][r])
-      push!(propens, :($(edgPTMRN["PTMrate"][r])*QTLeffects[]))
-    end
-
-    ## "negative" regulators turn the PTM form of the protein into its original form
-    for r in regneg
-      push!(reac, reactBioSim(["Pm"*tar, functform[edgPTMRN["from"][r]]],["P"*tar, functform[edgPTMRN["from"][r]]]))
-      push!(reacnames, "de-PTM"*tar*"reg"*edgPTMRN["from"][r])
-      push!(propens, :($(edgPTMRN["PTMrate"][r])*QTLeffects[]))
-    end
-  end
-  
-  return Dict("species" => spec, "reactions" => reac, "reactionsnames" => reacnames, "propensities" => propens)
-
-end
-
-
-
-## Main function for generating the list of sotchastic reactions for the package BioSimulator
-## Input:
-##    - nod:
-function generateReactionListOld(nod, edgTCRN, edgTLRN, edgRDRN, edgPDRN, edgPTMRN, complexes, complexsize, gcnList, QTLeffects)
-  
-  ## Specify the active form of each regulator, ie the species that performs the regulation
-  ## in the case of complexes the active form is the complex name 
-  functform = merge(Dict(zip(map(string, nod["id"]), nod["ActiveForm"])), Dict(zip(keys(complexes), keys(complexes))))
-
-  ## Output of the function
-  species = []
-  reactions = []
-  reactionsnames = []
-  propensities = []
-
-  
-  tic();for g in nod["id"] ## for each gene in the system
-
-    ## If the gene g is encoding a protein
-    if nod["coding"][g] == "PC"
-
-      ## CONSTRUCTION OF TRANSLATION REACTIONS
-      ## Search for the regulators of the gene translation
-      regedgTL = searchsorted(edgTLRN["to"], g) ## indices of the edges targeting g in the dictionary edg
-      
-      ## Create the list of reactions for gene translation
-      mytl = createTranslation(g, regedgTL, nod, edgTLRN , functform, gcnList)
-      species = vcat(species, mytl["species"])
-      reactions = vcat(reactions, mytl["reactions"])
-      reactionsnames = vcat(reactionsnames, mytl["reactionsnames"])
-      propensities = vcat(propensities, mytl["propensities"])
-
-      ## CONSTRUCTION OF PROTEIN DECAY REACTIONS
-      if nod["PTMform"][g] == "1"
-        regedgPTM = searchsorted(edgPTMRN["to"], g) ## indices of the edges targeting g in the dictionary edg
-
-        ## Create the list of reactions for gene translation
-        myptm = createPTM(g, regedgPTM, nod, edgPTMRN , functform, gcnList)
-        species = vcat(species, myptm["species"])
-        reactions = vcat(reactions, myptm["reactions"])
-        reactionsnames = vcat(reactionsnames, myptm["reactionsnames"])
-        propensities = vcat(propensities, myptm["propensities"])
-      end
-    else
-      regedgTL = []
-    end
-
-    ## CONSTRUCTION OF TRANSCRIPTION REACTIONS
-
-    regTL = edgTLRN["from"][regedgTL] ## id of the translation regulators of the gene; if no regulators or gene is noncoding will be a 0-length array
-
-    ## Search for the regulators of the gene
-    regedgTC = searchsorted(edgTCRN["to"], g) ## indices of the edges targeting g in the dictionary edg
-
-    ## Create the list of reactions for gene transcription
-    mytc = createTranscription(g, regedgTC, regTL, nod, edgTCRN , functform, gcnList)
-    species = vcat(species, mytc["species"])
-    reactions = vcat(reactions, mytc["reactions"])
-    reactionsnames = vcat(reactionsnames, mytc["reactionsnames"])
-    propensities = vcat(propensities, mytc["propensities"])
-
-  end;toc()
-
-
-end
 
 
 function createbindingpromreactions(edg, exprstep, promPrefix, nod, functform, complexes, complexeskinetics, complexsize, complexvariants)
@@ -749,7 +485,10 @@ function createbindingpromreactions(edg, exprstep, promPrefix, nod, functform, c
   regsingl = find( x -> !in('C', x), edg["from"]) ## identify single-molecule regulators (i.e. not regulatory complexes)
   regcompl = find( x -> in('C', x), edg["from"]) ## identify regulatory complexes
 
-  promNodes = Dict(string(i)*j => [] for i in nod["id"], j in gcnList)
+  promActiveStates = Dict(string(i)*j => [] for i in nod["id"], j in gcnList) ## dictionary, 1 element for each allele version of each gene. Value is an array with m elements, 1 for each regulator. 
+                                                                              ## The j-th element of this array is a matrix: rows: all possible active states of the binding site of regulator j (column 1: name of the binding site state, column 2 fold-change associated with this state)
+  promAllStates = Dict(string(i)*j => [] for i in nod["id"], j in gcnList) ## dictionary, 1 element for each allele version of each gene. Value is an array with m elements, 1 for each regulator. 
+                                                                              ## The j-th element of this array is an array, listing all the possible states of the binding site of regulator j (even if not active)
 
   ## Generate the binding of single TL regulators on RNA-binding sites of targets
   for r in regsingl, gcn in gcnList
@@ -762,10 +501,11 @@ function createbindingpromreactions(edg, exprstep, promPrefix, nod, functform, c
     ## Add the binding site and the sign of the regulatory interactions to the dictionary promTL
     #promTL[tar] = vcat(promTL[tar], [prom edg["RegSign"][r]])
     
-    ## temppromstates is a matrix where each lign correspond to an active state of the promoter: 
+    ## tempactivestates is a matrix where each lign correspond to an active state of the promoter: 
     ##    1st column = name of species corresponding to the promoter state, 2nd column = fold change associated with the promoter state
-    temppromstates = [prom*"F" 1]
+    tempactivestates = [prom*"F" 1]
     boundactive = edg["RegSign"][r] == "1" ## are the bound states of the promoter actives i.e. able to transcribe? No if the regulator is a repressor
+    tempallstates = [prom*"F"]
 
     ## Add the free form of the promoter to the list of species (the bound form is specific to the bound molecule)
     push!(spec, prom*"F")
@@ -775,8 +515,9 @@ function createbindingpromreactions(edg, exprstep, promPrefix, nod, functform, c
       ## add the binding reaction to the list
       push!(spec, prombound) ## add the bound promoter to the list of species
       if boundactive
-        temppromstates = vcat(temppromstates, [prombound edg[exprstep*"foldchange"][r]])
+        tempactivestates = vcat(tempactivestates, [prombound edg[exprstep*"foldchange"][r]])
       end
+      push!(tempallstates, prombound)
       push!(react, reactBioSim([prom*"F", functform[reg]*gcnreg], [prombound])) ## promF + reg -> promregB
       push!(reactnames, "binding"*prom*gcnreg)
       push!(propens, :($(edg[exprstep*"bindingrate"][r])*QTLeffects[$(gcn)][$("qtl"*exprstep*"regbind")][$(tarid)]*QTLeffects[$(gcnreg)]["qtlactivity"][$(parse(Int64, reg))]))
@@ -785,10 +526,9 @@ function createbindingpromreactions(edg, exprstep, promPrefix, nod, functform, c
       push!(reactnames, "unbinding"*prom*gcnreg)
       push!(propens, :($(edg[exprstep*"unbindingrate"][r])))
     end
-    # println(promNodes[tar])
-    # println(temppromstates)
-    # println(" --- \n")
-    push!(promNodes[tar], temppromstates)
+
+    push!(promActiveStates[tar], tempactivestates)
+    push!(promAllStates[tar], tempallstates)
 
   end
 
@@ -801,10 +541,11 @@ function createbindingpromreactions(edg, exprstep, promPrefix, nod, functform, c
     ## Create the binding site for regulator
     prom = promPrefix * tar* "reg" * compl
 
-    ## temppromstates is a matrix where each lign correspond to an active state of the promoter: 
+    ## tempactivestates is a matrix where each lign correspond to an active state of the promoter: 
     ##    1st column = name of species corresponding to the promoter state, 2nd column = fold change associated with the promoter state
-    temppromstates = [prom*"F" 1]
+    tempactivestates = [prom*"F" 1]
     boundactive = edg["RegSign"][r] == "1" ## are the bound states of the promoter actives i.e. able to transcribe? No if the regulator is a repressor
+    tempallstates = [prom*"F"]
 
     ## Add the free and bound forms of the promoter to the list of species
     push!(spec, prom*"F")
@@ -815,11 +556,12 @@ function createbindingpromreactions(edg, exprstep, promPrefix, nod, functform, c
       prombound = prom*join(complexvariants[t, :])*"B"
       push!(spec, prombound)
       if boundactive
-        temppromstates = vcat(temppromstates, [prombound edg[exprstep*"foldchange"][r]])
+        tempactivestates = vcat(tempactivestates, [prombound edg[exprstep*"foldchange"][r]])
       end
+      push!(tempallstates, prombound)
       push!(react, reactBioSim([prom*"F", complvar], [prombound])) ## promF + complvar -> promB
       push!(reactnames, "binding"*prom*complvar)
-      prop = """$(edg[exprstep*"bindingrate"][r])*QTLeffects[$(gcn)][$("qtl"*exprstep*"regbind")][$(tarid)]"""*join(["""*QTLeffects[$(complexvariants[t, i])]["qtlactivity"][complexes[compl][i]]""" for i in 1:complexsize])
+      prop = """$(edg[exprstep*"bindingrate"][r])*QTLeffects[$(gcn)][$("qtl"*exprstep*"regbind")][$(tarid)]"""*join(["""*QTLeffects[$(complexvariants[t, i])]["qtlactivity"][$(complexes[compl][i])]""" for i in 1:complexsize])
       push!(propens, parse(prop))
       ## add the unbinding of the complex from the binding site
       push!(react, reactBioSim([prombound], [prom*"F", complvar])) ## promB -> promF + complvar
@@ -827,16 +569,17 @@ function createbindingpromreactions(edg, exprstep, promPrefix, nod, functform, c
       push!(propens, :($(edg[exprstep*"unbindingrate"][r])))
     end
 
-    push!(promNodes[tar], temppromstates)
+    push!(promActiveStates[tar], tempactivestates)
+    push!(promAllStates[tar], tempallstates)
 
   end
 
-  return Dict("species" => spec, "reactions" => react, "reactionsnames" => reactnames, "propensities" => propens, "promNodes" => promNodes)
+  return Dict("species" => spec, "reactions" => react, "reactionsnames" => reactnames, "propensities" => propens, "promActiveStates" => promActiveStates, "promAllStates" => promAllStates)
 
 end
 
 
-function generateReactionList(nod, edgTCRN, edgTLRN, edgRDRN, edgPDRN, edgPTMRN, complexes, complexeskinetics, complexsize, gcnList, QTLeffects)
+function generateReactionList(nod, edgTCRN, edgTLRN, edgRDRN, edgPDRN, edgPTMRN, complexes, complexeskinetics, complexsize, gcnList)
   
   ## Output of the function
   species = []
@@ -852,7 +595,6 @@ function generateReactionList(nod, edgTCRN, edgTLRN, edgRDRN, edgPDRN, edgPTMRN,
   complexvariants = allposscomb(gcnList, complexsize)
 
   ## Generate the formation and dissociation reactions of the different regulatory complexes
-
   for compl in keys(complexes), t in 1:size(complexvariants)[1]
     complvar = compl*"comp"*join([string(complexes[compl][i])*complexvariants[t, i] for i in 1:complexsize])
     push!(species, complvar)
@@ -869,10 +611,11 @@ function generateReactionList(nod, edgTCRN, edgTLRN, edgRDRN, edgPDRN, edgPTMRN,
 
 
   TLbinding = createbindingpromreactions(edgTLRN, "TL", "RBS", nod, functform, complexes, complexeskinetics, complexsize, complexvariants)
-  promTL = TLbinding["promNodes"]
+  promactiveTL = TLbinding["promActiveStates"]
+  promallTL = TLbinding["promAllStates"]
 
   TCbinding = createbindingpromreactions(edgTCRN, "TC", "Pr", nod, functform, complexes, complexeskinetics, complexsize, complexvariants)
-  promTC = TCbinding["promNodes"]
+  promactiveTC = TCbinding["promActiveStates"]
 
   species  = vcat(species, TCbinding["species"], TLbinding["species"])
   reactions  = vcat(reactions, TCbinding["reactions"], TLbinding["reactions"])
@@ -880,36 +623,209 @@ function generateReactionList(nod, edgTCRN, edgTLRN, edgRDRN, edgPDRN, edgPTMRN,
   propensities  = vcat(propensities, TCbinding["propensities"], TLbinding["propensities"])
 
 
-  ## CREATE TRANSCRIPTION REACTIONS
+  ## CREATE TRANSCRIPTION AND RNA DECAY REACTIONS
 
   for g in nod["id"], gcn in gcnList
     gname = string(g) * gcn
-    TCreg = promTC[gname]
-    TLreg = promTL[gname]
+    TCreg = promactiveTC[gname]
+    TLreg = promallTL[gname]
 
-    ## What is the RNA form of the gene? R[gene] if the gene is not controlled at the translation level; otherwise transcription produce the free (unbound) form of each binding site present on the RNA (1 site per TL regulator)
+    ## What is the RNA form of the gene? 
+    ##    R[gene] if the gene is not controlled at the translation level
+    ##    otherwise transcription produces the free (unbound) form of each binding site present on the RNA (1 site per TL regulator)
     if length(TLreg) == 0
       RNAform = ["R"*gname]
       push!(species, "R"*gname)
+      transcriptforms = ["R"*gname] ## for RNA decay
     else
-      RNAform = [t[1,1] for t in TLreg] ## The promTL dictionary is constructed such as each free binding site name is at the position 1,1
+      RNAform = [t[1] for t in TLreg] ## The promallTL dictionary is constructed such as each free binding site name is at the position 1
+      transcriptforms = combinallpromstates(TLreg) ## for RNA decay
     end
 
     if length(TCreg) == 0
-      push!(reactions, reactBioSim([0], [RNAform]))
+      ## Create transcription of the gene 
+      push!(reactions, reactBioSim([0], RNAform))
       push!(reactionsnames, "transcription"*gname)
       push!(propensities, :($(nod["TCrate"][g])*QTLeffects[$(gcn)]["qtlTCrate"][$(g)]))
     else
-      promcomb = combinpromstates(TCreg) ## gives all possible active combinations of the different binding site states
+      promcomb = combinactivepromstates(TCreg) ## gives all possible active combinations of the different binding site states
       for t in 1:size(promcomb["proms"])[1]
-          push!(reactions, reactBioSim(promcomb["proms"][t,:], vcat(promcomb["proms"][1,:], RNAform)))
+          push!(reactions, reactBioSim(promcomb["proms"][t,:], vcat(promcomb["proms"][t,:], RNAform)))
           push!(reactionsnames, "transcription"*join(promcomb["proms"][t,:]))
-          prop = """$(nod["TCrate"][g])*QTLeffects[$(gcn)]["qtlTCrate"][$(g)]*$(prod(promcomb["proms"][t,:]))"""
-          push!(propensities, :($(nod["TCrate"][g])*QTLeffects[$(gcn)]["qtlTCrate"][$(g)]*$(prod(promcomb["proms"][t,:]))))
+          push!(propensities, :($(nod["TCrate"][g])*QTLeffects[$(gcn)]["qtlTCrate"][$(g)]*$(prod(promcomb["fcs"][t,:]))))
+      end
+    end
+
+
+    ## Generate RNA decay reactions
+    edgreg = find(edgRDRN["to"] .== g)
+    edgsingl = edgreg[map(x -> !in('C',x), edgRDRN["from"][edgreg])]
+    edgcompl = edgreg[map(x -> in('C',x), edgRDRN["from"][edgreg])]
+
+    for t in 1:size(transcriptforms)[1]
+      ## Basal decay rate
+      push!(reactions, reactBioSim(transcriptforms[t,:], [0]))
+      push!(reactionsnames, "RNAdecay"*join(transcriptforms[t,:]))
+      push!(propensities, :($(nod["RDrate"][g])*QTLeffects[$(gcn)]["qtlRDrate"][$(g)]))
+
+      for r in edgsingl, gcnreg in gcnList
+        reg = edgRDRN["from"][r]
+        push!(reactions, reactBioSim(vcat(transcriptforms[t,:], functform[reg]*gcnreg), [functform[reg]*gcnreg]))
+        push!(reactionsnames, "RNAdecay"*join(transcriptforms[t,:])*"reg"*reg*gcnreg)
+        push!(propensities, :($(edgRDRN["RDbindingrate"][r])*QTLeffects[$(gcnreg)]["qtlactivity"][$(parse(Int64, reg))]))
+      end
+
+      for r in edgcompl, j in 1:size(complexvariants)[1]
+        compl = edgRDRN["from"][r]
+        complvar = compl*"comp"*join([string(complexes[compl][i])*complexvariants[j, i] for i in 1:complexsize])
+        push!(reactions, reactBioSim(vcat(transcriptforms[t,:], complvar), [complvar]))
+        push!(reactionsnames, "RNAdecay"*join(transcriptforms[t,:])*"reg"*complvar)
+        propens = """$(edgRDRN["RDbindingrate"][r])"""*join(["*"*"""QTLeffects[$(complexvariants[j, i])]["qtlactivity"][$(complexes[compl][i])]""" for i in 1:complexsize])
+        push!(propensities, parse(propens))
+      end
+
+    end
+
+  end
+
+
+
+  ## CREATE TRANSLATION AND PROTEIN DECAY REACTIONS
+
+  for g in nod["id"][nod["coding"] .== "PC"], gcn in gcnList
+    gname = string(g) * gcn
+    TLreg = promactiveTL[gname]
+
+    push!(species, "P"*gname)
+
+
+    if length(TLreg) == 0
+      ## Create transltion of the gene
+      push!(reactions, reactBioSim(["R"*gname], ["P"*gname]))
+      push!(reactionsnames, "translation"*gname)
+      push!(propensities, :($(nod["TLrate"][g])*QTLeffects[$(gcn)]["qtlTLrate"][$(g)]))
+
+    else
+      promcomb = combinactivepromstates(TLreg) ## gives all possible active combinations of the different binding site states
+      for t in 1:size(promcomb["proms"])[1]
+          push!(reactions, reactBioSim(promcomb["proms"][t,:], vcat(promcomb["proms"][t,:], "P"*gname)))
+          push!(reactionsnames, "translation"*join(promcomb["proms"][t,:]))
+          push!(propensities, :($(nod["TLrate"][g])*QTLeffects[$(gcn)]["qtlTLrate"][$(g)]*$(prod(promcomb["fcs"][t,:]))))
+      end
+    end
+
+    ## Create basal protein decay rate
+    push!(reactions, reactBioSim(["P"*gname], [0]))
+    push!(reactionsnames, "proteindecay"*"P"*gname)
+    push!(propensities, :($(nod["PDrate"][g])*QTLeffects[$(gcn)]["qtlPDrate"][$(g)]))
+    if nod["PTMform"][g] =="1"
+      push!(reactions, reactBioSim(["Pm"*gname], [0]))
+      push!(reactionsnames, "proteindecay"*"Pm"*gname)
+      push!(propensities, :($(nod["PDrate"][g])*QTLeffects[$(gcn)]["qtlPDrate"][$(g)]))
+    end
+  end
+
+  ## CREATE REGULATED PROTEIN DECAY
+
+  regsingl = find( x -> !in('C', x), edgPDRN["from"]) ## identify single-molecule regulators (i.e. not regulatory complexes)
+  regcompl = find( x -> in('C', x), edgPDRN["from"]) ## identify regulatory complexes
+
+  for r in regsingl, gcn in gcnList
+    tarid = edgPDRN["to"][r]
+    tar = string(tarid) * gcn
+    reg = edgPDRN["from"][r]
+
+    pform = ["P"*tar]
+    if nod["PTMform"][tarid] == "1"
+      push!(pform, "Pm"*tar)
+    end
+
+    for p in pform, gcnreg in gcnList
+      push!(reactions, reactBioSim([p, functform[reg]*gcnreg], [functform[reg]*gcnreg]))
+      push!(reactionsnames, "proteindecay"*p*"reg"*reg*gcnreg)
+      push!(propensities, :($(edgPDRN["PDbindingrate"][r])*QTLeffects[$(gcnreg)][qtlactivity][$(parse(Int64, reg))]))
+    end
+
+  end
+
+  for r in regcompl, gcn in gcnList
+    tarid = edgPDRN["to"][r]
+    tar = string(tarid) * gcn
+    compl = edgPDRN["from"][r]
+
+    pform = ["P"*tar]
+    if nod["PTMform"][tarid] == "1"
+      push!(pform, "Pm"*tar)
+    end
+
+    for p in pform, t in 1:size(complexvariants)[1]
+      complvariant = compl*"comp"*join([string(complexes[compl][i])*complexvariants[t, i] for i in 1:complexsize])
+      push!(reactions, reactBioSim([p, complvariant], [complvariant]))
+      push!(reactionsnames, "proteindecay"*p*"reg"*complvariant)
+      propens = """$(edgPDRN["PDbindingrate"][r])"""*join(["*"*"""QTLeffects[$(complexvariants[t, i])]["qtlactivity"][$(complexes[compl][i])]""" for i in 1:complexsize])
+      push!(propensities, parse(propens))
+    end
+
+  end
+
+
+  ## CREATE PROTEIN POST-TRANSLATIONAL MODIFICATION
+
+  ## Add to the list of species the PTM forms of involved proteins
+  for g in nod["id"][nod["PTMform"] .== "1"], gcn in gcnList
+    push!(species, "Pm"*string(g)*gcn)
+  end
+
+  regsingl = find( x -> !in('C', x), edgPTMRN["from"]) ## identify single-molecule regulators (i.e. not regulatory complexes)
+  regcompl = find( x -> in('C', x), edgPTMRN["from"]) ## identify regulatory complexes
+
+  for r in regsingl, gcn in gcnList
+    tarid = edgPTMRN["to"][r]
+    tar = string(tarid) * gcn
+    reg = edgPTMRN["from"][r]
+    ispos = edgPTMRN["RegSign"][r] == "1" ## is the regulator transforming the orginal protein into its modified form (RegSign = "1") or the opposite (RegSign = "-1")
+
+    for gcnreg in gcnList
+      if ispos
+        push!(reactions, reactBioSim([ "P"*tar, functform[reg]*gcnreg], ["Pm"*tar, functform[reg]*gcnreg]))
+        push!(reactionsnames, "PTM"*tar*"reg"*reg*gcnreg)
+        push!(propensities, :($(edgPTM["PTMrate"][r])*QTLeffects[$(gcnreg)]["qtlactivity"][$(parse(Int64, reg))]))
+      else
+        push!(reactions, reactBioSim([ "Pm"*tar, functform[reg]*gcnreg], ["P"*tar, functform[reg]*gcnreg]))
+        push!(reactionsnames, "de-PTM"*tar*"reg"*reg*gcnreg)
+        push!(propensities, :($(edgPTM["PTMrate"][r])*QTLeffects[$(gcnreg)]["qtlactivity"][$(parse(Int64, reg))])) 
       end
     end
 
   end
+
+  for r in regcompl, gcn in gcnList
+    tarid = edgPTMRN["to"][r]
+    tar = string(tarid) * gcn
+    compl = edgPTMRN["from"][r]
+    ispos = edgPTMRN["RegSign"][r] == "1" ## is the regulator transforming the orginal protein into its modified form (RegSign = "1") or the opposite (RegSign = "-1")
+
+
+    for p in pform, t in 1:size(complexvariants)[1]
+      complvariant = compl*"comp"*join([string(complexes[compl][i])*complexvariants[t, i] for i in 1:complexsize])
+      
+      if ispos
+        push!(reactions, reactBioSim([ "P"*tar, complvariant], ["Pm"*tar, complvariant]))
+        push!(reactionsnames, "PTM"*tar*"reg"*reg*complvariant)
+        propens = """$(edgPTM["PTMrate"][r])"""*join(["*"*"""QTLeffects[$(complexvariants[t, i])]["qtlactivity"][$(complexes[compl][i])]""" for i in 1:complexsize])
+        push!(propensities, parse(propens))
+      else
+        push!(reactions, reactBioSim([ "Pm"*tar, complvariant], ["P"*tar, complvariant]))
+        push!(reactionsnames, "de-PTM"*tar*"reg"*reg*complvariant)
+        propens = """$(edgPTM["PTMrate"][r])"""*join(["*"*"""QTLeffects[$(complexvariants[t, i])]["qtlactivity"][$(complexes[compl][i])]""" for i in 1:complexsize])
+        push!(propensities, parse(propens))
+      end
+
+    end
+
+  end
+
+  return Dict("species" => species, "reactions" => reactions, "reactionsnames" => reactionsnames, "propensities" => propensities)
 
 end
 
@@ -925,6 +841,7 @@ edgTCRN = Dict{String,Any}(Pair{String,Any}("TCbindingrate", [0.00321405, 0.0047
 edgTLRN = Dict{String,Any}(Pair{String,Any}("TLbindingrate", [0.0075634, 0.00899251, 0.00914503, 0.00456027, 0.00866226, 0.00804967, 0.00706122, 0.00706322, 0.00907255, 0.00944675, 0.00577241, 0.00354473, 0.00517906, 0.00873183, 0.00656527, 0.00351437, 0.00115263, 0.00213262, 0.00395243, 0.00406976, 0.0048827, 0.00555369, 0.00323992, 0.00846262, 0.00549503, 0.00416131, 0.00727439, 0.00981221, 0.00233314, 0.00859894, 0.00359648, 0.00142693, 0.00249592, 0.00712456, 0.00172458, 0.00782158, 0.00392808]),Pair{String,Any}("TargetReaction", String["TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL"]),Pair{String,Any}("TLunbindingrate", [0.00487906, 0.00538211, 0.00634111, 0.00801036, 0.00602788, 0.00736443, 0.00988095, 0.0019663, 0.00963572, 0.00709988, 0.00963074, 0.00309585, 0.00739528, 0.00336303, 0.00119043, 0.008372, 0.00958686, 0.00171852, 0.00974889, 0.00771954, 0.00842176, 0.00285371, 0.00383953, 0.00978057, 0.00262683, 0.00275653, 0.00125189, 0.00166714, 0.00178441, 0.00221861, 0.00592483, 0.00340203, 0.00730519, 0.00985448, 0.00845491, 0.0023016, 0.00690244]),Pair{String,Any}("TLfoldchange", [0.0, 0.0, 3.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 5.0, 0.0, 29.0, 0.0, 28.0, 0.0, 20.0, 16.0, 11.0, 25.0, 0.0, 25.0, 0.0, 0.0, 0.0, 19.0]),Pair{String,Any}("RegSign", String["-1", "-1", "1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "1", "-1", "1", "-1", "1", "-1", "1", "1", "1", "1", "-1", "1", "-1", "-1", "-1", "1"]),Pair{String,Any}("to", [49, 45, 26, 23, 33, 19, 6, 16, 23, 49, 33, 18, 16, 32, 17, 29, 31, 17, 12, 28, 40, 7, 7, 10, 11, 12, 15, 15, 17, 28, 29, 29, 37, 40, 44, 47, 10]),Pair{String,Any}("from", String["2", "2", "2", "2", "2", "2", "3", "3", "3", "3", "3", "3", "20", "20", "20", "25", "25", "25", "34", "36", "41", "1", "19", "32", "26", "31", "11", "46", "40", "15", "1", "29", "29", "8", "1", "47", "CTL1"]))
 edgRDRN = Dict{String,Any}(Pair{String,Any}("TargetReaction", String["RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD"]),Pair{String,Any}("RDbindingrate", [0.00697804, 0.00774964, 0.00449371, 0.00691126, 0.00959166, 0.00921492, 0.00198896, 0.00931222, 0.00596598, 0.00868057, 0.00212075, 0.00382286, 0.00546214, 0.00956411, 0.00476764, 0.00695973, 0.00762754, 0.00366035, 0.00382369, 0.00257641, 0.0045423, 0.00148735, 0.00206899, 0.00265115, 0.00646582, 0.00915574, 0.00710227]),Pair{String,Any}("RDunbindingrate", [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.00255529, 0.0, 0.0, 0.0, 0.0, 0.00489535, 0.00824349, 0.0, 0.0, 0.00915262, 0.00921839, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.00705485, 0.0]),Pair{String,Any}("RegSign", String["1", "1", "1", "1", "1", "1", "1", "1", "-1", "1", "1", "1", "1", "-1", "-1", "1", "1", "-1", "-1", "1", "1", "1", "1", "1", "1", "-1", "1"]),Pair{String,Any}("to", [4, 28, 22, 10, 46, 11, 29, 5, 7, 16, 17, 18, 19, 21, 25, 26, 27, 29, 30, 30, 33, 39, 46, 49, 50, 24, 42]),Pair{String,Any}("from", String["21", "21", "21", "22", "22", "39", "50", "16", "6", "16", "6", "16", "6", "17", "6", "6", "6", "44", "6", "49", "17", "23", "17", "49", "23", "CRD1", "CRD2"]))
 edgPDRN = Dict{String,Any}(Pair{String,Any}("TargetReaction", String["PD", "PD", "PD"]),Pair{String,Any}("RegBy", String["PCreg", "PCreg", "PCreg"]),Pair{String,Any}("RegSign", String["-1", "1", "1"]),Pair{String,Any}("to", [31, 14, 48]),Pair{String,Any}("from", String["48", "48", "48"]),Pair{String,Any}("PDunbindingrate", [0.00570818, 0.0, 0.0]),Pair{String,Any}("PDbindingrate", [0.00289001, 0.00727593, 0.00850916]))
+edgPTMRN = Dict("from" => [], "to" => [], "TargetReaction" => [], "RegSign" => [], "PTMrate" => [])
 
 complexes = Dict("CRD2"=>[6, 23],"CRD1"=>[6, 16],"CTC1"=>[24, 5],"CTC2"=>[24, 45],"CTL1"=>[8, 47])
 complexeskinetics = Dict("CRD2"=>Dict("formationrate"=>0.00604369,"dissociationrate"=>0.00756089),"CRD1"=>Dict("formationrate"=>0.00493894,"dissociationrate"=>0.00610697),"CTC1"=>Dict("formationrate"=>0.00410344,"dissociationrate"=>0.00283723),"CTC2"=>Dict("formationrate"=>0.00346069,"dissociationrate"=>0.00521991),"CTL1"=>Dict("formationrate"=>0.00449745,"dissociationrate"=>0.00485848))
@@ -933,6 +850,7 @@ complexsize = 2
 xploidy = 4
 gcnList = ["GCN"*string(i) for i in 1:xploidy]
 
+test = generateReactionList(nod, edgTCRN, edgTLRN, edgRDRN, edgPDRN, edgPTMRN, complexes, complexeskinetics, complexsize, gcnList)
 =#
 
 
@@ -972,83 +890,6 @@ gcnList = ["GCN"*string(i) for i in 1:xploidy]
 
 
 
-
-#=
-
-## TO BE REMOVED
-function findregsOLD(nodid, edg)
-  res = Dict()
-  edg = edg[sortperm(edg[:,2]), :] ## sort the edg Array according the "to" (destination node) id
-  for n in nodid
-    res[n] = edg[searchsorted(edg[:,2], n),1]
-  end
-
-  return res
-
-end
-
-
-function findregs(nodid, edg)
-  temp = sortperm(edg["to"])
-  temp2 = searchsorted(sort(edg["to"]), nodid)
-  edgind = temp[temp2]
-  res = Dict(Dict(k => edg[k][edgind] for k in Base.keys(edg)))
-  return res
-
-end
-
-
-function createTC(id, TCRNedg, nod, funcform)
-  
-  ## Create basal transcription
-  spec = [string("Pr.", id), string("R.", id)] ## Different species for the gene id
-  reac = [string("Pr.", id, " --> ", "R.", id)]
-  rat = [nod["TCrate"][id]]
-
-  TCregs = findregs(id, TCRNedg) ## find the regulators of the gene
-
-  if length(TCregs["from"]) == 0 ## if no regulator only return the basal transcription reaction
-    return Dict("species" = spec, "reactions" = reac, "rates" = rat)
-
-  elseif length(TCregs["from"]) == 1 ## if only one regulator, create the different reactions for regulation
-    push!(spec, string("Pr.", id, "_", funcform[TCregs["from"][1]])) # new species: promoter bound to regulator molecule
-    push!(reac, string("Pr.", id, " + ", funcform[TCregs["from"][1]], " --> PR.",id, "_", funcform[TCregs["from"][1]]))
-  else 
-
-  end
-
-
-
-end
-
-function reactionList(nod, TCRNedg, TLRNedg , RDRNedg, PDRNedg, PTMedg)
-## Input:
-##    - nod: a dictionary (named list in R) corresponding to the nod data frame in R: for each gene gives its id, function, active form....
-##    - XXRNedg: for each expression step gives the list of regulatory interactions
-
-
-## Output:
-##    - species: an Array of all species in the system
-##    - stochmat: the stochiometry matrix? or an array with string reactions? to be decided 
-##    - rate: the rate of each reaction
-  
-  species = []
-
-  ## Dictionary of functional forms for each gene
-  funcform = Dict(zip(nod["id"], nod["ActiveForm"]))
-
-
-  ## Create the set of species and reactions involved in the expression of each gene
-
-  for g in nodid
-
-  end
-
-
-
-end
-
-=#
 
 
 function whatisit(x)
