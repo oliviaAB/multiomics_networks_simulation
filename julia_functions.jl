@@ -329,7 +329,7 @@ end
 
 
 
-function combreg(target, edgfrom, edgto, edgsign, p, complexsize, reac)
+function combreg(edgfrom, edgto, edgsign, p, complexsize, reac)
 
   edg = [edgfrom edgto edgsign]
   edg = edg[sortperm(edg[:,2]),:] ## sort edges according to the target ids
@@ -338,6 +338,8 @@ function combreg(target, edgfrom, edgto, edgsign, p, complexsize, reac)
   rowstoremove = []
   edgtoadd = Array{Any}(0,3)
   complexsize = Int(complexsize)
+
+  target = unique(edgto)
 
   for tar in target
     temp = searchsorted(edg[:, 2], tar)
@@ -789,11 +791,11 @@ function generateReactionList(nod, edgTCRN, edgTLRN, edgRDRN, edgPDRN, edgPTMRN,
       if ispos
         push!(reactions, reactBioSim([ "P"*tar, functform[reg]*gcnreg], ["Pm"*tar, functform[reg]*gcnreg]))
         push!(reactionsnames, "PTM"*tar*"reg"*reg*gcnreg)
-        push!(propensities, :($(edgPTM["PTMrate"][r])*QTLeffects[$(gcnreg)]["qtlactivity"][$(parse(Int64, reg))]))
+        push!(propensities, :($(edgPTM["PTMbindingrate"][r])*QTLeffects[$(gcnreg)]["qtlactivity"][$(parse(Int64, reg))]))
       else
         push!(reactions, reactBioSim([ "Pm"*tar, functform[reg]*gcnreg], ["P"*tar, functform[reg]*gcnreg]))
         push!(reactionsnames, "de-PTM"*tar*"reg"*reg*gcnreg)
-        push!(propensities, :($(edgPTM["PTMrate"][r])*QTLeffects[$(gcnreg)]["qtlactivity"][$(parse(Int64, reg))])) 
+        push!(propensities, :($(edgPTM["PTMbindingrate"][r])*QTLeffects[$(gcnreg)]["qtlactivity"][$(parse(Int64, reg))])) 
       end
     end
 
@@ -812,12 +814,12 @@ function generateReactionList(nod, edgTCRN, edgTLRN, edgRDRN, edgPDRN, edgPTMRN,
       if ispos
         push!(reactions, reactBioSim([ "P"*tar, complvariant], ["Pm"*tar, complvariant]))
         push!(reactionsnames, "PTM"*tar*"reg"*reg*complvariant)
-        propens = """$(edgPTM["PTMrate"][r])"""*join(["*"*"""QTLeffects[$(complexvariants[t, i])]["qtlactivity"][$(complexes[compl][i])]""" for i in 1:complexsize])
+        propens = """$(edgPTM["PTMbindingrate"][r])"""*join(["*"*"""QTLeffects[$(complexvariants[t, i])]["qtlactivity"][$(complexes[compl][i])]""" for i in 1:complexsize])
         push!(propensities, parse(propens))
       else
         push!(reactions, reactBioSim([ "Pm"*tar, complvariant], ["P"*tar, complvariant]))
         push!(reactionsnames, "de-PTM"*tar*"reg"*reg*complvariant)
-        propens = """$(edgPTM["PTMrate"][r])"""*join(["*"*"""QTLeffects[$(complexvariants[t, i])]["qtlactivity"][$(complexes[compl][i])]""" for i in 1:complexsize])
+        propens = """$(edgPTM["PTMbindingrate"][r])"""*join(["*"*"""QTLeffects[$(complexvariants[t, i])]["qtlactivity"][$(complexes[compl][i])]""" for i in 1:complexsize])
         push!(propensities, parse(propens))
       end
 
@@ -841,7 +843,7 @@ edgTCRN = Dict{String,Any}(Pair{String,Any}("TCbindingrate", [0.00321405, 0.0047
 edgTLRN = Dict{String,Any}(Pair{String,Any}("TLbindingrate", [0.0075634, 0.00899251, 0.00914503, 0.00456027, 0.00866226, 0.00804967, 0.00706122, 0.00706322, 0.00907255, 0.00944675, 0.00577241, 0.00354473, 0.00517906, 0.00873183, 0.00656527, 0.00351437, 0.00115263, 0.00213262, 0.00395243, 0.00406976, 0.0048827, 0.00555369, 0.00323992, 0.00846262, 0.00549503, 0.00416131, 0.00727439, 0.00981221, 0.00233314, 0.00859894, 0.00359648, 0.00142693, 0.00249592, 0.00712456, 0.00172458, 0.00782158, 0.00392808]),Pair{String,Any}("TargetReaction", String["TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL"]),Pair{String,Any}("TLunbindingrate", [0.00487906, 0.00538211, 0.00634111, 0.00801036, 0.00602788, 0.00736443, 0.00988095, 0.0019663, 0.00963572, 0.00709988, 0.00963074, 0.00309585, 0.00739528, 0.00336303, 0.00119043, 0.008372, 0.00958686, 0.00171852, 0.00974889, 0.00771954, 0.00842176, 0.00285371, 0.00383953, 0.00978057, 0.00262683, 0.00275653, 0.00125189, 0.00166714, 0.00178441, 0.00221861, 0.00592483, 0.00340203, 0.00730519, 0.00985448, 0.00845491, 0.0023016, 0.00690244]),Pair{String,Any}("TLfoldchange", [0.0, 0.0, 3.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 5.0, 0.0, 29.0, 0.0, 28.0, 0.0, 20.0, 16.0, 11.0, 25.0, 0.0, 25.0, 0.0, 0.0, 0.0, 19.0]),Pair{String,Any}("RegSign", String["-1", "-1", "1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "1", "-1", "1", "-1", "1", "-1", "1", "1", "1", "1", "-1", "1", "-1", "-1", "-1", "1"]),Pair{String,Any}("to", [49, 45, 26, 23, 33, 19, 6, 16, 23, 49, 33, 18, 16, 32, 17, 29, 31, 17, 12, 28, 40, 7, 7, 10, 11, 12, 15, 15, 17, 28, 29, 29, 37, 40, 44, 47, 10]),Pair{String,Any}("from", String["2", "2", "2", "2", "2", "2", "3", "3", "3", "3", "3", "3", "20", "20", "20", "25", "25", "25", "34", "36", "41", "1", "19", "32", "26", "31", "11", "46", "40", "15", "1", "29", "29", "8", "1", "47", "CTL1"]))
 edgRDRN = Dict{String,Any}(Pair{String,Any}("TargetReaction", String["RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD"]),Pair{String,Any}("RDbindingrate", [0.00697804, 0.00774964, 0.00449371, 0.00691126, 0.00959166, 0.00921492, 0.00198896, 0.00931222, 0.00596598, 0.00868057, 0.00212075, 0.00382286, 0.00546214, 0.00956411, 0.00476764, 0.00695973, 0.00762754, 0.00366035, 0.00382369, 0.00257641, 0.0045423, 0.00148735, 0.00206899, 0.00265115, 0.00646582, 0.00915574, 0.00710227]),Pair{String,Any}("RDunbindingrate", [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.00255529, 0.0, 0.0, 0.0, 0.0, 0.00489535, 0.00824349, 0.0, 0.0, 0.00915262, 0.00921839, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.00705485, 0.0]),Pair{String,Any}("RegSign", String["1", "1", "1", "1", "1", "1", "1", "1", "-1", "1", "1", "1", "1", "-1", "-1", "1", "1", "-1", "-1", "1", "1", "1", "1", "1", "1", "-1", "1"]),Pair{String,Any}("to", [4, 28, 22, 10, 46, 11, 29, 5, 7, 16, 17, 18, 19, 21, 25, 26, 27, 29, 30, 30, 33, 39, 46, 49, 50, 24, 42]),Pair{String,Any}("from", String["21", "21", "21", "22", "22", "39", "50", "16", "6", "16", "6", "16", "6", "17", "6", "6", "6", "44", "6", "49", "17", "23", "17", "49", "23", "CRD1", "CRD2"]))
 edgPDRN = Dict{String,Any}(Pair{String,Any}("TargetReaction", String["PD", "PD", "PD"]),Pair{String,Any}("RegBy", String["PCreg", "PCreg", "PCreg"]),Pair{String,Any}("RegSign", String["-1", "1", "1"]),Pair{String,Any}("to", [31, 14, 48]),Pair{String,Any}("from", String["48", "48", "48"]),Pair{String,Any}("PDunbindingrate", [0.00570818, 0.0, 0.0]),Pair{String,Any}("PDbindingrate", [0.00289001, 0.00727593, 0.00850916]))
-edgPTMRN = Dict("from" => [], "to" => [], "TargetReaction" => [], "RegSign" => [], "PTMrate" => [])
+edgPTMRN = Dict("from" => [], "to" => [], "TargetReaction" => [], "RegSign" => [], "PTMbindingrate" => [])
 
 complexes = Dict("CRD2"=>[6, 23],"CRD1"=>[6, 16],"CTC1"=>[24, 5],"CTC2"=>[24, 45],"CTL1"=>[8, 47])
 complexeskinetics = Dict("CRD2"=>Dict("formationrate"=>0.00604369,"dissociationrate"=>0.00756089),"CRD1"=>Dict("formationrate"=>0.00493894,"dissociationrate"=>0.00610697),"CTC1"=>Dict("formationrate"=>0.00410344,"dissociationrate"=>0.00283723),"CTC2"=>Dict("formationrate"=>0.00346069,"dissociationrate"=>0.00521991),"CTL1"=>Dict("formationrate"=>0.00449745,"dissociationrate"=>0.00485848))
@@ -873,7 +875,7 @@ edgTLRN = Dict("from" => map(string, sample(collect(1:N), E)), "to" => sort(temp
 
 E = 20
 tempCr = sample(collect(1:N), E)
-edgPTMRN = Dict("from" => map(string, sample(collect(1:N), E)), "to" => sort(tempCr), "TargetReaction" => fill("TL", E), "RegSign" => sample(["1", "-1"], E), "PTMrate" => rand(E))
+edgPTMRN = Dict("from" => map(string, sample(collect(1:N), E)), "to" => sort(tempCr), "TargetReaction" => fill("TL", E), "RegSign" => sample(["1", "-1"], E), "PTMbindingrate" => rand(E))
 
 
 #----

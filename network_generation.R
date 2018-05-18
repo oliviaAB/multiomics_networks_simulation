@@ -20,12 +20,9 @@ if(!findJulia(test = T)) stop("Julia is not installed on the computer or not acc
 ##########################################################################################################################
 
 
-## Temporary - load parameters from param_nw.R
+## Temporary
 setwd("~/winData/multiomics_networks_simulation")
-#source("param_nw.R")
 
-## Test the validity of the input parameters
-## TO DO
 
 
 ##########################################################################################################################
@@ -34,6 +31,12 @@ setwd("~/winData/multiomics_networks_simulation")
 
 ## Get Julia functions from source code
 juliaSource(paste0(getwd(),"/julia_functions.jl"))
+
+
+# ------------------------------------------------------------------------------------------------------------ #
+#                                            TEMPORARY FUNCTIONS                                               #
+# ------------------------------------------------------------------------------------------------------------ # 
+
 
 howmanyautoreg = function(edg){
   cat("There are  ")
@@ -47,40 +50,6 @@ howmanyloops = function(edg){
   cat(sum(duplicated.matrix(data.frame("1" = c(res$from, res$to), "2" = c(res$to, res$from))))/2)
   cat("  2-nodes loops in the graph.\n")
 }
-
-
-getregnw = function(regsList, tarsList, reaction, nod){
-  ## Inputs:
-  ##  - regsList: a list of vector with regulator ids. 2 elements: 1st vector is for protein-coding regulators, the 2nd for noncoding regulators (as each can have a different set of target + have a different out-degree distribution)
-  ##  - tarsList: a list of vector with target ids. 2 elements: 1st vector is for protein-coding regulators, the 2nd for noncoding regulators (as each can have a different set of target + have a different out-degree distribution)
-  ##  - which reaction is regulated? (used to retrieve automatically the variables)
-  ##  - the list of nodes from the system
-  
-  ## Construct the network nodes and edges data.frame
-  nwnod = nod[nod$id %in% c(unlist(regsList), unlist(tarsList)),]
-  nwnod = data.frame(nwnod, "nodetype" = rep("target", nrow(nwnod)), stringsAsFactors = F) # add a node attribute specifying if the node is a target, a protein regulator or a noncoding regulator (regulators can be also targets but will be labeled as regulators)
-  nwnod[nwnod$id %in% regsList[["PC"]], "nodetype"] = "PCreg"
-  nwnod[nwnod$id %in% regsList[["NC"]], "nodetype"] = "NCreg"
-  
-  ## Call the julia function nwgeneration to generate the regulatory network where the protein regulators are the regulatory nodes
-  edgPC = juliaGet(juliaCall("nwgeneration", regsList[["PC"]], tarsList[["PC"]], get(paste(reaction, "PC", "indeg.distr", sep = ".")), get(paste(reaction, "PC", "outdeg.distr", sep = ".")), get(paste(reaction, "PC", "outdeg.exp", sep = ".")), get(paste(reaction, "PC", "autoregproba", sep = ".")), get(paste(reaction, "PC", "twonodesloop", sep = "."))))
-
-  ## Call the julia function nwgeneration to generate the regulatory network where the noncoding regulators are the regulatory nodes
-  edgNC = juliaGet(juliaCall("nwgeneration", regsList[["NC"]], tarsList[["NC"]], get(paste(reaction, "NC", "indeg.distr", sep = ".")), get(paste(reaction, "NC", "outdeg.distr", sep = ".")), get(paste(reaction, "NC", "outdeg.exp", sep = ".")), get(paste(reaction, "NC", "autoregproba", sep = ".")), get(paste(reaction, "NC", "twonodesloop", sep = "."))))
-  
-  ## create the edge dataframe
-  nwedg = data.frame("from" = c(edgPC[,1], edgNC[,1]), "to" = c(edgPC[,2], edgNC[,2]), "TargetReaction" = rep(reaction,nrow(edgPC)+nrow(edgNC)), "RegSign" = rep("",nrow(edgPC)+nrow(edgNC)), "RegBy" = rep(c("PCreg", "NCreg"), c(nrow(edgPC), nrow(edgNC))), stringsAsFactors = F)
-  
-  ## Choose the sign (activation or repression) of each regulation (=edge)
-  ## First for the regulatory interactions exerted by protein regulators
-  if(nrow(edgPC) > 0) nwedg$RegSign[1:nrow(edgPC)] = sample(c("1","-1"), nrow(edgPC), prob = c(get(paste(reaction, "PC", "pos.p", sep = ".")), 1 - get(paste(reaction, "PC", "pos.p", sep = "."))), replace = T)
-  ## Then for the regulatory interactions exerted by noncoding regulators
-  if(nrow(edgNC) > 0) nwedg$RegSign[(nrow(edgPC)+1):(nrow(edgPC) + nrow(edgNC))] = sample(c("1","-1"), nrow(edgNC), prob = c(get(paste(reaction, "NC", "pos.p", sep = ".")), 1 - get(paste(reaction, "NC", "pos.p", sep = "."))), replace = T) 
-  
-  return(list("nod" = nwnod, "edg" = nwedg))
-  
-}
-
 
 ggbarplot = function(x, title, labx, laby){
   #data = data.frame("values" = factor(x, level = factor(0:max(x))))
@@ -108,7 +77,7 @@ shownw = function(nw){
   ## Histogram of the in- and out-degree
   #hist(degree(nw, which(V(nw)$nodetype != "target"), mode = "out"), main = "Out-degree of regulators", xlab = "Number of targets per regulator", ylab = "Regulators")
   print(ggbarplot(degree(nw, which(V(nw)$nodetype != "target"), mode = "out"), "Out-degree of regulators", "Number of targets per regulator", "Regulators"))
-
+  
   #hist(degree(nw, mode = "in"), main = "In-degree of genes", xlab = "Number of regulators", ylab = "Targets")
   print(ggbarplot(degree(nw, mode = "in"), "In-degree of genes", "Number of regulators", "Targets"))
   
@@ -126,55 +95,343 @@ shownw = function(nw){
   data = data.frame("values" = as.factor(degree(nwNC, which(V(nwNC)$nodetype == "NCreg"), mode = "out")))
   g = ggplot(data, aes(x = values))+geom_bar()+ggtitle("Out-degree of noncoding regulators") + xlab("Number of targets per noncoding regulator") + ylab("Noncoding regulator")
   print(ggbarplot(degree(nwNC, which(V(nwNC)$nodetype == "NCreg"), mode = "out"), "Out-degree of noncoding regulators", "Number of targets per noncoding regulator", "Noncoding regulator"))
-
+  
   data = data.frame("protreg" = degree(nwPC, mode = "in"), "ncreg" = degree(nwNC, mode = "in"))  
   g = ggplot(data, aes(x = protreg, y = ncreg)) + geom_jitter() + ggtitle("Respective number of protein and noncoding regulators for each gene") + xlab("Number of protein regulators") + ylab("Number of noncoding regulators")
   print(g)
 }
 
 
+# ------------------------------------------------------------------------------------------------------------ #
+#                                     PARAMETERS FOR NETWORK GENERATION                                        #
+# ------------------------------------------------------------------------------------------------------------ # 
 
-##########################################################################################################################
-###                                                      R CODE                                                        ###
-##########################################################################################################################
-
-
-## THis function generates 
-creationsystem = function(){
+## Constructor function for the insilicosystemargs class
+## An object insilicosystemsargs contains a list of all arguments necessary for the generation of an in silico system
+insilicosystemargs = function( ## ----
+                       G = 50, ## G : number of genes in the system
+                       ## protein-coding ratios
+                       PC.p = 0.7, ## PC.p : ratio of protein-coding genes in the system
+                       PC.TC.p = 0.4, ## PC.TC.p : ratio of regulators of transcription among the protein-coding genes
+                       PC.TL.p = 0.3, ## PC.TL.p : ratio of regulators of translation among the protein-coding genes
+                       PC.RD.p = 0.1, ## PC.RD.p : ratio of regulators of RNA decay among the protein-coding genes
+                       PC.PD.p = 0.1, ## PC.PD.p : ratio of regulators of protein decay among the protein-coding genes
+                       PC.PTM.p = 0.05, ## PC.PTM.p : ratio of regulators of protein post-translational modification among the protein-coding genes
+                       PC.MR.p = 0.05, ## PC.MR.p : ratio of metabolic enzymes among the protein-coding genes
+                       PC.PTM.form.p = 0.6, ## PC.PTM.form.p: for protein coding genes, ratio of protein having a PTM form
+                       ## noncoding ratios
+                       NC.TC.p = 0.3, ## NC.TC.p : ratio of regulators of transcription among the noncoding genes
+                       NC.TL.p = 0.35, ## NC.TL.p : ratio of regulators of translation among the noncoding genes
+                       NC.RD.p = 0.3, ## NC.RD.p : ratio of regulators of RNA decay among the noncoding genes
+                       NC.PD.p = 0, ## NC.PD.p : ratio of regulators of protein decay among the noncoding genes
+                       NC.PTM.p = 0.05, ## NC.PTM.p : ratio of regulators of protein post-translational modification among the noncoding genes
+                       ## Ratio of postive/negative regulation
+                       TC.PC.pos.p = 0.5, ## TC.PC.pos.p: probability that the transcription is positively regulated by protein regulators
+                       TC.NC.pos.p = 0.5, ## TC.NC.pos.p: probability that the transcription is positively regulated by noncoding regulators 
+                       TL.PC.pos.p = 0.5, ## TL.PC.pos.p: probability that the translation is positively regulated by protein regulators 
+                       TL.NC.pos.p = 0.05, ## TL.NC.pos.p: probability that the translation is positively regulated by noncoding regulators 
+                       # PTM.PC.pos.p = 0.5, ## PTM.PC.pos.p: probability that the protein decay is is activated by the post-translational modification by protein regulators
+                       # PTM.NC.pos.p = 0.5, ## PTM.NC.pos.p: probability that the protein decay is is activated by the post-translational modification by noncoding regulators
+                       #### Distribution of the different kinetic parameters of genes 
+                       basal_transcription_rate_samplingfct = function(x){ runif(x, 0.01, 0.1) }, ## Function from which the transcription rates of genes are sampled (input x is the required sample size)
+                       basal_translation_rate_samplingfct = function(x){ runif(x, 0.5, 5) }, ## Function from which the translation rates of genes are sampled (input x is the required sample size)
+                       basal_RNAlifetime_samplingfct = function(x){ sample(60:3600, x, replace = T) }, ## Function from which the transcript lifetimes are sampled (input x is the required sample size)
+                       basal_protlifetime_samplingfct = function(x){ sample(5400:14400, x, replace = T) }, ## Function from which the protein lifetime are sampled (input x is the required sample size)
+                       #### TC reg. network properties
+                       TC.PC.outdeg.distr = "powerlaw", ## Form of the distribution of the number of targets of transcription factors (can be either "powerlaw" or "exponential")
+                       TC.NC.outdeg.distr = "powerlaw", ## Form of the the distribution of the number of targets of noncoding RNAs regulating transcription (can be either "powerlaw" or "exponential")
+                       TC.PC.outdeg.exp = 3, ## exponent of the distribution for the out-degree of the protein regulators in the transcription graph
+                       TC.NC.outdeg.exp = 1,   ## exponent of the distribution for the out-degree of the noncoding regulators in the transcription graph
+                       TC.PC.indeg.distr = "powerlaw", ## Type of preferential attachment for the targets of protein regulators in the transcription graph
+                       TC.NC.indeg.distr = "powerlaw", ## Type of preferential attachment for the targets of ncRNAs in the transcription graph
+                       TC.PC.autoregproba = 0.2, ## Probability of protein regulators to perform autoregulation
+                       TC.NC.autoregproba = 0, ## Probability of ncRNAs to perform autoregulation
+                       TC.PC.twonodesloop = FALSE, ## Are 2-nodes loops authorised in the transcription network with protein regulators?
+                       TC.NC.twonodesloop = FALSE, ## Are 2-nodes loops authorised in the transcription network with noncoding regulators?
+                       TCbindingrate_samplingfct = function(x){ runif(x, 0.001, 0.01) }, ## Function from which the binding rate of regulators on target are sampled (input x is the required sample size)
+                       TCunbindingrate_samplingfct = function(x){ runif(x, 0.001, 0.01) }, ## Function from which the unbinding rate of regulators from target are sampled (input x is the required sample size)
+                       TCfoldchange_samplingfct = function(x){ sample(2:30, x, replace = T)  }, ## Function from which the fold change induced by a bound regulator are sampled (input x is the required sample size)
+                       #### TL reg. network properties
+                       TL.PC.outdeg.distr = "powerlaw", ## Form of the distribution of the number of targets of translation factors (can be either "powerlaw" or "exponential")
+                       TL.NC.outdeg.distr = "powerlaw", ## Form of the the distribution of the number of targets of noncoding RNAs regulating translation (can be either "powerlaw" or "exponential")
+                       TL.PC.outdeg.exp = 3, ## exponent of the distribution for the out-degree of the protein regulators in the translation graph
+                       TL.NC.outdeg.exp = 1,   ## exponent of the distribution for the out-degree of the noncoding regulators in the translation graph
+                       TL.PC.indeg.distr = "powerlaw", ## Type of preferential attachment for the targets of protein regulators in the translation graph
+                       TL.NC.indeg.distr = "powerlaw", ## Type of preferential attachment for the targets of ncRNAs in the translation graph
+                       TL.PC.autoregproba = 0.2, ## Probability of protein regulators to perform autoregulation
+                       TL.NC.autoregproba = 0, ## Probability of ncRNAs to perform autoregulation
+                       TL.PC.twonodesloop = FALSE, ## Are 2-nodes loops authorised in the translation network with protein regulators?
+                       TL.NC.twonodesloop = FALSE, ## Are 2-nodes loops authorised in the translation network with noncoding regulators?
+                       TLbindingrate_samplingfct = function(x){ runif(x, 0.001, 0.01) }, ## Function from which the binding rate of regulators on target are sampled (input x is the required sample size)
+                       TLunbindingrate_samplingfct = function(x){ runif(x, 0.001, 0.01) }, ## Function from which the unbinding rate of regulators from target are sampled (input x is the required sample size)
+                       TLfoldchange_samplingfct = function(x){ sample(2:30, x, replace = T)  }, ## Function from which the fold change induced by a bound regulator are sampled (input x is the required sample size)
+                       #### RD reg. network properties
+                       RD.PC.outdeg.distr = "powerlaw", ## Form of the distribution of the number of targets of RNA decay factors (can be either "powerlaw" or "exponential")
+                       RD.NC.outdeg.distr = "powerlaw", ## Form of the the distribution of the number of targets of noncoding RNAs regulating RNA decay (can be either "powerlaw" or "exponential")
+                       RD.PC.outdeg.exp = 3, ## exponent of the distribution for the out-degree of the protein regulators in the RNA decay graph
+                       RD.NC.outdeg.exp = 1,   ## exponent of the distribution for the out-degree of the noncoding regulators in the RNA decay graph
+                       RD.PC.indeg.distr = "powerlaw", ## Type of preferential attachment for the targets of protein regulators in the RNA decay graph
+                       RD.NC.indeg.distr = "powerlaw", ## Type of preferential attachment for the targets of ncRNAs in the RNA decay graph
+                       RD.PC.autoregproba = 0.2, ## Probability of protein regulators to perform autoregulation
+                       RD.NC.autoregproba = 0, ## Probability of ncRNAs to perform autoregulation
+                       RD.PC.twonodesloop = FALSE, ## Are 2-nodes loops authorised in the RNA decay network with protein regulators?
+                       RD.NC.twonodesloop = FALSE, ## Are 2-nodes loops authorised in the RNA decay network with noncoding regulators?
+                       RDbindingrate_samplingfct = function(x){ runif(x, 0.001, 0.01) }, ## Function from which the binding rate of regulators on target are sampled (input x is the required sample size)
+                       #### PD reg. network properties
+                       PD.PC.outdeg.distr = "powerlaw", ## Form of the distribution of the number of targets of protein decay factors (can be either "powerlaw" or "exponential")
+                       PD.NC.outdeg.distr = "powerlaw", ## Form of the the distribution of the number of targets of noncoding RNAs regulating protein decay (can be either "powerlaw" or "exponential")
+                       PD.PC.outdeg.exp = 3, ## exponent of the distribution for the out-degree of the protein regulators in the protein decay graph
+                       PD.NC.outdeg.exp = 1,   ## exponent of the distribution for the out-degree of the noncoding regulators in the protein decay graph
+                       PD.PC.indeg.distr = "powerlaw", ## Type of preferential attachment for the targets of protein regulators in the protein decay graph
+                       PD.NC.indeg.distr = "powerlaw", ## Type of preferential attachment for the targets of ncRNAs in the protein decay graph
+                       PD.PC.autoregproba = 0.2, ## Probability of protein regulators to perform autoregulation
+                       PD.NC.autoregproba = 0, ## Probability of ncRNAs to perform autoregulation
+                       PD.PC.twonodesloop = FALSE, ## Are 2-nodes loops authorised in the protein decay network with protein regulators?
+                       PD.NC.twonodesloop = FALSE, ## Are 2-nodes loops authorised in the protein decay network with noncoding regulators?
+                       PDbindingrate_samplingfct = function(x){ runif(x, 0.001, 0.01) }, ## Function from which the binding rate of regulators on target are sampled (input x is the required sample size)
+                       #### PTM reg. network properties
+                       PTM.PC.outdeg.distr = "powerlaw", ## Form of the distribution of the number of targets of protein post-translational modification factors (can be either "powerlaw" or "exponential")
+                       PTM.NC.outdeg.distr = "powerlaw", ## Form of the the distribution of the number of targets of noncoding RNAs regulating protein post-translational modification (can be either "powerlaw" or "exponential")
+                       PTM.PC.outdeg.exp = 3, ## exponent of the distribution for the out-degree of the protein regulators in the protein post-translational modification graph
+                       PTM.NC.outdeg.exp = 1,   ## exponent of the distribution for the out-degree of the noncoding regulators in the protein post-translational modification graph
+                       PTM.PC.indeg.distr = "powerlaw", ## Type of preferential attachment for the targets of protein regulators in the protein post-translational modification graph
+                       PTM.NC.indeg.distr = "powerlaw", ## Type of preferential attachment for the targets of ncRNAs in the protein post-translational modification graph
+                       PTM.PC.autoregproba = 0.2, ## Probability of protein regulators to perform autoregulation
+                       PTM.NC.autoregproba = 0, ## Probability of ncRNAs to perform autoregulation
+                       PTM.PC.twonodesloop = FALSE, ## Are 2-nodes loops authorised in the protein post-translational modification network with protein regulators?
+                       PTM.NC.twonodesloop = FALSE, ## Are 2-nodes loops authorised in the protein post-translational modification network with noncoding regulators?
+                       PTMbindingrate_samplingfct = function(x){ runif(x, 0.001, 0.01) }, ## Function from which the binding rate of regulators on target are sampled (input x is the required sample size)
+                       ## Regulatory complexes
+                       regcomplexes = 'prot', ## Can the regulators controlling a common target form regulatory complexes? can be 'none', 'prot' (only protein can form regulatory complexes) or 'both' (both RNAs and proteins can form regulatory complexes)
+                       regcomplexes.p = 1, ## probability that regulators controlling a common target form regulatory complexes; ignore if regcomplexes = 'none'
+                       regcomplexes.size = 2, ## number of components of a regulatory complex; ignore if regcomplexes = 'none'
+                       complexesformationrate_samplingfct = function(x){ runif(x, 0.001, 0.01) }, ## Function from which the formation rate of regulatory complexes are sampled (input x is the required sample size)
+                       complexesdissociationrate_samplingfct = function(x){ runif(x, 0.001, 0.01) } ## Function from which the dissociation rate of regulatory complexes are sampled (input x is the required sample size)
+){
   
-  source("param_nw.R")
+  NC.p = 1 - PC.p
   
-  #### 0: CREATION OF THE DIFFERENT VARIABLES ----
+  temp = sum(PC.TC.p + PC.TL.p + PC.RD.p + PC.PTM.p + PC.MR.p)
+  PC.TC.p = PC.TC.p/temp
+  PC.TL.p = PC.TL.p/temp
+  PC.RD.p = PC.RD.p/temp
+  PC.PD.p = PC.PD.p/temp
+  PC.PTM.p = PC.PTM.p/temp
+  PC.MR.p = PC.MR.p/temp
+  
+  temp = sum(NC.TC.p + NC.TL.p + NC.RD.p + NC.PTM.p)
+  NC.TC.p = NC.TC.p/temp
+  NC.TL.p = NC.TL.p/temp
+  NC.RD.p = NC.RD.p/temp
+  NC.PD.p = NC.PD.p/temp
+  NC.PTM.p = NC.PTM.p/temp
+  
+  ## There cannot be negative regulation for transcript and protein decay
+  RD.PC.pos.p = 1 ## RD.PC.pos.p: probability that the RNA decay is positively regulated by protein regulators (faster decay)
+  RD.NC.pos.p = 1 ## RD.NC.pos.p: probability that the RNA decay is positively regulated by noncoding regulators (faster decay)
+  PD.PC.pos.p = 1 ## PD.PC.pos.p: probability that the protein decay is positively regulated by protein regulators (faster decay)
+  PD.NC.pos.p = 1 ## PD.NC.pos.p: probability that the protein decay is positively regulated by noncoding regulators (faster decay)
+  
+  value = list(  "G" = G,
+                 "PC.p" = PC.p,
+                 "PC.TC.p" = PC.TC.p,
+                 "PC.TL.p" = PC.TL.p,
+                 "PC.RD.p" = PC.RD.p,
+                 "PC.PD.p" = PC.PD.p,
+                 "PC.PTM.p" = PC.PTM.p,
+                 "PC.MR.p" = PC.MR.p,
+                 "PC.PTM.form.p" = PC.PTM.form.p,
+                 "NC.p" = NC.p,
+                 "NC.TC.p" = NC.TC.p,
+                 "NC.TL.p" = NC.TL.p,
+                 "NC.RD.p" = NC.RD.p,
+                 "NC.PD.p" = NC.PD.p,
+                 "NC.PTM.p" = NC.PTM.p,
+                 "TC.PC.pos.p" = TC.PC.pos.p,
+                 "TC.NC.pos.p" = TC.NC.pos.p,
+                 "TL.PC.pos.p" = TL.PC.pos.p,
+                 "TL.NC.pos.p" = TL.NC.pos.p,
+                 "RD.PC.pos.p" = RD.PC.pos.p,
+                 "RD.NC.pos.p" = RD.NC.pos.p,
+                 "PD.PC.pos.p" = PD.PC.pos.p,
+                 "PD.NC.pos.p" = PD.NC.pos.p,
+                 # "PTM.PC.pos.p" = PTM.PC.pos.p,
+                 # "PTM.NC.pos.p" = PTM.NC.pos.p,
+                 "basal_transcription_rate_samplingfct" = basal_transcription_rate_samplingfct,
+                 "basal_translation_rate_samplingfct" = basal_translation_rate_samplingfct,
+                 "basal_RNAlifetime_samplingfct" = basal_RNAlifetime_samplingfct,
+                 "basal_protlifetime_samplingfct" = basal_protlifetime_samplingfct,
+                 "TC.PC.outdeg.distr" = TC.PC.outdeg.distr,
+                 "TC.NC.outdeg.distr" = TC.NC.outdeg.distr,
+                 "TC.PC.outdeg.exp" = TC.PC.outdeg.exp, 
+                 "TC.NC.outdeg.exp" = TC.NC.outdeg.exp,
+                 "TC.PC.indeg.distr" = TC.PC.indeg.distr,
+                 "TC.NC.indeg.distr" = TC.NC.indeg.distr,
+                 "TC.PC.autoregproba" = TC.PC.autoregproba,
+                 "TC.NC.autoregproba" = TC.NC.autoregproba,
+                 "TC.PC.twonodesloop" = TC.PC.twonodesloop,
+                 "TC.NC.twonodesloop" = TC.NC.twonodesloop,
+                 "TCbindingrate_samplingfct" = TCbindingrate_samplingfct,
+                 "TCunbindingrate_samplingfct" = TCunbindingrate_samplingfct,
+                 "TCfoldchange_samplingfct" = TCfoldchange_samplingfct,
+                 "TL.PC.outdeg.distr" = TL.PC.outdeg.distr,
+                 "TL.NC.outdeg.distr" = TL.NC.outdeg.distr,
+                 "TL.PC.outdeg.exp" = TL.PC.outdeg.exp,
+                 "TL.NC.outdeg.exp" = TL.NC.outdeg.exp,
+                 "TL.PC.indeg.distr" = TL.PC.indeg.distr,
+                 "TL.NC.indeg.distr" = TL.NC.indeg.distr,
+                 "TL.PC.autoregproba" = TL.PC.autoregproba,
+                 "TL.NC.autoregproba" = TL.NC.autoregproba,
+                 "TL.PC.twonodesloop" = TL.PC.twonodesloop,
+                 "TL.NC.twonodesloop" = TL.NC.twonodesloop,
+                 "TLbindingrate_samplingfct" = TLbindingrate_samplingfct,
+                 "TLunbindingrate_samplingfct" = TLunbindingrate_samplingfct,
+                 "TLfoldchange_samplingfct" = TLfoldchange_samplingfct,
+                 "RD.PC.outdeg.distr" = RD.PC.outdeg.distr,
+                 "RD.NC.outdeg.distr" = RD.NC.outdeg.distr,
+                 "RD.PC.outdeg.exp" = RD.PC.outdeg.exp,
+                 "RD.NC.outdeg.exp" = RD.NC.outdeg.exp, 
+                 "RD.PC.indeg.distr" = RD.PC.indeg.distr,
+                 "RD.NC.indeg.distr" = RD.NC.indeg.distr,
+                 "RD.PC.autoregproba" = RD.PC.autoregproba,
+                 "RD.NC.autoregproba" = RD.NC.autoregproba,
+                 "RD.PC.twonodesloop" = RD.PC.twonodesloop,
+                 "RD.NC.twonodesloop" = RD.NC.twonodesloop,
+                 "RDbindingrate_samplingfct" = RDbindingrate_samplingfct,
+                 "PD.PC.outdeg.distr" = PD.PC.outdeg.distr,
+                 "PD.NC.outdeg.distr" = PD.NC.outdeg.distr,
+                 "PD.PC.outdeg.exp" = PD.PC.outdeg.exp,
+                 "PD.NC.outdeg.exp" = PD.NC.outdeg.exp,
+                 "PD.PC.indeg.distr" = PD.PC.indeg.distr,
+                 "PD.NC.indeg.distr" = PD.NC.indeg.distr,
+                 "PD.PC.autoregproba" = PD.PC.autoregproba,
+                 "PD.NC.autoregproba" = PD.NC.autoregproba,
+                 "PD.PC.twonodesloop" = PD.PC.twonodesloop,
+                 "PD.NC.twonodesloop" = PD.NC.twonodesloop,
+                 "PDbindingrate_samplingfct" = PDbindingrate_samplingfct,
+                 "PTM.PC.outdeg.distr" = PTM.PC.outdeg.distr,
+                 "PTM.NC.outdeg.distr" = PTM.NC.outdeg.distr,
+                 "PTM.PC.outdeg.exp" = PTM.PC.outdeg.exp,
+                 "PTM.NC.outdeg.exp" = PTM.NC.outdeg.exp,
+                 "PTM.PC.indeg.distr" = PTM.PC.indeg.distr,
+                 "PTM.NC.indeg.distr" = PTM.NC.indeg.distr,
+                 "PTM.PC.autoregproba" = PTM.PC.autoregproba,
+                 "PTM.NC.autoregproba" = PTM.NC.autoregproba,
+                 "PTM.PC.twonodesloop" = PTM.PC.twonodesloop,
+                 "PTM.NC.twonodesloop" = PTM.NC.twonodesloop,
+                 "PTMbindingrate_samplingfct" = PTMbindingrate_samplingfct,
+                 "regcomplexes" = regcomplexes,
+                 "regcomplexes.p" = regcomplexes.p,
+                 "regcomplexes.size" = regcomplexes.size ,
+                 "complexesformationrate_samplingfct" = complexesformationrate_samplingfct, 
+                 "complexesdissociationrate_samplingfct" = complexesdissociationrate_samplingfct)
+  
+  
+  attr(value, "class") = "insilicosystemargs"
+  
+  return(value)
+  
+}  ##----
+
+# ------------------------------------------------------------------------------------------------------------ #
+#                                       GENERATE A REGULATORY NETWORK                                          #
+# ------------------------------------------------------------------------------------------------------------ # 
+
+## Inputs:
+##  - regsList: a list of vector with regulator ids. 2 elements: 1st vector is for protein-coding regulators, the 2nd for noncoding regulators (as each can have a different set of target + have a different out-degree distribution)
+##  - tarsList: a list of vector with target ids. 2 elements: 1st vector is for targets of protein-coding regulators, the 2nd for targets of noncoding regulators (as each type of regulator can have a different set of target + have a different out-degree distribution)
+##  - which reaction is regulated? (used to retrieve automatically the variables)
+##  - the data frame of nodes in the system
+##  - sysargs: arguments of the system
+## Outputs:
+##  - nod: data frame of nodes (and ther attributes) in the network
+##  - edg: data frame of edges (and their attributes)
+createRegulatoryNetwork = function(regsList, tarsList, reaction, nod, sysargs){
+  
+  ## Construct the regulatory network nodes and edges data.frame
+  nwnod = nod[nod$id %in% c(unlist(regsList), unlist(tarsList)),]
+  nwnod = data.frame(nwnod, "nodetype" = rep("target", nrow(nwnod)), stringsAsFactors = F) # add a node attribute specifying if the node is a target, a protein regulator or a noncoding regulator (regulators can be also targets but will be labeled as regulators)
+  nwnod[nwnod$id %in% regsList[["PC"]], "nodetype"] = "PCreg"
+  nwnod[nwnod$id %in% regsList[["NC"]], "nodetype"] = "NCreg"
+  
+  ## Call the julia function nwgeneration to generate the regulatory network where the protein regulators are the regulatory nodes
+  edgPC = juliaGet(juliaCall("nwgeneration", regsList[["PC"]], tarsList[["PC"]], sysargs[[paste(reaction, "PC", "indeg.distr", sep = ".")]], sysargs[[paste(reaction, "PC", "outdeg.distr", sep = ".")]], sysargs[[paste(reaction, "PC", "outdeg.exp", sep = ".")]], sysargs[[paste(reaction, "PC", "autoregproba", sep = ".")]], sysargs[[paste(reaction, "PC", "twonodesloop", sep = ".")]]))
+  
+  ## Call the julia function nwgeneration to generate the regulatory network where the noncoding regulators are the regulatory nodes
+  edgNC = juliaGet(juliaCall("nwgeneration", regsList[["NC"]], tarsList[["NC"]], sysargs[[paste(reaction, "NC", "indeg.distr", sep = ".")]], sysargs[[paste(reaction, "NC", "outdeg.distr", sep = ".")]], sysargs[[paste(reaction, "NC", "outdeg.exp", sep = ".")]], sysargs[[paste(reaction, "NC", "autoregproba", sep = ".")]], sysargs[[paste(reaction, "NC", "twonodesloop", sep = ".")]]))
+  
+  ## create the edge dataframe
+  nwedg = data.frame("from" = c(edgPC[,1], edgNC[,1]), "to" = c(edgPC[,2], edgNC[,2]), "TargetReaction" = rep(reaction,nrow(edgPC)+nrow(edgNC)), "RegSign" = rep("",nrow(edgPC)+nrow(edgNC)), "RegBy" = rep(c("PCreg", "NCreg"), c(nrow(edgPC), nrow(edgNC))), stringsAsFactors = F)
+  
+  ## Choose the sign (activation or repression) of each regulation (=edge)
+  ## First for the regulatory interactions exerted by protein regulators
+  if(nrow(edgPC) > 0) nwedg$RegSign[1:nrow(edgPC)] = sample(c("1","-1"), nrow(edgPC), prob = c(sysargs[[paste(reaction, "PC", "pos.p", sep = ".")]], 1 - sysargs[[paste(reaction, "PC", "pos.p", sep = ".")]]), replace = T)
+  ## Then for the regulatory interactions exerted by noncoding regulators
+  if(nrow(edgNC) > 0) nwedg$RegSign[(nrow(edgPC)+1):(nrow(edgPC) + nrow(edgNC))] = sample(c("1","-1"), nrow(edgNC), prob = c(sysargs[[paste(reaction, "NC", "pos.p", sep = ".")]], 1 - sysargs[[paste(reaction, "NC", "pos.p", sep = ".")]]), replace = T) 
+  
+  ## Create corresponding igraph object (to save the regulatory interactions as is, before the creation of the combinatorial regulation)
+  nw = igraph::graph_from_data_frame(d = nwedg, directed = T, vertices = nwnod)
+  
+  ## Creation of combinatorial regulation
+  ## if regcomplexes != 'none', if several regulators control a common target they can form regulatory complexes
+  ## The composition of each complex is stored in complexes
+  ## Complexes can be composed only of proteins if recomplexes = "prot" or protein and noncoding regulators if regcomplexes = "both"
+  
+  if(sysargs[["regcomplexes"]] == "none"){ ## If regulators controlling a same target are not allowed to form a regulatory complex, simply reformat the edg and nod dataframes
+    
+    nwedg$from = sapply(nwedg$from, toString) ## transform the id of regulators from integer to string (not the id of target because we need it to be integer for computational speed later)
+    complexes = list()
+    
+  }else if(sysargs[["regcomplexes"]] == "prot"){ ## If the regulatory complexes can only be protein complexes
+    
+    temp = nwedg[nwedg$RegBy =="PCreg", ]
+    tempregcom = juliaGet(juliaCall("combreg", temp$from, temp$to, temp$RegSign, sysargs[["regcomplexes.p"]], sysargs[["regcomplexes.size"]], reaction))
+    ## only keep the noncoding regulators (the regulation from protein-coding regulators is given by the Julia function combreg)
+    nwedg = nwedg[nwedg$RegBy =="NCreg", c("from", "to", "TargetReaction", "RegSign")]
+    nwedg = rbind(nwedg, data.frame("from" = unlist(tempregcom$newedg[,1]), "to" = unlist(tempregcom$newedg[,2]), "TargetReaction" = rep(reaction, nrow(tempregcom$newedg)), "RegSign" = unlist(tempregcom$newedg[,3])))
+    rownames(nwedg) = NULL
+    complexes = lapply(tempregcom$Complexes, unlist)
+    
+  }else if(sysargs[["regcomplexes"]] == "both"){ ## If the regulatory complexes can be protein/noncoding complexes
+    
+    tempregcom = juliaGet(juliaCall("combreg", nwedg$from, nwedg$to, nwedg$RegSign, regcomplexes.p, regcomplexes.size, reaction))
+    nwedg = data.frame("from" = unlist(tempregcom$newedg[,1]), "to" = unlist(tempregcom$newedg[,2]), "TargetReaction" = rep(reaction, nrow(tempregcom$newedg)), "RegSign" = unlist(tempregcom$newedg[,3]))
+    complexes = lapply(tempregcom$Complexes, unlist)
+    
+  }
+  
+  nwedg = nwedg[order(nwedg$to),]
+  rownames(nwedg) = NULL
+  return(list("nod" = nwnod, "edg" = nwedg, "complexes" = complexes, "igraph" = nw))
+  
+}
+
+
+# ------------------------------------------------------------------------------------------------------------ #
+#                                     GENERATE GENES FOR IN SILICO SYSTEM                                      #
+# ------------------------------------------------------------------------------------------------------------ # 
+
+createGenes = function(sysargs){
   
   ## G.name : genes name 
-  G.nameid = sapply(1:G, function(i){paste0("G_",i)})
+  ##G.nameid = sapply(1:G, function(i){paste0("G_",i)})
   
   ## nod is the vertices data frame (1st column "id" = an integer value (faster for computation), 2nd column "name", 3rd column "coding" (values "NC" or "PC"),  
   ##  4rd column "TargetReaction" (values "TC", "TL", "RD", "PTM", "PD", "MR"), next columns: kinetic parameters (transcription rate, translation rate, RNA decay rate, protein decay rate))
-  nod = data.frame("id" = 1:G, "nameid" = G.nameid, "coding" = rep("", G), "TargetReaction" = rep("", G),  "PTMform" = rep("", G), "ActiveForm" = rep("", G),
+  nod = data.frame("id" = 1:G, "coding" = rep("", G), "TargetReaction" = rep("", G),  "PTMform" = rep("", G), "ActiveForm" = rep("", G),
                    "TCrate" = rep(0,G), "TLrate" = rep(0,G), "RDrate" = rep(0,G), "PDrate" = rep(0,G), stringsAsFactors = F)
   rownames(nod) = nod$id
-  
-  ##edg is the edges data frame (1st column "from", 2nd column "to", 3rd column "TargetReaction" (values "TC", "TL", "RD", "PTM", "PD", "MR"), 4th column "RegSign" (value +1 or -1))
-  edg = data.frame("from" = NULL, "to" = NULL, "TargetReaction" = NULL, "RegSign" = NULL, stringsAsFactors = F)
-  
-  ## complexes is a list where each element gives the components of a regulatory complex, whose id is the name of the element of the list
-  complexes = list()
-  
-  
   
   # ------------------------------------------------
   #### STEP 1: decide the function of each gene ----
   # ------------------------------------------------
   
-  ## Deciding gene function
-  func = sample(c("NC.TC", "NC.TL", "NC.RD", "NC.PTM", "PC.TC", "PC.TL", "PC.RD", "PC.PD", "PC.PTM", "PC.MR"), G, replace = T,
-                prob = c(NC.p*c(NC.TC.p, NC.TL.p, NC.RD.p, NC.PTM.p), PC.p*c(PC.TC.p, PC.TL.p, PC.RD.p, PC.PD.p, PC.PTM.p, PC.MR.p)))
+  ## Deciding gene status
+  nod$coding = sample(c("PC", "NC"), G, prob = c(sysargs[["PC.p"]], sysargs[["NC.p"]]), replace = T)
   
-  ## Extract from func the coding class of each gene (remove everything after the .)
-  nod$coding = sub("\\.[[:alpha:]]+$", "", func)
-  ## Extract from func the targeted reaction for each gene (remove everything after the .)
-  nod$TargetReaction = sub("^[[:alpha:]]+\\.", "", func)
+  ## Deciding gene function (reaction to be regulated)
+  nod$TargetReaction[nod$coding == "PC"] = sample(c("TC", "TL", "RD", "PD", "PTM", "RD"), sum(nod$coding == "PC"), prob = c(sysargs[["PC.TC.p"]], sysargs[["PC.TL.p"]], sysargs[["PC.RD.p"]], sysargs[["PC.PD.p"]], sysargs[["PC.PTM.p"]], sysargs[["PC.MR.p"]]), replace = T)
+  nod$TargetReaction[nod$coding == "NC"] = sample(c("TC", "TL", "RD", "PD", "PTM"), sum(nod$coding == "NC"), prob = c(sysargs[["NC.TC.p"]], sysargs[["NC.TL.p"]], sysargs[["NC.RD.p"]], sysargs[["NC.PD.p"]], sysargs[["NC.PTM.p"]]), replace = T)
   
   ## Choose which proteins (from protein-coding genes) have a PTM form
   nod$PTMform[nod$coding == "PC"] = sample(c("1","0"), sum(nod$coding == "PC"), prob = c(PC.PTM.form.p, 1-PC.PTM.form.p), replace = T)
@@ -192,17 +449,42 @@ creationsystem = function(){
   # ----------------------------------------------------------
   
   ## Transcription rate: applicable to all genes
-  nod$TCrate = get(basal_transcription_rate)(G)
+  nod$TCrate = sysargs[["basal_transcription_rate_samplingfct"]](G)
   
   ## RNA decay rate: applicable to all genes
   ## Sample the lifetime, the decay rate is defined as 1/lifetime
-  nod$RDrate = 1/get(basal_RNAlifetime)(G)
+  nod$RDrate = 1/sysargs[["basal_RNAlifetime_samplingfct"]](G)
   
   ## Translation rate: applicable to protein-coding genes
-  nod$TLrate[nod$coding == "PC"] = get(basal_translation_rate)(sum(nod$coding == "PC"))
+  nod$TLrate[nod$coding == "PC"] = sysargs[["basal_translation_rate_samplingfct"]](sum(nod$coding == "PC"))
   
   ## Protein coding rate: applicable to protein-coding genes
-  nod$PDrate[nod$coding == "PC"] = 1/get(basal_protlifetime)(sum(nod$coding == "PC"))
+  nod$PDrate[nod$coding == "PC"] = 1/sysargs[["basal_protlifetime_samplingfct"]](sum(nod$coding == "PC"))
+  
+  
+}
+
+##########################################################################################################################
+###                                                      R CODE                                                        ###
+##########################################################################################################################
+
+
+## This function generates the in silico system
+## Inputs
+## Outputs:
+##    -
+creationsystem = function(){
+  
+  ## source("param_nw.R", local = T) ## Read the parameters for the construction of the system
+  
+  #### 0: CREATION OF THE DIFFERENT VARIABLES ----
+  
+  
+  ##edg is the edges data frame (1st column "from", 2nd column "to", 3rd column "TargetReaction" (values "TC", "TL", "RD", "PTM", "PD", "MR"), 4th column "RegSign" (value +1 or -1))
+  edg = data.frame("from" = NULL, "to" = NULL, "TargetReaction" = NULL, "RegSign" = NULL, stringsAsFactors = F)
+  
+  ## complexes is a list where each element gives the components of a regulatory complex, whose id is the name of the element of the list
+  complexes = list()
   
   
   # -----------------------------------------------------------------
@@ -216,46 +498,16 @@ creationsystem = function(){
   
   ## which genes are targeted by TFs? here any gene (including the TFs because a TF can autoregulate himself)
   PCtarget.id = nod$id
-  ## which genes are targeted by noncoding RNAs? here any protein-coding gene 
+  ## which genes are targeted by noncoding RNAs? here any protein-coding gene
   NCtarget.id = nod$id[nod$coding == "PC"]
   
   ## Construct the regulatory network
-  TCRN = getregnw(regsList = list("PC" = PCreg.id, "NC" = NCreg.id), tarsList = list("PC" = PCtarget.id, "NC" = NCtarget.id), reaction = "TC", nod = nod)
+  TCRN = createRegulatoryNetwork(regsList = list("PC" = PCreg.id, "NC" = NCreg.id), tarsList = list("PC" = PCtarget.id, "NC" = NCtarget.id), reaction = "TC", nod = nod, sysargs)
   TCRN.nod = TCRN[["nod"]]
   TCRN.edg = TCRN[["edg"]]
-  
-  ## Create corresponding igraph object (to save the regulatory interactions as is, before the creation of the combinatorial regulation)
-  TCRN.nw = igraph::graph_from_data_frame(d = TCRN.edg, directed = T, vertices = TCRN.nod)
-  
-  ## Creation of combinatiorial regulation
-  ## if regcomplexes != 'none', if several regulators control a common target they can form regulatory complexes
-  ## The composition of each complex is stored in complexes
-  ## Complexes can be composed only of proteins if recomplexes = "prot" or protein and noncoding regulators if regcomplexes = "both"
-  
-  if(regcomplexes == "none"){ ## If regulators controlling a same target are not allowed to form a regulatory complex, simply reformat the edg and nod dataframes
-    
-    TCRN.edg$from = sapply(TCRN.edg$from, toString) ## transform the id of regulators from integer to string (not the id of target because we need it to be integer for computational speed later)
+  TCRN.nw = TCRN[["igraph"]]
 
-  }else if(regcomplexes == "prot"){ ## If the regulatory complexes can only be protein complexes
-    
-      temp = TCRN.edg[TCRN.edg$RegBy =="PCreg", ]
-      tempregcom = juliaGet(juliaCall("combreg", PCtarget.id, temp$from, temp$to, temp$RegSign, regcomplexes.p, regcomplexes.size, "TC"))
-      ## only keep the noncoding regulators (the regulation from protein-coding regulators is given by the Julia function combreg)
-      TCRN.edg = TCRN.edg[TCRN.edg$RegBy =="NCreg", c("from", "to", "TargetReaction", "RegSign")]
-      TCRN.edg = rbind(TCRN.edg, data.frame("from" = unlist(tempregcom$newedg[,1]), "to" = unlist(tempregcom$newedg[,2]), "TargetReaction" = rep("TC", nrow(tempregcom$newedg)), "RegSign" = unlist(tempregcom$newedg[,3])))
-      rownames(TCRN.edg) = NULL
-      complexes = c(complexes, lapply(tempregcom$Complexes, unlist))
-      
-  }else if(regcomplexes == "both"){ ## If the regulatory complexes can be protein/noncoding complexes
-    
-    tempregcom = juliaGet(juliaCall("combreg", unique(c(PCtarget.id, NCtarget.id)), TCRN.edg$from, TCRN.edg$to, TCRN.edg$RegSign, regcomplexes.p, regcomplexes.size, "TC"))
-    TCRN.edg = data.frame("from" = unlist(tempregcom$newedg[,1]), "to" = unlist(tempregcom$newedg[,2]), "TargetReaction" = rep("TC", nrow(tempregcom$newedg)), "RegSign" = unlist(tempregcom$newedg[,3]))
-    rownames(TCRN.edg) = NULL
-    complexes = c(complexes, lapply(tempregcom$Complexes, unlist))
-    
-  }
-    
-  
+  complexes = c(complexes, TCRN[["complexes"]])
   
   ## Sample the kinetic parameters of each regulatory interaction
   ##    Kinetic parameters for transcription regulation include the binding and unbinding rate of regulators to gene promoter, and the fold change induced on transcription rate by a regulator bound to the promoter
@@ -300,7 +552,7 @@ creationsystem = function(){
   NCtarget.id = nod$id[nod$coding == "PC"]
   
   ## Construct the regulatory network
-  TLRN = getregnw(regsList = list("PC" = PCreg.id, "NC" = NCreg.id), tarsList = list("PC" = PCtarget.id, "NC" = NCtarget.id), reaction = "TL", nod = nod)
+  TLRN = createRegulatoryNetwork(regsList = list("PC" = PCreg.id, "NC" = NCreg.id), tarsList = list("PC" = PCtarget.id, "NC" = NCtarget.id), reaction = "TL", nod = nod)
   TLRN.nod = TLRN[["nod"]]
   TLRN.edg = TLRN[["edg"]]
   
@@ -357,7 +609,7 @@ creationsystem = function(){
   NCtarget.id = nod$id
   
   ## Construct the regulatory network
-  RDRN = getregnw(regsList = list("PC" = PCreg.id, "NC" = NCreg.id), tarsList = list("PC" = PCtarget.id, "NC" = NCtarget.id), reaction = "RD", nod = nod)
+  RDRN = createRegulatoryNetwork(regsList = list("PC" = PCreg.id, "NC" = NCreg.id), tarsList = list("PC" = PCtarget.id, "NC" = NCtarget.id), reaction = "RD", nod = nod)
   RDRN.nod = RDRN[["nod"]]
   RDRN.edg = RDRN[["edg"]]
   
@@ -414,7 +666,7 @@ creationsystem = function(){
   NCtarget.id = nod$id[nod$coding == "PC"]
   
   ## Construct the regulatory network
-  PDRN = getregnw(regsList = list("PC" = PCreg.id, "NC" = NCreg.id), tarsList = list("PC" = PCtarget.id, "NC" = NCtarget.id), reaction = "PD", nod = nod)
+  PDRN = createRegulatoryNetwork(regsList = list("PC" = PCreg.id, "NC" = NCreg.id), tarsList = list("PC" = PCtarget.id, "NC" = NCtarget.id), reaction = "PD", nod = nod)
   PDRN.nod = PDRN[["nod"]]
   PDRN.edg = PDRN[["edg"]]
   
