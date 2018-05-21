@@ -101,6 +101,18 @@ shownw = function(nw){
   print(g)
 }
 
+systemvisualize = function(mysystem){
+  
+  sys.nw = igraph::graph_from_data_frame(d = mysystem$edg, directed = T, vertices = mysystem$nod)
+  hist(degree(sys.nw, mode = "out"), main = "Out-degree distribution of the global regulatory network", xlab = "Number of targets")
+  hist(degree(sys.nw, mode = "in"), main = "In-degree distribution of the global regulatory network", xlab = "Number of regulators")
+  
+  for(n in c("TCRN", "TLRN", "RDRN", "PDRN")){
+    hist(degree(mysystem[["RN.nw"]][[paste0(n,".nw")]], mode = "out"), main = paste("Out-degree distribution of the", n, "network", sep = " "), xlab = "Number of targets")
+    hist(degree(mysystem[["RN.nw"]][[paste0(n,".nw")]], mode = "in"), main = paste("In-degree distribution of the", n, "network", sep = " "), xlab = "Number of regulators")
+  }
+  
+}
 
 # ------------------------------------------------------------------------------------------------------------ #
 #                                     PARAMETERS FOR NETWORK GENERATION                                        #
@@ -334,77 +346,28 @@ insilicosystemargs = function( ## ----
 }  ##----
 
 # ------------------------------------------------------------------------------------------------------------ #
-#                                       GENERATE A REGULATORY NETWORK                                          #
+#                                   PARAMETERS FOR INDIVIDUAL GENERATION                                       #
 # ------------------------------------------------------------------------------------------------------------ # 
 
-## Inputs:
-##  - regsList: a list of vector with regulator ids. 2 elements: 1st vector is for protein-coding regulators, the 2nd for noncoding regulators (as each can have a different set of target + have a different out-degree distribution)
-##  - tarsList: a list of vector with target ids. 2 elements: 1st vector is for targets of protein-coding regulators, the 2nd for targets of noncoding regulators (as each type of regulator can have a different set of target + have a different out-degree distribution)
-##  - which reaction is regulated? (used to retrieve automatically the variables)
-##  - the data frame of nodes in the system
-##  - sysargs: arguments of the system
-## Outputs:
-##  - nod: data frame of nodes (and ther attributes) in the network
-##  - edg: data frame of edges (and their attributes)
-createRegulatoryNetwork = function(regsList, tarsList, reaction, nod, sysargs){
+## Constructor function for the insilicosystemargs class
+## An object insilicosystemsargs contains a list of all arguments necessary for the generation of an in silico system
+insilicoindividualargs = function( ## ----
+                            ploidy = 4, ## ploidy = number of alleles for each gene
+                            gcnname = "GCN" ## gcnname = name to give to each allele version
+){
   
-  ## Construct the regulatory network nodes and edges data.frame
-  nwnod = nod[nod$id %in% c(unlist(regsList), unlist(tarsList)),]
-  nwnod = data.frame(nwnod, "nodetype" = rep("target", nrow(nwnod)), stringsAsFactors = F) # add a node attribute specifying if the node is a target, a protein regulator or a noncoding regulator (regulators can be also targets but will be labeled as regulators)
-  nwnod[nwnod$id %in% regsList[["PC"]], "nodetype"] = "PCreg"
-  nwnod[nwnod$id %in% regsList[["NC"]], "nodetype"] = "NCreg"
+  gcnList = sapply(1:ploidy, function(x){paste0(gcnname, x)})
+ 
+  value = list("ploidy" = ploidy,
+               "gcnname" = gcnname,
+               "gcnList" = gcnList)
   
-  ## Call the julia function nwgeneration to generate the regulatory network where the protein regulators are the regulatory nodes
-  edgPC = juliaGet(juliaCall("nwgeneration", regsList[["PC"]], tarsList[["PC"]], sysargs[[paste(reaction, "PC", "indeg.distr", sep = ".")]], sysargs[[paste(reaction, "PC", "outdeg.distr", sep = ".")]], sysargs[[paste(reaction, "PC", "outdeg.exp", sep = ".")]], sysargs[[paste(reaction, "PC", "autoregproba", sep = ".")]], sysargs[[paste(reaction, "PC", "twonodesloop", sep = ".")]]))
   
-  ## Call the julia function nwgeneration to generate the regulatory network where the noncoding regulators are the regulatory nodes
-  edgNC = juliaGet(juliaCall("nwgeneration", regsList[["NC"]], tarsList[["NC"]], sysargs[[paste(reaction, "NC", "indeg.distr", sep = ".")]], sysargs[[paste(reaction, "NC", "outdeg.distr", sep = ".")]], sysargs[[paste(reaction, "NC", "outdeg.exp", sep = ".")]], sysargs[[paste(reaction, "NC", "autoregproba", sep = ".")]], sysargs[[paste(reaction, "NC", "twonodesloop", sep = ".")]]))
+  attr(value, "class") = "insilicoindividualargs"
   
-  ## create the edge dataframe
-  nwedg = data.frame("from" = c(edgPC[,1], edgNC[,1]), "to" = c(edgPC[,2], edgNC[,2]), "TargetReaction" = rep(reaction,nrow(edgPC)+nrow(edgNC)), "RegSign" = rep("",nrow(edgPC)+nrow(edgNC)), "RegBy" = rep(c("PCreg", "NCreg"), c(nrow(edgPC), nrow(edgNC))), stringsAsFactors = F)
+  return(value)
   
-  ## Choose the sign (activation or repression) of each regulation (=edge)
-  ## First for the regulatory interactions exerted by protein regulators
-  if(nrow(edgPC) > 0) nwedg$RegSign[1:nrow(edgPC)] = sample(c("1","-1"), nrow(edgPC), prob = c(sysargs[[paste(reaction, "PC", "pos.p", sep = ".")]], 1 - sysargs[[paste(reaction, "PC", "pos.p", sep = ".")]]), replace = T)
-  ## Then for the regulatory interactions exerted by noncoding regulators
-  if(nrow(edgNC) > 0) nwedg$RegSign[(nrow(edgPC)+1):(nrow(edgPC) + nrow(edgNC))] = sample(c("1","-1"), nrow(edgNC), prob = c(sysargs[[paste(reaction, "NC", "pos.p", sep = ".")]], 1 - sysargs[[paste(reaction, "NC", "pos.p", sep = ".")]]), replace = T) 
-  
-  ## Create corresponding igraph object (to save the regulatory interactions as is, before the creation of the combinatorial regulation)
-  nw = igraph::graph_from_data_frame(d = nwedg, directed = T, vertices = nwnod)
-  
-  ## Creation of combinatorial regulation
-  ## if regcomplexes != 'none', if several regulators control a common target they can form regulatory complexes
-  ## The composition of each complex is stored in complexes
-  ## Complexes can be composed only of proteins if recomplexes = "prot" or protein and noncoding regulators if regcomplexes = "both"
-  
-  if(sysargs[["regcomplexes"]] == "none"){ ## If regulators controlling a same target are not allowed to form a regulatory complex, simply reformat the edg and nod dataframes
-    
-    nwedg$from = sapply(nwedg$from, toString) ## transform the id of regulators from integer to string (not the id of target because we need it to be integer for computational speed later)
-    complexes = list()
-    
-  }else if(sysargs[["regcomplexes"]] == "prot"){ ## If the regulatory complexes can only be protein complexes
-    
-    temp = nwedg[nwedg$RegBy =="PCreg", ]
-    tempregcom = juliaGet(juliaCall("combreg", temp$from, temp$to, temp$RegSign, sysargs[["regcomplexes.p"]], sysargs[["regcomplexes.size"]], reaction))
-    ## only keep the noncoding regulators (the regulation from protein-coding regulators is given by the Julia function combreg)
-    nwedg = nwedg[nwedg$RegBy =="NCreg", c("from", "to", "TargetReaction", "RegSign")]
-    nwedg = rbind(nwedg, data.frame("from" = unlist(tempregcom$newedg[,1]), "to" = unlist(tempregcom$newedg[,2]), "TargetReaction" = rep(reaction, nrow(tempregcom$newedg)), "RegSign" = unlist(tempregcom$newedg[,3])))
-    rownames(nwedg) = NULL
-    complexes = lapply(tempregcom$Complexes, unlist)
-    
-  }else if(sysargs[["regcomplexes"]] == "both"){ ## If the regulatory complexes can be protein/noncoding complexes
-    
-    tempregcom = juliaGet(juliaCall("combreg", nwedg$from, nwedg$to, nwedg$RegSign, regcomplexes.p, regcomplexes.size, reaction))
-    nwedg = data.frame("from" = unlist(tempregcom$newedg[,1]), "to" = unlist(tempregcom$newedg[,2]), "TargetReaction" = rep(reaction, nrow(tempregcom$newedg)), "RegSign" = unlist(tempregcom$newedg[,3]))
-    complexes = lapply(tempregcom$Complexes, unlist)
-    
-  }
-  
-  nwedg = nwedg[order(nwedg$to),]
-  rownames(nwedg) = NULL
-  return(list("nod" = nwnod, "edg" = nwedg, "complexes" = complexes, "igraph" = nw))
-  
-}
+}  ##----
 
 
 # ------------------------------------------------------------------------------------------------------------ #
@@ -464,10 +427,86 @@ createGenes = function(sysargs){
   
 }
 
-##########################################################################################################################
-###                                                      R CODE                                                        ###
-##########################################################################################################################
 
+# ------------------------------------------------------------------------------------------------------------ #
+#                                       GENERATE A REGULATORY NETWORK                                          #
+# ------------------------------------------------------------------------------------------------------------ # 
+
+## Inputs:
+##  - regsList: a list of vector with regulator ids. 2 elements: 1st vector is for protein-coding regulators, the 2nd for noncoding regulators (as each can have a different set of target + have a different out-degree distribution)
+##  - tarsList: a list of vector with target ids. 2 elements: 1st vector is for targets of protein-coding regulators, the 2nd for targets of noncoding regulators (as each type of regulator can have a different set of target + have a different out-degree distribution)
+##  - which reaction is regulated? (used to retrieve automatically the variables)
+##  - the data frame of nodes in the system
+##  - sysargs: arguments of the system
+## Outputs:
+##  - nod: data frame of nodes (and ther attributes) in the network
+##  - edg: data frame of edges (and their attributes)
+createRegulatoryNetwork = function(regsList, tarsList, reaction, nod, sysargs){
+  
+  ## Construct the regulatory network nodes and edges data.frame
+  nwnod = nod[nod$id %in% c(unlist(regsList), unlist(tarsList)),]
+  nwnod = data.frame(nwnod, "nodetype" = rep("target", nrow(nwnod)), stringsAsFactors = F) # add a node attribute specifying if the node is a target, a protein regulator or a noncoding regulator (regulators can be also targets but will be labeled as regulators)
+  nwnod[nwnod$id %in% regsList[["PC"]], "nodetype"] = "PCreg"
+  nwnod[nwnod$id %in% regsList[["NC"]], "nodetype"] = "NCreg"
+  
+  ## Call the julia function nwgeneration to generate the regulatory network where the protein regulators are the regulatory nodes
+  edgPC = juliaGet(juliaCall("nwgeneration", regsList[["PC"]], tarsList[["PC"]], sysargs[[paste(reaction, "PC", "indeg.distr", sep = ".")]], sysargs[[paste(reaction, "PC", "outdeg.distr", sep = ".")]], sysargs[[paste(reaction, "PC", "outdeg.exp", sep = ".")]], sysargs[[paste(reaction, "PC", "autoregproba", sep = ".")]], sysargs[[paste(reaction, "PC", "twonodesloop", sep = ".")]]))
+  
+  ## Call the julia function nwgeneration to generate the regulatory network where the noncoding regulators are the regulatory nodes
+  edgNC = juliaGet(juliaCall("nwgeneration", regsList[["NC"]], tarsList[["NC"]], sysargs[[paste(reaction, "NC", "indeg.distr", sep = ".")]], sysargs[[paste(reaction, "NC", "outdeg.distr", sep = ".")]], sysargs[[paste(reaction, "NC", "outdeg.exp", sep = ".")]], sysargs[[paste(reaction, "NC", "autoregproba", sep = ".")]], sysargs[[paste(reaction, "NC", "twonodesloop", sep = ".")]]))
+  
+  ## create the edge dataframe
+  nwedg = data.frame("from" = c(edgPC[,1], edgNC[,1]), "to" = c(edgPC[,2], edgNC[,2]), "TargetReaction" = rep(reaction,nrow(edgPC)+nrow(edgNC)), "RegSign" = rep("",nrow(edgPC)+nrow(edgNC)), "RegBy" = rep(c("PC", "NC"), c(nrow(edgPC), nrow(edgNC))), stringsAsFactors = F)
+  
+  ## Choose the sign (activation or repression) of each regulation (=edge)
+  ## First for the regulatory interactions exerted by protein regulators
+  if(nrow(edgPC) > 0) nwedg$RegSign[1:nrow(edgPC)] = sample(c("1","-1"), nrow(edgPC), prob = c(sysargs[[paste(reaction, "PC", "pos.p", sep = ".")]], 1 - sysargs[[paste(reaction, "PC", "pos.p", sep = ".")]]), replace = T)
+  ## Then for the regulatory interactions exerted by noncoding regulators
+  if(nrow(edgNC) > 0) nwedg$RegSign[(nrow(edgPC)+1):(nrow(edgPC) + nrow(edgNC))] = sample(c("1","-1"), nrow(edgNC), prob = c(sysargs[[paste(reaction, "NC", "pos.p", sep = ".")]], 1 - sysargs[[paste(reaction, "NC", "pos.p", sep = ".")]]), replace = T) 
+  
+  ## Create corresponding igraph object (to save the regulatory interactions as is, before the creation of the combinatorial regulation)
+  nw = igraph::graph_from_data_frame(d = nwedg, directed = T, vertices = nwnod)
+  
+  ## Creation of combinatorial regulation
+  ## if regcomplexes != 'none', if several regulators control a common target they can form regulatory complexes
+  ## The composition of each complex is stored in complexes
+  ## Complexes can be composed only of proteins if recomplexes = "prot" or protein and noncoding regulators if regcomplexes = "both"
+  
+  if(sysargs[["regcomplexes"]] == "none"){ ## If regulators controlling a same target are not allowed to form a regulatory complex, simply reformat the edg and nod dataframes
+    
+    nwedgcomp = nwedg
+    nwedgcomp$from = sapply(nwedgcomp$from, toString) ## transform the id of regulators from integer to string (not the id of target because we need it to be integer for computational speed later)
+    complexes = list()
+    
+  }else if(sysargs[["regcomplexes"]] == "prot"){ ## If the regulatory complexes can only be protein complexes
+    
+    temp = nwedg[nwedg$RegBy =="PC", ]
+    tempregcom = juliaGet(juliaCall("combreg", temp$from, temp$to, temp$RegSign, sysargs[["regcomplexes.p"]], sysargs[["regcomplexes.size"]], reaction))
+    ## only keep the noncoding regulators (the regulation from protein-coding regulators is given by the Julia function combreg)
+    nwedgcomp = nwedg[nwedg$RegBy =="NC", c("from", "to", "TargetReaction", "RegSign")]
+    nwedgcomp = rbind(nwedgcomp, data.frame("from" = unlist(tempregcom$newedg[,1]), "to" = unlist(tempregcom$newedg[,2]), "TargetReaction" = rep(reaction, nrow(tempregcom$newedg)), "RegSign" = unlist(tempregcom$newedg[,3]), stringsAsFactors = F))
+    complexes = lapply(tempregcom$Complexes, unlist)
+    
+  }else if(sysargs[["regcomplexes"]] == "both"){ ## If the regulatory complexes can be protein/noncoding complexes
+    
+    tempregcom = juliaGet(juliaCall("combreg", nwedg$from, nwedg$to, nwedg$RegSign, regcomplexes.p, regcomplexes.size, reaction))
+    nwedgcomp = data.frame("from" = unlist(tempregcom$newedg[,1]), "to" = unlist(tempregcom$newedg[,2]), "TargetReaction" = rep(reaction, nrow(tempregcom$newedg)), "RegSign" = unlist(tempregcom$newedg[,3]), stringsAsFactors = F)
+    complexes = lapply(tempregcom$Complexes, unlist)
+    
+  }
+  
+  nwedg = nwedg[order(nwedg$to),]
+  nwedgcomp = nwedgcomp[order(nwedgcomp$to),]
+  rownames(nwedg) = NULL
+  rownames(nwedgcomp) = NULL
+  return(list("edg" = nwedg, "edgcomp" = nwedgcomp, "complexes" = complexes, "igraph" = nw))
+  
+}
+
+
+# ------------------------------------------------------------------------------------------------------------ #
+#                          GENERATE THE MULTI-OMIC NETWORK (LIST OF REGULATORY NETWORK)                        #
+# ------------------------------------------------------------------------------------------------------------ # 
 
 ## This function generates the different regulatory networks, one for each gene expression step potentially targeted for regulation
 ## Inputs:
@@ -499,9 +538,7 @@ createMultiOmicNetwork = function(nod, sysargs){
   
   ## Construct the regulatory network
   TCRN = createRegulatoryNetwork(regsList = list("PC" = PCreg.id, "NC" = NCreg.id), tarsList = list("PC" = PCtarget.id, "NC" = NCtarget.id), reaction = "TC", nod = nod, sysargs)
-  TCRN.nod = TCRN[["nod"]]
-  TCRN.edg = TCRN[["edg"]]
-  TCRN.nw = TCRN[["igraph"]]
+  TCRN.edg = TCRN[["edgcomp"]]
 
   complexes = c(complexes, TCRN[["complexes"]])
   
@@ -525,10 +562,8 @@ createMultiOmicNetwork = function(nod, sysargs){
   
   ## Construct the regulatory network
   TLRN = createRegulatoryNetwork(regsList = list("PC" = PCreg.id, "NC" = NCreg.id), tarsList = list("PC" = PCtarget.id, "NC" = NCtarget.id), reaction = "TL", nod = nod, sysargs = sysargs)
-  TLRN.nod = TLRN[["nod"]]
-  TLRN.edg = TLRN[["edg"]]
-  TLRN.nw = TLRN[["nw"]]
-  
+  TLRN.edg = TLRN[["edgcomp"]]
+
   complexes = c(complexes, TLRN[["complexes"]])
   
   
@@ -552,15 +587,13 @@ createMultiOmicNetwork = function(nod, sysargs){
   
   ## Construct the regulatory network
   RDRN = createRegulatoryNetwork(regsList = list("PC" = PCreg.id, "NC" = NCreg.id), tarsList = list("PC" = PCtarget.id, "NC" = NCtarget.id), reaction = "RD", nod = nod, sysargs = sysargs)
-  RDRN.nod = RDRN[["nod"]]
-  RDRN.edg = RDRN[["edg"]]
-  RDRN.nw = RDRN[["nw"]]
-  
+  RDRN.edg = RDRN[["edgcomp"]]
+
   complexes = c(complexes, RDRN[["complexes"]])
   
   ## Sample the kinetic parameters of each regulatory interaction
   ##    Kinetic parameters for RNA decay includes the binding (and unbinding for repressors of decay) rate of the regulator on the RNA 
-  RDRN.edg = data.frame(RDRN.edg, "RDbindingrate" = sysargs[["RDbindingrate_samplingfct"]](nrow(RDRN.edg)))
+  RDRN.edg = data.frame(RDRN.edg, "RDbindingrate" = sysargs[["RDbindingrate_samplingfct"]](nrow(RDRN.edg)), stringsAsFactors = F)
 
   
   #### Define protein decay regulatory network (PDRN)
@@ -577,31 +610,31 @@ createMultiOmicNetwork = function(nod, sysargs){
   
   ## Construct the regulatory network
   PDRN = createRegulatoryNetwork(regsList = list("PC" = PCreg.id, "NC" = NCreg.id), tarsList = list("PC" = PCtarget.id, "NC" = NCtarget.id), reaction = "PD", nod = nod, sysargs = sysargs)
-  PDRN.nod = PDRN[["nod"]]
-  PDRN.edg = PDRN[["edg"]]
-  PDRN.nw = PDRN[["nw"]]
+  PDRN.edg = PDRN[["edgcomp"]]
 
   complexes = c(complexes, PDRN[["complexes"]])  
 
   ## Sample the kinetic parameters of each regulatory interaction
   ##    Kinetic parameters for protein decay includes the binding (and unbinding for repressors of decay) rate of the regulator on the protein 
-  PDRN.edg = data.frame(PDRN.edg, "PDbindingrate" = sysargs[["PDbindingrate_samplingfct"]](nrow(PDRN.edg)))
+  PDRN.edg = data.frame(PDRN.edg, "PDbindingrate" = sysargs[["PDbindingrate_samplingfct"]](nrow(PDRN.edg)), stringsAsFactors = F)
 
   
   #### Define protein post-translational modification regulatory network (PTMRN) ----
 
-  PTMRN.edg = data.frame("from" = c(), "to" = c(), "TargetReaction" = c(), "RegSign" = c(), "PTMbindingrate" = c())
-  PTRN.nw = NULL
+  PTMRN.edg = data.frame("from" = character(), "to" = integer(), "TargetReaction" = character(), "RegSign" = character(), "PTMbindingrate" = numeric(), stringsAsFactors = F)
+  PTMRN.nw = NULL
+  PTMRN = list("edg" = data.frame("from" = character(), "to" = integer(), "TargetReaction" = character(), "RegSign" = character(), "PTMbindingrate" = numeric(), "RegBy" = character(), stringsAsFactors = F))
   
   
   #### Define regulatory complexes kinetic parameters
 
   complexeskinetics = list()
-  formrates = sysargs[["complexesformationrate_samplingfct"]](length(complexes))
-  dissrates = sysargs[["complexesdissociationrate_samplingfct"]](length(complexes))
-  for(c in 1:length(complexes)){
-    complexeskinetics[[names(complexes)[c]]] = list("formationrate" = formrates[c], "dissociationrate" = dissrates[c])
-  }
+  if(length(complexes)>0){
+    formrates = sysargs[["complexesformationrate_samplingfct"]](length(complexes))
+    dissrates = sysargs[["complexesdissociationrate_samplingfct"]](length(complexes))
+    for(c in 1:length(complexes)){
+      complexeskinetics[[names(complexes)[c]]] = list("formationrate" = formrates[c], "dissociationrate" = dissrates[c])
+    }}
   
   # -----------------------------------------------------------------
   ####                          RETURN                           ----
@@ -610,9 +643,9 @@ createMultiOmicNetwork = function(nod, sysargs){
   
   
   ## save all the interactions in edg
-  temp = list(TCRN.edg, TLRN.edg, RDRN.edg, PDRN.edg)
+  temp = list(TCRN, TLRN, RDRN, PDRN, PTMRN)
   for(t in temp){
-    edg = rbind(edg, t[,c("from", "to", "TargetReaction", "RegSign")])
+    edg = rbind(edg, t[["edg"]][,c("from", "to", "TargetReaction", "RegSign", "RegBy")])
   }
   
   ## Create the lists to be sent to Julia
@@ -628,37 +661,60 @@ createMultiOmicNetwork = function(nod, sysargs){
   ## Return
   res = list("edg" = edg,
              "complexes" = complexes,
-             "RN.edg" = list("TCRN.edg" = TCRN.edg,
-                            "TLRN.edg" = TLRN.edg,
-                            "RDRN.edg" = RDRN.edg,
-                            "RDRN.edg" = RDRN.edg,
-                            "PDRN.edg" = PDRN.edg),
-             "RN.nw" = list("TCRN.nw" = TCRN.nw,
-                            "TLRN.nw" = TLRN.nw,
-                            "RDRN.nw" = RDRN.nw,
-                            "RDRN.nw" = RDRN.nw,
-                            "PDRN.nw" = PDRN.nw))
+             "complexeskinetics" = complexeskinetics,
+             "TCRN.edg" = TCRN.edg,
+             "TLRN.edg" = TLRN.edg,
+             "RDRN.edg" = RDRN.edg,
+             "RDRN.edg" = RDRN.edg,
+             "PDRN.edg" = PDRN.edg,
+             "PTMRN.edg" = PTMRN.edg,
+             "TCRN.nw" = TCRN[["nw"]],
+             "TLRN.nw" = TLRN[["nw"]],
+             "RDRN.nw" = RDRN[["nw"]],
+             "RDRN.nw" = RDRN[["nw"]],
+             "PDRN.nw" = PDRN[["nw"]],
+             "PTMRN.nw" = PTMRN[["nw"]])
   
   return(res)
 }
 
 
-systemvisualize = function(mysystem){
+
+# ------------------------------------------------------------------------------------------------------------ #
+#                   GENERATE THE LIST OF SPECIES AND REACTIONS FOR THE STOCHASTIC SIMULATION                   #
+# ------------------------------------------------------------------------------------------------------------ # 
+
+createStochSystem = function(nod, mosystem, sysargs, indargs){
   
-  sys.nw = igraph::graph_from_data_frame(d = mysystem$edg, directed = T, vertices = mysystem$nod)
-  hist(degree(sys.nw, mode = "out"), main = "Out-degree distribution of the global regulatory network", xlab = "Number of targets")
-  hist(degree(sys.nw, mode = "in"), main = "In-degree distribution of the global regulatory network", xlab = "Number of regulators")
-  
-  for(n in c("TCRN", "TLRN", "RDRN", "PDRN")){
-    hist(degree(mysystem[["RN.nw"]][[paste0(n,".nw")]], mode = "out"), main = paste("Out-degree distribution of the", n, "network", sep = " "), xlab = "Number of targets")
-    hist(degree(mysystem[["RN.nw"]][[paste0(n,".nw")]], mode = "in"), main = paste("In-degree distribution of the", n, "network", sep = " "), xlab = "Number of regulators")
+  ## Create the network and regulatory complexes lists to be sent to Julia (converted to dictionaries in Julia)
+  temp = list("TCRN.edg", "TLRN.edg", "RDRN.edg", "PDRN.edg", "PTMRN.edg")
+  for(t in temp){
+   new = list()
+   for(cols in colnames(mosystem[[t]])){
+     new[[cols]] = mosystem[[t]][,cols]
+   }
+  assign(t, new)
   }
+  
+
+  ## Create the nod list to be sent to Julia (converted to dictionaries in Julia)
+  new = list()
+  for(cols in colnames(nod)){
+    new[[cols]] = nod[,cols]
+  }
+  assign("nod", new)
+  
+  stochsystem = juliaCall("generateReactionList", nod, TCRN.edg, TLRN.edg, RDRN.edg, PDRN.edg, PTMRN.edg, mosystem$complexes, mosystem$complexeskinetics, as.integer(sysargs$regcomplexes.size), indargs$gcnList)
+  
+  species = unlist(juliaGet(juliaCall("getDictfromKey", stochsystem, "species")))
+  reactions = unlist(juliaGet(juliaCall("getDictfromKey", stochsystem, "reactions")))
+  reactionsnames = unlist(juliaGet(juliaCall("getDictfromKey", stochsystem, "reactionsnames")))
+  
   
 }
 
-
 # howmanyautoreg(edg)
-# howmanyloops(edg)
+# howmanyloops(edg)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 
 # 
 # ############################################################################################################################
 # ############################################################################################################################

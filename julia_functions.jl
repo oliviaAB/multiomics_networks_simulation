@@ -217,118 +217,6 @@ end
 
 
 
-
-
-
-
-function nwgenerationSR(regList, target, indeg, outdegList, outdegexpList, autoregprobaList, twonodesloop) 
-## Input:
-##    - reg: list of lists of regulator nodes (e.g. the first list represents the TFs, and the second list the lncRNAs). Each regulator list can have a different out-degree distribution
-##            but the edges is added considering the "global" in-degree of the targets, i.e. without distinction between the different types of regulators
-##    - target: list of target nodes
-##    - indeg: string variable (either "exponential" or "powerlaw") specifying the type of preferential attachment used to construct the network
-##    - outdeg: list of string variables (either "exponential" or "powerlaw") specifying the type of distribution from which the out-degree of regulators are sampled for each regulator list
-##    - outdegexp: list of the exponents of the out-degree distribution for each of the regulator list
-##    - autoregprobaList: list of probability that a regulatory molecule regulates itself for each regulator list
-##    - twonodesloop: do we allow 2-nodes loops? can be true or false
-
-
-## Output:
-##    - edg: A 2D array of edges, 1st column: from, 2nd column: to
-
-  ## Check that the length of the the regulator list matches the length of the out-degree distribution list and out degree distribution exponent list
-  if length(regList)!=length(outdegList) | length(regList)!=length(outdegexpList) | length(regList)!=length(autoregprobaList)
-    error("Make sure the length of regList, outdegList, outdegexpList and autoregprobaList is the same \n")
-  end
-
-  ## For each list of regulators, sample an out-degree from specified distribution for each regulator
-  out = []
-  reg = [] # gives the ID of regulators of the different lists
-  autoregproba = [] # gives the probability of doing autoregulation for each regulator 
-
-  for l in 1:length(regList)
-
-    ## Get the function for sampling from the desired out- degree distribution
-    if outdegList[l] == "exponential"
-      foutdeg = getfield(current_module(), Symbol("sampleexpon"))
-    elseif outdegList[l] == "powerlaw"
-      foutdeg = getfield(current_module(), Symbol("samplepowerlaw"))  
-    else
-      error("Argument outdeg non-valid: must be exponential or powerlaw")
-    end
-
-    ## Sample the number of target (out-degree) for each regulator in the regulator list l
-    append!(out, foutdeg(length(regList[l]), outdegexpList[l], length(target)))
-    append!(reg, regList[l])  ## keep in memory the id of each regulator associated to the out-degree just sampled
-    append!(autoregproba, fill(autoregprobaList[l], length(regList[l]))) ## keep in memory for each regulator its proba of creating an autoregulatory edge
-  end
-
-  reg = reg[sortperm(out, rev = true)] ## sort regulator id according to their out-degree
-  autoregproba = autoregproba[sortperm(out, rev = true)] ## sort accordingly the probability of each regulator to perform autoregulation
-  sort!(out, rev = true) ## sort the out-degree of the different regulators, without considering the list they are from
-
-  ## Get the function for computing the probability of each target node to receive a new incoming edge for the desired in-degree distribution
-  ##  If in-degree is power law, use the model of preferential attachment from Barabasi-Albert
-  ##  If in-degree is exponential, use the model of preferential attachment from Lachgar
-  if indeg == "exponential"
-    findeg = getfield(current_module(), Symbol("probaInvPA"))
-  elseif indeg == "powerlaw"
-    findeg = getfield(current_module(), Symbol("probaPA"))
-  else
-    error("Argument indeg non-valid: must be exponential or powerlaw")
-  end
-
-
-
-  ## Create the mx2 array of edges (m = number of edges), 1st column = from, 2nd column = to
-  edg = Array{Int64}(0,2)
-
-  ## For each regulator, sample from the target list its target according to its number of targets specified in the out variable
-  for r in eachindex(reg)
-
-    probTar = findeg(target, edg) # compute for each target the probability of being regulated by r
-
-
-    ## we exclude the regulator r from the list of potential targets (autoregulation is treated later)
-    if reg[r] in target
-      probTar[findfirst(y -> y == reg[r], target)] = 0
-    end
-
-    ## How to deal with loops, i.e. if one or more target(s) already control the regulator r
-    ## if twonodesloop == false we don't authorise the regulator to target a node that controls it
-    if !twonodesloop
-      exEdg = isEdge(target, reg[r], edg)
-      probTar[exEdg] = 0
-    end
-
-    ## Make sure that the out-degree of regulator r doesn't exceed the number of targets with non-null proba 
-    out[r] = min(out[r], sum(probTar .> 0))
-    if out[r] == 0
-      println("OUT-DEGREE SET TO 0")
-    end
-
-    ## Sample targets of regulator
-    sa = StatsBase.sample(target, Weights(probTar), out[r], replace = false)
-
-    ## Add the created edges in edg
-    edg = vcat(edg, [fill(reg[r], out[r]) sa])
-
-    ## Add an autoregulatory edge with probability autoregproba
-    if rand() <= autoregproba[r]
-      edg = vcat(edg, [reg[r] reg[r]])
-    end
-
-  end
-
-  return edg
-
-end
-
-
-
-
-
-
 function combreg(edgfrom, edgto, edgsign, p, complexsize, reac)
 
   edg = [edgfrom edgto edgsign]
@@ -477,7 +365,7 @@ end
 
 
 
-function createbindingpromreactions(edg, exprstep, promPrefix, nod, functform, complexes, complexeskinetics, complexsize, complexvariants)
+function createbindingpromreactions(edg, exprstep, promPrefix, nod, functform, complexes, complexeskinetics, complexsize, complexvariants, gcnList)
 
   spec = []
   react = []
@@ -612,11 +500,11 @@ function generateReactionList(nod, edgTCRN, edgTLRN, edgRDRN, edgPDRN, edgPTMRN,
 
 
 
-  TLbinding = createbindingpromreactions(edgTLRN, "TL", "RBS", nod, functform, complexes, complexeskinetics, complexsize, complexvariants)
+  TLbinding = createbindingpromreactions(edgTLRN, "TL", "RBS", nod, functform, complexes, complexeskinetics, complexsize, complexvariants, gcnList)
   promactiveTL = TLbinding["promActiveStates"]
   promallTL = TLbinding["promAllStates"]
 
-  TCbinding = createbindingpromreactions(edgTCRN, "TC", "Pr", nod, functform, complexes, complexeskinetics, complexsize, complexvariants)
+  TCbinding = createbindingpromreactions(edgTCRN, "TC", "Pr", nod, functform, complexes, complexeskinetics, complexsize, complexvariants, gcnList)
   promactiveTC = TCbinding["promActiveStates"]
 
   species  = vcat(species, TCbinding["species"], TLbinding["species"])
@@ -693,7 +581,6 @@ function generateReactionList(nod, edgTCRN, edgTLRN, edgRDRN, edgPDRN, edgPTMRN,
 
 
   ## CREATE TRANSLATION AND PROTEIN DECAY REACTIONS
-
   for g in nod["id"][nod["coding"] .== "PC"], gcn in gcnList
     gname = string(g) * gcn
     TLreg = promactiveTL[gname]
@@ -772,7 +659,6 @@ function generateReactionList(nod, edgTCRN, edgTLRN, edgRDRN, edgPDRN, edgPTMRN,
 
 
   ## CREATE PROTEIN POST-TRANSLATIONAL MODIFICATION
-
   ## Add to the list of species the PTM forms of involved proteins
   for g in nod["id"][nod["PTMform"] .== "1"], gcn in gcnList
     push!(species, "Pm"*string(g)*gcn)
@@ -831,12 +717,16 @@ function generateReactionList(nod, edgTCRN, edgTLRN, edgRDRN, edgPDRN, edgPTMRN,
 
 end
 
+function getDictfromKey(mydict, mykey)
+  return mydict[mykey]
+end
 
 
 #=
 
 ## system of 20 nodes
 workspace()
+include("julia_functions.jl")
 nod = Dict{String,Any}(Pair{String,Any}("TargetReaction", String["TL", "TL", "TL", "TC", "TC", "RD", "TC", "TL", "TC", "TC", "TL", "TC", "TC", "TC", "TL", "RD", "RD", "MR", "TL", "TL", "RD", "RD", "RD", "TC", "TL", "TL", "TC", "TC", "TL", "TC", "TL", "TL", "TC", "TL", "TC", "TL", "TC", "TC", "RD", "TL", "TL", "TC", "PTM", "RD", "TC", "TL", "TL", "PD", "RD", "RD"]),Pair{String,Any}("TCrate", [0.0383058, 0.0354193, 0.069086, 0.0617387, 0.0369238, 0.0624596, 0.0773182, 0.0833146, 0.0502687, 0.0313804, 0.0527055, 0.0432903, 0.0856088, 0.0585721, 0.0452048, 0.0356704, 0.0208695, 0.0670213, 0.0835078, 0.0779509, 0.0776592, 0.0541112, 0.0537629, 0.050601, 0.0935788, 0.0785906, 0.0299127, 0.0495242, 0.0799262, 0.0830136, 0.0184689, 0.0875529, 0.024178, 0.0702895, 0.0728294, 0.0295397, 0.0367362, 0.0986029, 0.011211, 0.0592016, 0.0767439, 0.0478291, 0.04266, 0.0607304, 0.0426131, 0.0921907, 0.0305072, 0.0778754, 0.0362273, 0.0529586]),Pair{String,Any}("RDrate", [0.000413907, 0.000396511, 0.000516262, 0.000287356, 0.000577367, 0.000364166, 0.000644745, 0.000420521, 0.000540833, 0.00100604, 0.00361011, 0.000694444, 0.000315856, 0.000350877, 0.00041425, 0.003663, 0.000322789, 0.000588582, 0.01, 0.00040016, 0.000402576, 0.000288517, 0.00215517, 0.000422654, 0.000745156, 0.0108696, 0.000290951, 0.00157729, 0.00030003, 0.000286287, 0.000786782, 0.000357782, 0.000281611, 0.00038432, 0.000336587, 0.000567215, 0.000361141, 0.000417188, 0.000470367, 0.000331675, 0.000787402, 0.00102354, 0.000865801, 0.000551268, 0.000450248, 0.000684463, 0.00077821, 0.00137174, 0.0025974, 0.000648508]),Pair{String,Any}("id", [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50]),Pair{String,Any}("ActiveForm", String["Pm1", "R2", "R3", "Pm4", "Pm5", "P6", "Pm7", "P8", "R9", "P10", "Pm11", "P12", "Pm13", "Pm14", "Pm15", "P16", "Pm17", "P18", "P19", "R20", "R21", "R22", "Pm23", "P24", "R25", "P26", "R27", "Pm28", "Pm29", "R30", "Pm31", "P32", "Pm33", "R34", "R35", "R36", "Pm37", "R38", "R39", "Pm40", "R41", "Pm42", "Pm43", "Pm44", "P45", "Pm46", "Pm47", "P48", "P49", "R50"]),Pair{String,Any}("coding", String["PC", "NC", "NC", "PC", "PC", "PC", "PC", "PC", "NC", "PC", "PC", "PC", "PC", "PC", "PC", "PC", "PC", "PC", "PC", "NC", "NC", "NC", "PC", "PC", "NC", "PC", "NC", "PC", "PC", "NC", "PC", "PC", "PC", "NC", "NC", "NC", "PC", "NC", "NC", "PC", "NC", "PC", "PC", "PC", "PC", "PC", "PC", "PC", "PC", "NC"]),Pair{String,Any}("TLrate", [4.26806, 0.0, 0.0, 0.620594, 2.80055, 4.59256, 1.04708, 2.53738, 0.0, 1.42765, 0.910486, 0.591064, 4.53948, 2.94196, 1.39797, 3.28256, 0.998617, 4.0215, 2.9922, 0.0, 0.0, 0.0, 1.75604, 4.17647, 0.0, 4.12805, 0.0, 2.73211, 3.54725, 0.0, 4.38978, 3.06126, 4.33202, 0.0, 0.0, 0.0, 3.14571, 0.0, 0.0, 4.79517, 0.0, 0.658, 2.52966, 2.13485, 1.68262, 3.07637, 3.53223, 3.55141, 3.73643, 0.0]),Pair{String,Any}("nameid", String["G_1", "G_2", "G_3", "G_4", "G_5", "G_6", "G_7", "G_8", "G_9", "G_10", "G_11", "G_12", "G_13", "G_14", "G_15", "G_16", "G_17", "G_18", "G_19", "G_20", "G_21", "G_22", "G_23", "G_24", "G_25", "G_26", "G_27", "G_28", "G_29", "G_30", "G_31", "G_32", "G_33", "G_34", "G_35", "G_36", "G_37", "G_38", "G_39", "G_40", "G_41", "G_42", "G_43", "G_44", "G_45", "G_46", "G_47", "G_48", "G_49", "G_50"]),Pair{String,Any}("PTMform", String["1", "0", "0", "1", "1", "0", "1", "0", "0", "0", "1", "0", "1", "1", "1", "0", "1", "0", "0", "0", "0", "0", "1", "0", "0", "0", "0", "1", "1", "0", "1", "0", "1", "0", "0", "0", "1", "0", "0", "1", "0", "1", "1", "1", "0", "1", "1", "0", "0", "0"]),Pair{String,Any}("PDrate", [8.76424e-5, 0.0, 0.0, 0.000133529, 0.000127551, 7.11136e-5, 9.59049e-5, 8.21085e-5, 0.0, 0.000140568, 0.000113109, 9.72479e-5, 8.62069e-5, 0.000105809, 9.37207e-5, 8.05737e-5, 0.00017304, 8.85426e-5, 7.62195e-5, 0.0, 0.0, 0.0, 0.000134517, 0.000146327, 0.0, 8.09323e-5, 0.0, 0.000121197, 0.00014453, 0.0, 7.36485e-5, 0.000121374, 8.54555e-5, 0.0, 0.0, 0.0, 7.60572e-5, 0.0, 0.0, 0.000140115, 0.0, 8.66551e-5, 0.000111532, 0.000106849, 7.32172e-5, 0.000160179, 0.000104232, 0.000107504, 7.64117e-5, 0.0]))
 
 edgTCRN = Dict{String,Any}(Pair{String,Any}("TCbindingrate", [0.00321405, 0.00473435, 0.00298111, 0.00997359, 0.00291898, 0.00353278, 0.00401311, 0.00918377, 0.00882659, 0.00991747, 0.00986185, 0.00773114, 0.00469209, 0.00833767, 0.00769984, 0.00308694, 0.0092009, 0.00546315, 0.00678325, 0.00528333, 0.00498977, 0.00628615, 0.00391206, 0.00753273, 0.00601903, 0.0036557, 0.0084864, 0.00780943, 0.00222953, 0.00341767, 0.00862045, 0.00686601, 0.00132944, 0.00947477, 0.0052604, 0.00279102, 0.00649986, 0.00375578, 0.00460729, 0.00232223, 0.00508685, 0.00581595, 0.00475835]),Pair{String,Any}("TCunbindingrate", [0.00953332, 0.00153581, 0.00438116, 0.00426973, 0.00776465, 0.00440608, 0.00537871, 0.00877117, 0.00303946, 0.00433087, 0.00435096, 0.00107793, 0.00760973, 0.00725071, 0.00517657, 0.00694052, 0.00655797, 0.00328065, 0.00940147, 0.0037251, 0.00747392, 0.00848613, 0.00760885, 0.0058852, 0.00403472, 0.00363345, 0.00683965, 0.00949643, 0.00515598, 0.00686772, 0.00853534, 0.00479064, 0.0057276, 0.00617271, 0.0040537, 0.0011888, 0.00258087, 0.00234804, 0.00195996, 0.00905108, 0.00372552, 0.00246426, 0.00836741]),Pair{String,Any}("TargetReaction", String["TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC"]),Pair{String,Any}("RegSign", String["1", "1", "1", "1", "1", "1", "1", "-1", "-1", "-1", "1", "1", "1", "-1", "1", "1", "-1", "-1", "-1", "-1", "1", "1", "1", "-1", "1", "1", "1", "1", "-1", "1", "-1", "-1", "-1", "-1", "1", "-1", "-1", "-1", "1", "1", "-1", "-1", "1"]),Pair{String,Any}("to", [46, 33, 4, 31, 26, 37, 44, 14, 1, 23, 45, 28, 32, 18, 17, 8, 6, 24, 16, 26, 47, 8, 19, 24, 43, 46, 14, 7, 7, 9, 22, 23, 27, 31, 33, 36, 40, 43, 44, 48, 49, 24, 40]),Pair{String,Any}("from", String["9", "9", "9", "9", "9", "9", "9", "9", "9", "27", "27", "27", "27", "27", "27", "27", "27", "30", "30", "30", "30", "30", "30", "35", "35", "35", "38", "5", "42", "10", "33", "5", "14", "12", "4", "4", "37", "13", "4", "28", "7", "CTC1", "CTC2"]),Pair{String,Any}("TCfoldchange", [20.0, 2.0, 29.0, 10.0, 24.0, 20.0, 13.0, 0.0, 0.0, 0.0, 5.0, 13.0, 12.0, 0.0, 21.0, 9.0, 0.0, 0.0, 0.0, 0.0, 23.0, 8.0, 2.0, 0.0, 3.0, 11.0, 6.0, 24.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 14.0, 0.0, 0.0, 0.0, 23.0, 19.0, 0.0, 0.0, 4.0]))
@@ -852,7 +742,7 @@ complexsize = 2
 xploidy = 4
 gcnList = ["GCN"*string(i) for i in 1:xploidy]
 
-test = generateReactionList(nod, edgTCRN, edgTLRN, edgRDRN, edgPDRN, edgPTMRN, complexes, complexeskinetics, complexsize, gcnList)
+tic(); test = generateReactionList(nod, edgTCRN, edgTLRN, edgRDRN, edgPDRN, edgPTMRN, complexes, complexeskinetics, complexsize, gcnList); toc()
 =#
 
 
@@ -900,7 +790,12 @@ function whatisit(x)
 end
 
 
-
+function superfunction(ar, ind)
+  println(size(ar))
+  println(size(ar[ind]))
+  println(typeof(ar[ind]))
+  return ar[ind]
+end
 
 
 
