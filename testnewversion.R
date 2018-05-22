@@ -2,6 +2,24 @@ library(tictoc)
 
 setwd("~/winData/multiomics_networks_simulation")
 #setwd("~/GitHub/multiomics_networks_simulation")
+
+
+
+source("network_generation.R")
+
+
+mysystemargs = insilicosystemargs(G = 50)
+myinsilicosystem = createInSilicoSystem(mysystemargs)
+
+myindivargs = insilicoindividualargs()
+mypopulation = createPopulation(20, myinsilicosystem, myindivargs)
+
+
+
+
+
+##############################################
+
 source("network_generation.R")
 
 mysystemargs = insilicosystemargs(G = 50)
@@ -11,6 +29,7 @@ mysystemgenes = createGenes(mysystemargs)
 
 mymosystem = createMultiOmicNetwork(mysystemgenes, mysystemargs)
 
+myinsilicosystem = createInSilicoSystem(mysystemargs)
 
 sysargs = mysystemargs
 indargs = myindividualargs
@@ -24,7 +43,6 @@ for(i in 1:1){
   mymosystem = createMultiOmicNetwork(mysystemgenes, mysystemargs)
   }
 toc()
-
 
 ##############################################
 library(RColorBrewer)

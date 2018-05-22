@@ -10,6 +10,8 @@ if(!suppressWarnings(require("igraph", quietly = T))){install.packages("igraph")
 library(igraph)
 if(!suppressWarnings(require("ggplot2", quietly = T))){install.packages("ggplot2")}
 library(ggplot2)
+if(!suppressWarnings(require("truncnorm", quietly = T))){install.packages("truncnorm")}
+library(truncnorm)
 
 ## Test if Julia is installed on the computer
 if(!findJulia(test = T)) stop("Julia is not installed on the computer or not accessible by R. Check that Julia is correcly installed and/or in the PATH variable\n")
@@ -345,6 +347,7 @@ insilicosystemargs = function( ## ----
   
 }  ##----
 
+
 # ------------------------------------------------------------------------------------------------------------ #
 #                                   PARAMETERS FOR INDIVIDUAL GENERATION                                       #
 # ------------------------------------------------------------------------------------------------------------ # 
@@ -353,14 +356,18 @@ insilicosystemargs = function( ## ----
 ## An object insilicosystemsargs contains a list of all arguments necessary for the generation of an in silico system
 insilicoindividualargs = function( ## ----
                             ploidy = 4, ## ploidy = number of alleles for each gene
-                            gcnname = "GCN" ## gcnname = name to give to each allele version
+                            gcnname = "GCN", ## gcnname = name to give to each allele version
+                            ngenevariants = 5, ## number of alleles existing for each gene
+                            qtleffect_samplingfct = function(x){rtruncnorm(x, a = 0, b = Inf, mean = 1, sd = 0.1)} ## function from which is sampled the effect of a QTL (input x is the required sample size)
 ){
   
   gcnList = sapply(1:ploidy, function(x){paste0(gcnname, x)})
  
   value = list("ploidy" = ploidy,
                "gcnname" = gcnname,
-               "gcnList" = gcnList)
+               "gcnList" = gcnList,
+               "ngenevariants" = ngenevariants,
+               "qtleffect_samplingfct" = qtleffect_samplingfct)
   
   
   attr(value, "class") = "insilicoindividualargs"
@@ -369,6 +376,90 @@ insilicoindividualargs = function( ## ----
   
 }  ##----
 
+
+# ------------------------------------------------------------------------------------------------------------ #
+#                                      GENERATE VARIANTS FOR THE GENES                                         #
+# ------------------------------------------------------------------------------------------------------------ # 
+
+## Function that generates the QTL effects of each gene variant 
+## Input
+##    - nod: the data.frame
+createVariants = function(genes, indargs){
+  
+  G = nrow(genes)
+  
+  variants = vector("list", G)
+  names(variants) = genes$id
+  
+  ## names of the qtl effects
+  ## The first 5 are the qtl affecting all genes, the last 4 only affect protein coding genes
+  qtlnames = c("qtlTCrate", "qtlRDrate", "qtlTCregbind", "qtlRDbindreg", "qtlactivity", "qtlTLrate", "qtlPDrate", "qtlTLregbind", "qtlPDregbind")
+    
+  if(indargs$ngenevariants > 1){  
+    for(i in genes$id){
+      potentialqtls = 1:(5 + 4*(genes[i, "coding"] == "PC")) ## protein-coding genes can have mutations affecting more parameters compared to noncoding genes
+      nchanges = sample(potentialqtls, indargs$ngenevariants - 1, replace = T) ## Select the number of "mutations" from the original allele for each variant (minimum 1 otherwise we would have several copies of the original allele)
+                                                                               ## the 1st variant is the original allele - no mutation
+      qtlchanges = unlist(sapply(1:(indargs$ngenevariants-1), function(x){ length(qtlnames)*x + sample(potentialqtls, nchanges[x], replace = F)})) ## sample which qtl are affected by mutations for each variant, and convert it into matrix coordinates
+      ## For each gene, the variants are stocked in the form of a matrix, rows being the different potential qtls and columns being the different gene variaents. Element i,j correspond to the effect of mutation at QTL i for variant j
+      ## The matrix is filled with 1 (no effect, allele identical to the "original allele", and 0 for QTLs that do not exist in the gene (e.g. QTL affecting the translation rate for noncoding genes))
+      temp = matrix(rep(c(1, 0), indargs$ngenevariants * c(length(potentialqtls), length(qtlnames) - length(potentialqtls))), byrow = T, nrow = length(qtlnames), ncol = indargs$ngenevariants, dimnames = list(qtlnames, 1:indargs$ngenevariants))
+      temp[qtlchanges] = indargs$qtleffect_samplingfct(sum(nchanges))
+      variants[[i]] = temp
+    }
+  }else{
+    for(i in genes$id){
+      variants[[i]] = matrix(rep(1, length(qtlnames)), byrow = T, nrow = length(qtlnames), ncol = 1, dimnames = list(qtlnames, 1))
+    }
+  }
+  
+  return(variants)
+  
+}
+
+createIndividual = function(variantsList, indargs){
+
+  G = length(variantsList)
+  QTLeffects = vector("list", indargs$ploidy)
+  names(QTLeffects) = indargs$gcnList
+  ## individualvariants: data frame where rows are genes and columns are "copy number" ids i.e. each columns represent a homolog chromosom
+  ## Element i, j in the data frame corresponds to the variant of gene i present in the homolog chromosom j
+  individualvariants = as.data.frame(matrix(sample(1:indargs$ngenevariants, G*indargs$ploidy, replace = T), nrow = G, ncol = indargs$ploidy))
+  names(individualvariants) = indargs$gcnList
+  qtlnames = c("qtlTCrate", "qtlRDrate", "qtlTCregbind", "qtlRDbindreg", "qtlactivity", "qtlTLrate", "qtlPDrate", "qtlTLregbind", "qtlPDregbind")
+  
+  ## Work for each gene copy (here in the sense each homolog chromosome)
+  for(gcn in indargs$gcnList){
+    QTLeffects[[gcn]] = vector("list", length(qtlnames))
+    names(QTLeffects[[gcn]]) = qtlnames
+    for(q in qtlnames){
+      for(g in 1:G){
+        QTLeffects[[gcn]][[q]][g] = variantsList[[g]][q, individualvariants[g, gcn]]
+      }
+    }
+  }
+  
+  value = list("QTLeffects" = QTLeffects, "haplotype" = individualvariants)
+  attr(value, "class") = "insilicoindividual"
+  
+  return(value)
+}
+
+
+createPopulation = function(nind, insilicosystem, indargs){
+  
+  genvariants = createVariants(insilicosystem$genes, indargs)
+  indnames = sapply(1:nind, function(x){paste0("Ind", x)})
+  individualsList = vector("list", nind)
+  names(individualsList) = indnames
+  
+  for(i in indnames){
+    individualsList[[i]] = createIndividual(genvariants, indargs)
+  }
+  
+  value = list("GenesVariants" = genvariants, "individualsList" = individualsList, "indargs" = indargs)
+  
+}
 
 # ------------------------------------------------------------------------------------------------------------ #
 #                                     GENERATE GENES FOR IN SILICO SYSTEM                                      #
@@ -679,37 +770,50 @@ createMultiOmicNetwork = function(nod, sysargs){
 }
 
 
+createInSilicoSystem = function(sysargs){
+  
+  genes = createGenes(sysargs)
+  
+  mosystem = createMultiOmicNetwork(genes, sysargs)
+  
+  value = list("sysargs" = sysargs, "genes" = genes, "mosystem" = mosystem)
+  attr(value, "class") = "insilicosystem"
+  
+  return(value)
+}
+
 
 # ------------------------------------------------------------------------------------------------------------ #
 #                   GENERATE THE LIST OF SPECIES AND REACTIONS FOR THE STOCHASTIC SIMULATION                   #
 # ------------------------------------------------------------------------------------------------------------ # 
 
-createStochSystem = function(nod, mosystem, sysargs, indargs){
+createStochSystem = function(insilicosystem, indargs){
   
   ## Create the network and regulatory complexes lists to be sent to Julia (converted to dictionaries in Julia)
   temp = list("TCRN.edg", "TLRN.edg", "RDRN.edg", "PDRN.edg", "PTMRN.edg")
   for(t in temp){
    new = list()
-   for(cols in colnames(mosystem[[t]])){
-     new[[cols]] = mosystem[[t]][,cols]
+   for(cols in colnames(insilicosystem[["mosystem"]][[t]])){
+     new[[cols]] = insilicosystem[["mosystem"]][[t]][,cols]
    }
   assign(t, new)
   }
   
 
-  ## Create the nod list to be sent to Julia (converted to dictionaries in Julia)
+  ## Create the gene list to be sent to Julia (converted to dictionaries in Julia)
   new = list()
-  for(cols in colnames(nod)){
-    new[[cols]] = nod[,cols]
+  for(cols in colnames(insilicosystem["genes"])){
+    new[[cols]] = insilicosystem["genes"][,cols]
   }
   assign("nod", new)
   
-  stochsystem = juliaCall("generateReactionList", nod, TCRN.edg, TLRN.edg, RDRN.edg, PDRN.edg, PTMRN.edg, mosystem$complexes, mosystem$complexeskinetics, as.integer(sysargs$regcomplexes.size), indargs$gcnList)
+  stochsystem = juliaCall("generateReactionList", nod, TCRN.edg, TLRN.edg, RDRN.edg, PDRN.edg, PTMRN.edg, insilicosystem$mosystem$complexes, insilicosystem$mosystem$complexeskinetics, as.integer(insilicosystem$sysargs$regcomplexes.size), indargs$gcnList)
   
   species = unlist(juliaGet(juliaCall("getDictfromKey", stochsystem, "species")))
   reactions = unlist(juliaGet(juliaCall("getDictfromKey", stochsystem, "reactions")))
   reactionsnames = unlist(juliaGet(juliaCall("getDictfromKey", stochsystem, "reactionsnames")))
   
+  return(list("JuliaObject" = stochsystem, "species" = species, "reactions" = reactions, "reactionsnames" = reactionsnames))
   
 }
 
