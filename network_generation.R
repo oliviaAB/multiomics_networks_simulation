@@ -8,10 +8,14 @@ if(!suppressWarnings(require("XRJulia", quietly = T))){install.packages("XRJulia
 library(XRJulia)
 if(!suppressWarnings(require("igraph", quietly = T))){install.packages("igraph")}
 library(igraph)
-if(!suppressWarnings(require("ggplot2", quietly = T))){install.packages("ggplot2")}
-library(ggplot2)
 if(!suppressWarnings(require("truncnorm", quietly = T))){install.packages("truncnorm")}
 library(truncnorm)
+if(!suppressWarnings(require("ggplot2", quietly = T))){install.packages("ggplot2")}
+library(ggplot2)
+if(!suppressWarnings(require("egg", quietly = T))){install.packages("egg")}
+library(egg)
+if(!suppressWarnings(require("RColorBrewer", quietly = T))){install.packages("RColorBrewer")}
+library(RColorBrewer)
 
 ## Test if Julia is installed on the computer
 if(!findJulia(test = T)) stop("Julia is not installed on the computer or not accessible by R. Check that Julia is correcly installed and/or in the PATH variable\n")
@@ -817,9 +821,124 @@ createStochSystem = function(insilicosystem, indargs){
   
 }
 
-# howmanyautoreg(edg)
-# howmanyloops(edg)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 
-# 
+# ############################################################################################################################
+#                                                 VISUALISATION
+# ############################################################################################################################
+
+plotGlobalSystem = function(insilicosystem){
+  ## Define the colour palettes
+  mycolsCS = c("PC" = "#b13e25",  "NC" = "#602377", "Tot" = "#31161F")
+  #mycolsCS = c("PC" = "#bf614c",  "NC" = "#a887b4", "Tot" = "#69555c")
+  
+  mycolsGF = brewer.pal(6, "RdYlBu")
+  names(mycolsGF) = c("TC", "TL", "RD", "PD", "PTM", "MR")
+  
+  reactionsnames = c("TC" = "transcription", "TL" = "translation", "RD" = "RNA decay", "PD" = "protein decay", "PTM" = "protein post-translational modification", "MR" = "metabolic reaction")
+  
+  
+  ## -------------------------- ##
+  ## Plot composition of system ##
+  ## -------------------------- ##
+  
+  gCS = ggplot(insilicosystem$genes, aes(x = "1", fill = coding)) +
+    geom_bar() + 
+    scale_fill_manual(values = mycolsCS, drop = F, name = "Coding status", labels = c("PC" = "Protein coding", "NC" = "Noncoding")) + 
+    coord_flip() + 
+    theme(axis.text.y = element_blank(), axis.title.y = element_blank(), axis.ticks.y = element_blank(), plot.title = element_text(hjust = 0.5)) + 
+    ggtitle("Coding status of genes in the system") + ylab("Number of genes") 
+  
+  
+  gGF = ggplot(insilicosystem$genes, aes(x = coding, fill = factor(TargetReaction, levels = rev(c("TC", "TL", "RD", "PD", "PTM", "MR"))))) +
+    geom_bar() + 
+    scale_fill_manual(values = mycolsGF, breaks = c("TC", "TL", "RD", "PD", "PTM", "MR"), drop = F, name = "Gene function ") + 
+    scale_x_discrete(limits = c("PC", "NC"), labels = c("Protein-coding", "Noncoding")) +
+    coord_flip() +
+    theme(axis.text.y = element_text(angle = 90, hjust = 0.5), plot.title = element_text(hjust = 0.5)) + 
+    ggtitle("Coding status and function of genes in the system") + xlab("Coding status") + ylab("Number of genes")
+  
+  # ggarrange(gCS, gGF, ncol = 1, heights = c(0.3, 0.7))
+  
+  ## --------------------------- ##
+  ## Plot overview of regulators ##
+  ## --------------------------- ##
+  
+  
+  gEdgCS = ggplot(insilicosystem$mosystem$edg, aes(x = "1", fill = RegBy)) +
+    geom_bar() + 
+    scale_fill_manual(values = mycolsCS, drop = F, name = "Regulator\ncoding status", labels = c("PC" = "Protein coding", "NC" = "Noncoding")) + 
+    coord_flip() + 
+    theme(axis.text.y = element_blank(), axis.title.y = element_blank(), axis.ticks.y = element_blank(), plot.title = element_text(hjust = 0.5)) + 
+    ggtitle("Ratio of regulatory interactions performed by\nprotein coding vs noncoding regulators") + ylab("Number of regulatory interactions") 
+  
+  gEdgGF = ggplot(insilicosystem$mosystem$edg, aes(x = "1", fill = factor(TargetReaction, levels = rev(c("TC", "TL", "RD", "PD", "PTM"))))) +
+    geom_bar() + 
+    scale_fill_manual(values = mycolsGF, breaks = c("TC", "TL", "RD", "PD", "PTM"), drop = F, name = "Gene function ") + 
+    coord_flip() +
+    theme(axis.text.y = element_blank(),axis.title.y = element_blank(), axis.ticks.y = element_blank(), plot.title = element_text(hjust = 0.5)) + 
+    ggtitle("Nature of expression step targeted by each regulatory interactions") + ylab("Number of regulatory interactions")
+  
+  
+  genindex = 1:mysystemargs$G
+  indegtot = sapply(genindex, function(x){sum(insilicosystem$mosystem$edg$to == x)})
+  indegGF = sapply(genindex, function(x){sum(insilicosystem$mosystem$edg$to == x & insilicosystem$mosystem$edg$TargetReaction == "TC")})
+  genorder = genindex[order(indegGF, decreasing = T)]
+  indegtot = indegtot[order(indegGF, decreasing = T)]
+  genorder = genorder[order(indegtot, decreasing = T)]
+  
+  gIDTGF = ggplot(insilicosystem$mosystem$edg, aes(x = factor(to, as.character(genorder)), fill = factor(TargetReaction, levels = rev(c("TC", "TL", "RD", "PD", "PTM"))))) + 
+    geom_bar() + 
+    scale_fill_manual(values = mycolsGF, breaks = c("TC", "TL", "RD", "PD", "PTM"), drop = F, name = "Type of\nregulation") + 
+    theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(), plot.title = element_text(hjust = 0.5)) + 
+    ggtitle("Number and type of regulators for each gene") + xlab("Genes in the system") + ylab("Number regulators")
+  
+  # grid.arrange(gCS, gGF, gIDTGF, layout_matrix = rbind(c(1, 1, 1, 3, 3, 3), c(2, 2, 2, 3, 3, 3), c(2, 2, 2, 3, 3, 3)))
+  
+  genindex = 1:mysystemargs$G
+  indegtot = sapply(genindex, function(x){sum(insilicosystem$mosystem$edg$to == x)})
+  indegCS = sapply(genindex, function(x){sum(insilicosystem$mosystem$edg$to == x & insilicosystem$mosystem$edg$RegBy == "PC")})
+  genorder = genindex[order(indegCS, decreasing = T)]
+  indegtot = indegtot[order(indegCS, decreasing = T)]
+  genorder = genorder[order(indegtot, decreasing = T)]
+  
+  gIDTCS = ggplot(insilicosystem$mosystem$edg, aes(x = factor(to, as.character(genorder)), fill = factor(RegBy, levels = c("NC", "PC")))) + 
+    geom_bar() + 
+    scale_fill_manual(values = mycolsCS, breaks = c("PC", "NC"), drop = F, name = "Type of\nregulator") + 
+    theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(), plot.title = element_text(hjust = 0.5)) + 
+    ggtitle("Number and type of regulators for each gene") + xlab("Genes in the system") + ylab("Number regulators")
+  
+  #grid.arrange(gIDTCS, gIDTGF, ncol = 2)
+  
+  ggarrange(gEdgCS, gIDTCS, ncol = 1, heights = c(0.2, 0.8))
+  
+  ggarrange(gEdgGF, gIDTGF, ncol = 1, heights = c(0.2, 0.8))
+  
+  ## ------------------------------------ ##
+  ## Plot kinetic parameters of the genes ##
+  ## ------------------------------------ ##
+  
+  
+  concnod = list("TCrate" = c("PC", "NC"), "TLrate" = c("PC"), "RDrate" = c("PC", "NC"), "PDrate" = c("PC"))
+  graphtitles = list("TCrate" = "Transcription rate", "TLrate" = "Translation rate", "RDrate" = "RNA decay rate", "PDrate" = "Protein decay")
+  
+  for(g in names(concnod)){
+    myplot = ggplot(insilicosystem$genes[insilicosystem$genes$coding %in% concnod[[g]], ], aes_string(x = g)) + geom_histogram(bins = 20, fill = mycolsCS["Tot"]) +
+      ggtitle(graphtitles[[g]]) + xlab(paste(graphtitles[[g]], "(1/s)", sep = " ")) + ylab("Frequency")
+    
+    assign(paste0("plot", g), myplot)
+  }
+  
+  ggarrange(plotTCrate, plotTLrate, plotRDrate, plotPDrate, ncol = 2)
+  
+}
+
+plotRegulationSystem = function(insilicosystem){
+  
+}
+
+# ------------------------------------------------------------------------------------------------------------ #
+#                   GENERATE THE LIST OF SPECIES AND REACTIONS FOR THE STOCHASTIC SIMULATION                   #
+# ------------------------------------------------------------------------------------------------------------ # 
+
 # ############################################################################################################################
 # ############################################################################################################################
 # 
