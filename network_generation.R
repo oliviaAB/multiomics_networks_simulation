@@ -501,7 +501,7 @@ createGenes = function(sysargs){
   nod$ActiveForm[nod$coding == "NC"] = "R" ## noncoding genes act through their RNA
   nod$ActiveForm[nod$coding == "PC" & nod$PTMform == "0"] = "P" ## protein-coding genes act through their protein
   nod$ActiveForm[nod$coding == "PC" & nod$PTMform == "1"] = "Pm" ## For proteins undergoing a post-translational modification, only the PTM form is active
-  nod$ActiveForm = sapply(1:nrow(nod), function(x){paste0(nod$ActiveForm[x],".",nod$id[x])})
+  nod$ActiveForm = sapply(1:nrow(nod), function(x){paste0(nod$ActiveForm[x], nod$id[x])})
   
   ## Sample the kinetic parameters of the genes
   
@@ -825,13 +825,13 @@ createStochSystem = function(insilicosystem, indargs){
 #                                                 VISUALISATION
 # ############################################################################################################################
 
-plotGlobalSystem = function(insilicosystem){
+plotGlobalSystem = function(insilicosystem, show = T){
   ## Define the colour palettes
-  mycolsCS = c("PC" = "#b13e25",  "NC" = "#602377", "Tot" = "#31161F")
+  mycolsCS = c("PC" = "#e03616",  "NC" = "#58355e", "Tot" = "#31161F")
   #mycolsCS = c("PC" = "#bf614c",  "NC" = "#a887b4", "Tot" = "#69555c")
   
-  mycolsGF = brewer.pal(6, "RdYlBu")
-  names(mycolsGF) = c("TC", "TL", "RD", "PD", "PTM", "MR")
+  #mycolsGF = brewer.pal(6, "RdYlBu")
+  mycolsGF = c("TC" = "#FF7F11", "TL" = "#FF963C", "RD" = "#5AB7A4", "PD" = "#78C4B4", "PTM" = "#FF1B1C", "MR" = "#FF6D6E")
   
   reactionsnames = c("TC" = "transcription", "TL" = "translation", "RD" = "RNA decay", "PD" = "protein decay", "PTM" = "protein post-translational modification", "MR" = "metabolic reaction")
   
@@ -844,7 +844,7 @@ plotGlobalSystem = function(insilicosystem){
     geom_bar() + 
     scale_fill_manual(values = mycolsCS, drop = F, name = "Coding status", labels = c("PC" = "Protein coding", "NC" = "Noncoding")) + 
     coord_flip() + 
-    theme(axis.text.y = element_blank(), axis.title.y = element_blank(), axis.ticks.y = element_blank(), plot.title = element_text(hjust = 0.5)) + 
+    theme(axis.text.y = element_blank(), axis.title.y = element_blank(), axis.ticks.y = element_blank(), plot.title = element_text(hjust = 0.5, size = rel(1)), axis.title.x = element_text(size = rel(0.9)), legend.title = element_text(size = rel(0.9))) + 
     ggtitle("Coding status of genes in the system") + ylab("Number of genes") 
   
   
@@ -853,10 +853,10 @@ plotGlobalSystem = function(insilicosystem){
     scale_fill_manual(values = mycolsGF, breaks = c("TC", "TL", "RD", "PD", "PTM", "MR"), drop = F, name = "Gene function ") + 
     scale_x_discrete(limits = c("PC", "NC"), labels = c("Protein-coding", "Noncoding")) +
     coord_flip() +
-    theme(axis.text.y = element_text(angle = 90, hjust = 0.5), plot.title = element_text(hjust = 0.5)) + 
+    theme(axis.text.y = element_text(angle = 90, hjust = 0.5), plot.title = element_text(hjust = 0.5, size = rel(1)), axis.title.x = element_text(size = rel(0.9)), legend.title = element_text(size = rel(0.9))) + 
     ggtitle("Coding status and function of genes in the system") + xlab("Coding status") + ylab("Number of genes")
   
-  # ggarrange(gCS, gGF, ncol = 1, heights = c(0.3, 0.7))
+  globalPanel1 = ggarrange(gCS, gGF, ncol = 1, heights = c(0.3, 0.7), draw = show)
   
   ## --------------------------- ##
   ## Plot overview of regulators ##
@@ -867,14 +867,14 @@ plotGlobalSystem = function(insilicosystem){
     geom_bar() + 
     scale_fill_manual(values = mycolsCS, drop = F, name = "Regulator\ncoding status", labels = c("PC" = "Protein coding", "NC" = "Noncoding")) + 
     coord_flip() + 
-    theme(axis.text.y = element_blank(), axis.title.y = element_blank(), axis.ticks.y = element_blank(), plot.title = element_text(hjust = 0.5)) + 
+    theme(axis.text.y = element_blank(), axis.title.y = element_blank(), axis.ticks.y = element_blank(), plot.title = element_text(hjust = 0.5, size = rel(1)), axis.title.x = element_text(size = rel(0.9)), legend.title = element_text(size = rel(0.9)), legend.position = "bottom", legend.direction = "horizontal") + 
     ggtitle("Ratio of regulatory interactions performed by\nprotein coding vs noncoding regulators") + ylab("Number of regulatory interactions") 
   
   gEdgGF = ggplot(insilicosystem$mosystem$edg, aes(x = "1", fill = factor(TargetReaction, levels = rev(c("TC", "TL", "RD", "PD", "PTM"))))) +
     geom_bar() + 
     scale_fill_manual(values = mycolsGF, breaks = c("TC", "TL", "RD", "PD", "PTM"), drop = F, name = "Gene function ") + 
     coord_flip() +
-    theme(axis.text.y = element_blank(),axis.title.y = element_blank(), axis.ticks.y = element_blank(), plot.title = element_text(hjust = 0.5)) + 
+    theme(axis.text.y = element_blank(),axis.title.y = element_blank(), axis.ticks.y = element_blank(), plot.title = element_text(hjust = 0.5, size = rel(1)), axis.title.x = element_text(size = rel(0.9)), legend.title = element_text(size = rel(0.9)), legend.position = "bottom", legend.direction = "horizontal") + 
     ggtitle("Nature of expression step targeted by each regulatory interactions") + ylab("Number of regulatory interactions")
   
   
@@ -887,9 +887,9 @@ plotGlobalSystem = function(insilicosystem){
   
   gIDTGF = ggplot(insilicosystem$mosystem$edg, aes(x = factor(to, as.character(genorder)), fill = factor(TargetReaction, levels = rev(c("TC", "TL", "RD", "PD", "PTM"))))) + 
     geom_bar() + 
-    scale_fill_manual(values = mycolsGF, breaks = c("TC", "TL", "RD", "PD", "PTM"), drop = F, name = "Type of\nregulation") + 
-    theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(), plot.title = element_text(hjust = 0.5)) + 
-    ggtitle("Number and type of regulators for each gene") + xlab("Genes in the system") + ylab("Number regulators")
+    scale_fill_manual(values = mycolsGF, breaks = c("TC", "TL", "RD", "PD", "PTM"), drop = F, name = "Type of\nregulation", guide = F) + 
+    theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(), plot.title = element_text(hjust = 0.5, size = rel(1)), axis.title.y = element_text(size = rel(0.9)), legend.title = element_text(size = rel(0.9))) + 
+    ggtitle("Number and type of regulators for each gene") + xlab("Genes in the system") + ylab("Number of  regulators")
   
   # grid.arrange(gCS, gGF, gIDTGF, layout_matrix = rbind(c(1, 1, 1, 3, 3, 3), c(2, 2, 2, 3, 3, 3), c(2, 2, 2, 3, 3, 3)))
   
@@ -902,16 +902,16 @@ plotGlobalSystem = function(insilicosystem){
   
   gIDTCS = ggplot(insilicosystem$mosystem$edg, aes(x = factor(to, as.character(genorder)), fill = factor(RegBy, levels = c("NC", "PC")))) + 
     geom_bar() + 
-    scale_fill_manual(values = mycolsCS, breaks = c("PC", "NC"), drop = F, name = "Type of\nregulator") + 
-    theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(), plot.title = element_text(hjust = 0.5)) + 
-    ggtitle("Number and type of regulators for each gene") + xlab("Genes in the system") + ylab("Number regulators")
+    scale_fill_manual(values = mycolsCS, drop = F, name = "Regulator\ncoding status", labels = c("PC" = "Protein coding", "NC" = "Noncoding"), guide = F) + 
+    theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(), plot.title = element_text(hjust = 0.5, size = rel(1)), axis.title.y = element_text(size = rel(0.9)), legend.title = element_text(size = rel(0.9))) + 
+    ggtitle("Number and type of regulators for each gene") + xlab("Genes in the system") + ylab("Number of regulators")
   
   #grid.arrange(gIDTCS, gIDTGF, ncol = 2)
   
-  ggarrange(gEdgCS, gIDTCS, ncol = 1, heights = c(0.2, 0.8))
-  
-  ggarrange(gEdgGF, gIDTGF, ncol = 1, heights = c(0.2, 0.8))
-  
+  globalPanel2 = ggarrange(gEdgCS, gIDTCS, nrow = 2, ncol = 1, heights = c(0.2, 0.8), draw = show)
+
+  globalPanel3 = ggarrange(gEdgGF, gIDTGF, ncol = 1, heights = c(0.2, 0.8), draw = show)
+
   ## ------------------------------------ ##
   ## Plot kinetic parameters of the genes ##
   ## ------------------------------------ ##
@@ -921,18 +921,136 @@ plotGlobalSystem = function(insilicosystem){
   graphtitles = list("TCrate" = "Transcription rate", "TLrate" = "Translation rate", "RDrate" = "RNA decay rate", "PDrate" = "Protein decay")
   
   for(g in names(concnod)){
-    myplot = ggplot(insilicosystem$genes[insilicosystem$genes$coding %in% concnod[[g]], ], aes_string(x = g)) + geom_histogram(bins = 20, fill = mycolsCS["Tot"]) +
+    myplot = ggplot(insilicosystem$genes[insilicosystem$genes$coding %in% concnod[[g]], ], aes_string(x = g)) + 
+      geom_histogram(bins = 20, fill = mycolsCS["Tot"]) +
+      theme(plot.title = element_text(hjust = 0.5, size = rel(1)), axis.title.x = element_text(size = rel(0.9)), axis.title.y = element_text(size = rel(0.9))) + 
       ggtitle(graphtitles[[g]]) + xlab(paste(graphtitles[[g]], "(1/s)", sep = " ")) + ylab("Frequency")
     
     assign(paste0("plot", g), myplot)
   }
   
-  ggarrange(plotTCrate, plotTLrate, plotRDrate, plotPDrate, ncol = 2)
+  globalPanel4 = ggarrange(plotTCrate, plotTLrate, plotRDrate, plotPDrate, ncol = 2, draw = show)
+
+  return(list("globalPanel1" = globalPanel1, "globalPanel2" = globalPanel2, "globalPanel3" = globalPanel3, "globalPanel4" = globalPanel4))
   
 }
 
-plotRegulationSystem = function(insilicosystem){
+plotRegulationSystem = function(insilicosystem, regreactions = c("TC", "TL", "RD", "PD", "PTM"), show = T){
   
+  res = list()
+  
+  ## Define the colour palettes
+  mycolsCS = c("PC" = "#e03616",  "NC" = "#58355e", "Tot" = "#31161F")
+  #mycolsCS = c("PC" = "#bf614c",  "NC" = "#a887b4", "Tot" = "#69555c")
+  
+  #mycolsGF = brewer.pal(6, "RdYlBu")
+  mycolsGF = c("TC" = "#FF7F11", "TL" = "#FF963C", "RD" = "#5AB7A4", "PD" = "#78C4B4", "PTM" = "#FF1B1C", "MR" = "#FF6D6E")
+  
+  
+  mycolsPosNeg = c("1" = "#D63230", "-1" = "#69BAF4")
+  
+  reactionsnames = c("TC" = "transcription", "TL" = "translation", "RD" = "RNA decay", "PD" = "protein decay", "PTM" = "protein post-translational modification", "MR" = "metabolic reaction")
+  
+  concnod = list("TC" = c("PC", "NC"), "TL" = c("PC"), "RD" = c("PC", "NC"), "PD" = c("PC"), "PTM" = c("PC"))
+  
+  
+  for(t in regreactions){
+    edgtot = insilicosystem$mosystem$edg[insilicosystem$mosystem$edg$TargetReaction == t, ]
+    # edgtot = data.frame("edgid" = 1:nrow(edgtot), edgtot)
+    edgcomp = insilicosystem$mosystem[[paste0(t, "RN.edg")]]
+    genesid = insilicosystem$genes[, c("id", "coding", "TargetReaction")]
+    
+    ## Plot global edge informations
+    gEdgPosNeg = ggplot(edgtot, aes(x = "A", fill = RegSign)) +
+      geom_bar() + 
+      scale_fill_manual(values = mycolsPosNeg, drop = F, name = "Nature of the interactions", labels = c("1" = "Positive\nregulation", "-1" = "Negative\nregulation")) + 
+      coord_flip() + 
+      theme(axis.text.y = element_blank(), axis.title.y = element_blank(), axis.ticks.y = element_blank(), plot.title = element_text(hjust = 0.5, size = rel(1)), axis.title.x = element_text(size = rel(0.9)), legend.title = element_text(size = rel(0.9)), legend.position = "bottom", legend.direction = "horizontal") + 
+      ggtitle("Ratio of activating vs repressing regulatory interactions") + ylab("Number of regulatory interactions") 
+    
+    gEdgPCNC = ggplot(edgtot, aes(x = "A", fill = RegBy)) +
+      geom_bar() + 
+      scale_fill_manual(values = mycolsCS, drop = F, name = "Nature of the regulators", labels = c("PC" = "Protein coding", "NC" = "Noncoding")) + 
+      coord_flip() + 
+      theme(axis.text.y = element_blank(), axis.title.y = element_blank(), axis.ticks.y = element_blank(), plot.title = element_text(hjust = 0.5, size = rel(1)), axis.title.x = element_text(size = rel(0.9)), legend.title = element_text(size = rel(0.9)), legend.position = "bottom", legend.direction = "horizontal") + 
+      ggtitle("Ratio of regulatory interactions exerted by protein coding vs noncoding regulators") + ylab("Number of regulatory interactions") 
+    
+    mg = ggarrange(gEdgPosNeg, gEdgPCNC, ncol = 1, draw = show)
+    
+    res[[paste0(t, "Panel1")]] = mg
+    
+    ## Plot out-degree distribution
+    regs = unique(edgtot$from)
+    outdegreedf = data.frame("Regid" = regs, "RegCoding" = genesid[regs, "coding"], "Outdegree" = sapply(regs, function(x){sum(edgtot$from == x)}))
+    if(nrow(outdegreedf) == 0)   outdegreedf = data.frame("Regid" = numeric(0), "RegCoding" = character(0), "Outdegree" = numeric(0))
+    
+    gODT = ggplot(outdegreedf, aes(x = Outdegree)) + 
+      geom_histogram(binwidth = 10, center = 5, fill = mycolsCS["Tot"]) + 
+      theme( plot.title = element_text(hjust = 0.5, size = rel(1)), axis.title.x = element_text(size = rel(0.9)), axis.title.y = element_text(size = rel(0.9))) + 
+      ggtitle(paste("Out-degree distribution of", reactionsnames[t], "regulators")) + xlab("Number of targets") + ylab("Frequency")
+    
+    gODPC = ggplot(outdegreedf[outdegreedf$RegCoding == "PC", ], aes(x = Outdegree)) + 
+      geom_histogram(binwidth = 5, center = 2.5, fill = mycolsCS["PC"]) + 
+      theme(plot.title = element_text(hjust = 0.5, size = rel(1)), axis.title.x = element_text(size = rel(0.9)), axis.title.y = element_text(size = rel(0.9))) + 
+      scale_fill_discrete(guide=FALSE) +
+      ggtitle(paste("Out-degree distribution of protein-coding", reactionsnames[t], "regulators")) + xlab("Number of targets") + ylab("Frequency")
+    
+    gODNC = ggplot(outdegreedf[outdegreedf$RegCoding == "NC", ], aes(x = Outdegree)) + 
+      geom_histogram(binwidth = 5, center = 2.5, fill = mycolsCS["NC"]) + 
+      theme(plot.title = element_text(hjust = 0.5, size = rel(1)), axis.title.x = element_text(size = rel(0.9)), axis.title.y = element_text(size = rel(0.9))) + 
+      scale_fill_discrete(guide=FALSE) +
+      ggtitle(paste("Out-degree distribution of noncoding", reactionsnames[t], "regulators")) + xlab("Number of targets") + ylab("Frequency")
+    
+    # ggarrange(gODT, gODPC, gODNC, ncol = 3)
+    
+    
+    ## Plot out-degree distribution
+    tars = genesid[genesid$coding %in% concnod[[t]], "id"]
+    indegreedf = data.frame("Tarid" = tars, "IndegreePC" = sapply(tars, function(x){sum(edgtot$to[edgtot$RegBy == "PC"] == x)}), "IndegreeNC" = sapply(tars, function(x){sum(edgtot$to[edgtot$RegBy == "NC"] == x)}), "IndegreeTot" = rep(0, length(tars)))
+    indegreedf$IndegreeTot = indegreedf$IndegreePC + indegreedf$IndegreeNC
+    
+    ## to test whether there is any regulation of this type we refer to the data frame outdegreedf (because indegreedf will never have 0 rows unless the target id list is empty)
+    if(nrow(outdegreedf) == 0)   indegreedf = data.frame("Tarid" = numeric(0), "IndegreePC" = numeric(0), "IndegreeNC" = numeric(0), "IndegreeTot" = numeric(0))
+    
+    
+    gIDT = ggplot(indegreedf, aes(x = IndegreeTot)) + 
+      geom_histogram(binwidth = 1, center = 0.5, fill = mycolsCS["Tot"]) + 
+      theme( plot.title = element_text(hjust = 0.5, size = rel(1)), axis.title.x = element_text(size = rel(0.9)), axis.title.y = element_text(size = rel(0.9))) + 
+      ggtitle(paste("In-degree distribution of genes -\n", reactionsnames[t], "regulation")) + xlab("Number of regulators") + ylab("Frequency")
+    
+    gIDPC = ggplot(indegreedf, aes(x = IndegreePC)) + 
+      geom_histogram(binwidth = 1, center = 0.5, fill = mycolsCS["PC"]) + 
+      theme(plot.title = element_text(hjust = 0.5, size = rel(1)), axis.title.x = element_text(size = rel(0.9)), axis.title.y = element_text(size = rel(0.9))) + 
+      scale_fill_discrete(guide=FALSE) +
+      ggtitle(paste("In-degree distribution of genes -\n only protein coding", reactionsnames[t], "regulators")) + xlab("Number of protein coding regulators") + ylab("Frequency")
+    
+    gIDNC = ggplot(indegreedf, aes(x = IndegreeNC)) + 
+      geom_histogram(binwidth = 1, center = 0.5, fill = mycolsCS["NC"]) + 
+      theme(plot.title = element_text(hjust = 0.5, size = rel(1)), axis.title.x = element_text(size = rel(0.9)), axis.title.y = element_text(size = rel(0.9))) + 
+      scale_fill_discrete(guide=FALSE) +
+      ggtitle(paste("In-degree distribution of genes -\n only noncoding", reactionsnames[t], "regulators")) + xlab("Number of noncoding regulators") + ylab("Frequency")
+    
+    # ggarrange(gIDT, gIDPC, gIDNC, ncol = 3)
+    
+    mg = ggarrange(gODT, gODPC, gODNC, gIDT, gIDPC, gIDNC, nrow = 2, ncol = 3, draw = show)
+    res[[paste0(t, "Panel2")]] = mg
+    
+    ## Plot kinetic parameters of the interactions
+    kineticplotList = list()
+    for(k in grep(paste0("^", t), names(edgcomp), value = T)){
+      myplot = ggplot(edgcomp, aes_string(x = k)) +
+        geom_histogram(fill = mycolsCS["Tot"]) + 
+        theme(plot.title = element_text(hjust = 0.5, size = rel(1)), axis.title.x = element_text(size = rel(0.9)), axis.title.y = element_text(size = rel(0.9))) + 
+        ggtitle(sub(paste0("^",t), "", k)) + xlab(sub(paste0("^",t), "", k)) + ylab("Frequency")
+      
+      assign(paste0("plot", k), myplot)
+      kineticplotList[[k]] = myplot
+    }
+    
+    if(length(kineticplotList) > 0) mg = ggarrange(plots = kineticplotList, ncol = length(kineticplotList), draw = show); res[[paste0(t, "Panel3")]] = mg
+  }
+  
+  return(res)
 }
 
 # ------------------------------------------------------------------------------------------------------------ #

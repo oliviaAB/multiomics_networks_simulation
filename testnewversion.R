@@ -44,8 +44,6 @@ for(i in 1:100){
 toc()
 
 ##############################################
-library(RColorBrewer)
-library(gridExtra)
 library(tictoc)
 
 setwd("~/winData/multiomics_networks_simulation")
@@ -57,107 +55,73 @@ tic(); myinsilicosystem = createInSilicoSystem(mysystemargs); toc()
 
 ## plotmosystem
 
-plotGlobalSystem(myinsilicosystem)
+test = plotGlobalSystem(myinsilicosystem, show = T)
 
-## ---------------------------- ##
-## Plot each regulatory network ##
-## ---------------------------- ##
-
-mycolsCS = c("PC" = "#b13e25",  "NC" = "#602377", "Tot" = "#31161F")
-
-mycolsGF = brewer.pal(6, "RdYlBu")
-names(mycolsGF) = c("TC", "TL", "RD", "PD", "PTM", "MR")
-
-reactionsnames = c("TC" = "transcription", "TL" = "translation", "RD" = "RNA decay", "PD" = "protein decay", "PTM" = "protein post-translational modification", "MR" = "metabolic reaction")
+ggsave("/media/sf_data/globalPanel1.png", plot = test$globalPanel1, width = 33.9, height = 19.1, units = "cm")
+ggsave("/media/sf_data/globalPanel2.png", plot = test$globalPanel2, width = 33.9, height = 19.1, units = "cm")
+ggsave("/media/sf_data/globalPanel3.png", plot = test$globalPanel3, width = 33.9, height = 19.1, units = "cm")
+ggsave("/media/sf_data/globalPanel4.png", plot = test$globalPanel4, width = 33.9, height = 19.1, units = "cm")
 
 
-temp = c("TC", "TL", "RD", "PD", "PTM")
-concnod = list("TC" = c("PC", "NC"), "TL" = c("PC"), "RD" = c("PC", "NC"), "PD" = c("PC"), "PTM" = c("PC"))
+test2 = plotRegulationSystem(myinsilicosystem, c("TC"))
+ggsave("/media/sf_data/TCPanel1.png", plot = test2$TCPanel1, width = 33.9, height = 19.1, units = "cm")
+ggsave("/media/sf_data/TCPanel2.png", plot = test2$TCPanel2, width = 33.9, height = 19.1, units = "cm")
+ggsave("/media/sf_data/TCPanel3.png", plot = test2$TCPanel3, width = 33.9, height = 19.1, units = "cm")
 
 
-for(t in temp){
-  edgtot = insilicosystem$mosystem$edg[insilicosystem$mosystem$edg$TargetReaction == t, ]
-  edgcomp = insilicosystem$mosystem[[paste0(t, "RN.edg")]]
-  genesid = insilicosystem$genes[, c("id", "coding", "TargetReaction")]
-  
-  ## Plot out-degree distribution
-  
-  regs = unique(edgtot$from)
-  outdegreedf = data.frame("Regid" = regs, "RegCoding" = genesid[regs, "coding"], "Outdegree" = sapply(regs, function(x){sum(edgtot$from == x)}))
-  if(nrow(outdegreedf) == 0)   outdegreedf = data.frame("Regid" = numeric(0), "RegCoding" = character(0), "Outdegree" = numeric(0))
-  
-  gODT = ggplot(outdegreedf, aes(x = Outdegree)) + 
-    geom_histogram(binwidth = 10, center = 5, fill = mycolsCS["Tot"]) + 
-    theme( plot.title = element_text(hjust = 0.5)) + 
-    ggtitle(paste("Out-degree distribution of", reactionsnames[t], "regulators")) + xlab("Number of targets") + ylab("Frequency")
-  
-  gODPC = ggplot(outdegreedf[outdegreedf$RegCoding == "PC", ], aes(x = Outdegree)) + 
-    geom_histogram(binwidth = 5, center = 2.5, fill = mycolsCS["PC"]) + 
-    theme(plot.title = element_text(hjust = 0.5)) + 
-    scale_fill_discrete(guide=FALSE) +
-    ggtitle(paste("Out-degree distribution of protein-coding", reactionsnames[t], "regulators")) + xlab("Number of targets") + ylab("Frequency")
-  
-  gODNC = ggplot(outdegreedf[outdegreedf$RegCoding == "NC", ], aes(x = Outdegree)) + 
-    geom_histogram(binwidth = 5, center = 2.5, fill = mycolsCS["NC"]) + 
-    theme(plot.title = element_text(hjust = 0.5)) + 
-    scale_fill_discrete(guide=FALSE) +
-    ggtitle(paste("Out-degree distribution of noncoding", reactionsnames[t], "regulators")) + xlab("Number of targets") + ylab("Frequency")
-  
-  ggarrange(gODT, gODPC, gODNC, ncol = 3)
-  
-  
-  ## Plot out-degree distribution
-  tars = genesid[genesid$coding %in% concnod[[t]], "id"]
-  indegreedf = data.frame("Tarid" = tars, "IndegreePC" = sapply(tars, function(x){sum(edgtot$to[edgtot$RegBy == "PC"] == x)}), "IndegreeNC" = sapply(tars, function(x){sum(edgtot$to[edgtot$RegBy == "NC"] == x)}), "IndegreeTot" = rep(0, length(tars)))
-  indegreedf$IndegreeTot = indegreedf$IndegreePC + indegreedf$IndegreeNC
-  
-  ## to test whether there is any regulation of this type we refer to the data frame outdegreedf (because indegreedf will never have 0 rows unless the target id list is empty)
-  if(nrow(outdegreedf) == 0)   indegreedf = data.frame("Tarid" = numeric(0), "IndegreePC" = numeric(0), "IndegreeNC" = numeric(0), "IndegreeTot" = numeric(0))
-  
-  
-  gIDT = ggplot(indegreedf, aes(x = IndegreeTot)) + 
-    geom_histogram(binwidth = 1, center = 0.5) + 
-    theme( plot.title = element_text(hjust = 0.5)) + 
-    ggtitle(paste("In-degree distribution of genes -\n", reactionsnames[t], "regulation")) + xlab("Number of regulators") + ylab("Frequency")
-  
-  gIDPC = ggplot(indegreedf, aes(x = IndegreePC)) + 
-    geom_histogram(binwidth = 1, center = 0.5, fill = mycolsCS["PC"]) + 
-    theme(plot.title = element_text(hjust = 0.5)) + 
-    scale_fill_discrete(guide=FALSE) +
-    ggtitle(paste("In-degree distribution of genes -\n only protein coding", reactionsnames[t], "regulators")) + xlab("Number of protein coding regulators") + ylab("Frequency")
-  
-  gIDNC = ggplot(indegreedf, aes(x = IndegreeNC)) + 
-    geom_histogram(binwidth = 1, center = 0.5, fill = mycolsCS["NC"]) + 
-    theme(plot.title = element_text(hjust = 0.5)) + 
-    scale_fill_discrete(guide=FALSE) +
-    ggtitle(paste("In-degree distribution of genes -\n only noncoding", reactionsnames[t], "regulators")) + xlab("Number of noncoding regulators") + ylab("Frequency")
-  
-  # ggarrange(gIDT, gIDPC, gIDNC, ncol = 3)
-  
-  ggarrange(gODT, gODPC, gODNC, gIDT, gIDPC, gIDNC, nrow = 2, ncol = 3)
-  
-  
-  ## Plot kinetic parameters of the interactions
-  kineticplotList = list()
-  for(k in grep(paste0("^", t), names(edgcomp), value = T)){
-    myplot = ggplot(edgcomp, aes_string(x = k)) +
-      geom_histogram() + 
-      ggtitle(sub(paste0("^",t), "", k)) + xlab(sub(paste0("^",t), "", k)) + ylab("Frequency")
-      
-    assign(paste0("plot", k), myplot)
-    kineticplotList[[k]] = myplot
-  }
-  
-  if(length(kineticplotList) > 0) ggarrange(plots = kineticplotList, ncol = length(kineticplotList))
-  
+
+
+##############################################
+library(tictoc)
+
+setwd("~/winData/multiomics_networks_simulation")
+#setwd("~/GitHub/multiomics_networks_simulation")
+source("network_generation.R")
+
+nsim = 100
+sizesim = c(50, 100, 200, 500)
+size_telapsed = vector("list", length(sizesim))
+size_simnod = vector("list", length(sizesim))
+size_simedg = vector("list", length(sizesim))
+
+for(s in sizesim){
+  print(s)
+    mysystemargs = insilicosystemargs(G = s)
+    telapsed = vector("numeric", nsim)
+    simnod = vector("list", nsim)
+    simedg = vector("list", nsim)
+    
+    for(i in 1:nsim){
+      tic(); myinsilicosystem = createInSilicoSystem(mysystemargs); itel = toc(quiet = T)
+      telapsed[i] = itel$toc - itel$tic
+      simnod[[i]] = myinsilicosystem$genes
+      simedg[[i]] = myinsilicosystem$mosystem$edg
+    }
+    
+    size_telapsed[[s]] = telapsed
+    size_simnod[[s]] = simnod
+    size_simedg[[s]] = simedg
+    
+}  
+
+#plot(rep(sizesim, rep(nsim, length(sizesim))), unlist(size_telapsed), xlab = "System size (G: number of nodes)", ylab = c("Running time (sec)"))
+runningtime = data.frame("G" = rep(sizesim, rep(nsim, length(sizesim))), "runningtime" = unlist(size_telapsed))
+
+runtime = ggplot(runningtime, aes(x = G, y = runningtime)) + geom_point() + xlab("System size (number of genes)") + ylab("Running time (s)")
+ggsave("/media/sf_data/runtime.png", plot = runtime, width = 33.9, height = 19.1, units = "cm")
+
+
+
+ressimdf = data.frame("simid" = numeric(), "G" = numeric(), "ratioPC" = numeric(), "E" = numeric())
+
+for(s in sizesim){
+  ratioPC = sapply(size_simnod[[s]], function(x){sum(x$coding =="PC")/nrow(x)})
+  E = sapply(size_simedg[[s]], nrow)
+  ressimdf = rbind(ressimdf, data.frame("simid" = 1:nsim, "G" = rep(s, nsim), "ratioPC" = ratioPC, "E" = E))
 }
 
+g1 = ggplot(ressimdf, aes(x = ratioPC)) + geom_histogram() + facet_grid(G~.) + xlab("Ratio of protein coding genes in the system")
+g2 = ggplot(ressimdf, aes(x = E)) + geom_histogram() + facet_grid(G~.) + annotate("text", x = 5000, y = 70, label = sapply(sizesim, function(x){paste("mean =", mean(ressimdf[ressimdf$G == x, "E"]), sep = " ")})) + xlab("Number of regulatory interactions")
 
-table(test$RegSign)
-table(test$RegBy)
-table(test[,c("RegSign", "RegBy")])
-test = data.frame("edgid" = 1:nrow(test), test)
-
-
-testfondue = melt(test, id.vars = "edgid", measure.vars = c("RegSign", "RegBy"))
-ggplot(testfondue, aes(x = variable, fill = value)) + geom_bar() + coord_flip()
+sevsimplot2 = ggarrange(g1, g2, ncol = 2)
+ggsave("/media/sf_data/sevsimplot2.png", plot = sevsimplot2, width = 33.9, height = 19.1, units = "cm")
