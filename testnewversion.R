@@ -8,40 +8,35 @@ setwd("~/winData/multiomics_networks_simulation")
 source("network_generation.R")
 
 
-mysystemargs = insilicosystemargs(G = 50)
+mysystemargs = insilicosystemargs(G = 50, PC.p = 0, NC.TC.p = 0)
 myinsilicosystem = createInSilicoSystem(mysystemargs)
+
+
+plotGlobalSystem(myinsilicosystem, show = T)
+
+plotRegulationSystem(myinsilicosystem, c("TC"))
 
 myindivargs = insilicoindividualargs()
 mypopulation = createPopulation(20, myinsilicosystem, myindivargs)
 
+test = createStochSystem(myinsilicosystem, myindivargs, returnList = F)
+
+# ------------
+
+mysystemargs = insilicosystemargs(G = 10, PC.PTM.form.p = 0)
+myinsilicosystemEmpty = createInSilicoSystem(mysystemargs, empty = T)
 
 
+plotGlobalSystem(myinsilicosystemEmpty, show = T)
+
+plotRegulationSystem(myinsilicosystem, c("TC"))
+
+myindivargs = insilicoindividualargs()
+mypopulation = createPopulation(20, myinsilicosystemEmpty, myindivargs)
+
+test = createStochSystem(myinsilicosystemEmpty, myindivargs, returnList = T)
 
 
-##############################################
-
-source("network_generation.R")
-
-mysystemargs = insilicosystemargs(G = 50)
-myindividualargs = insilicoindividualargs(ploidy = 4)
-
-mysystemgenes = createGenes(mysystemargs)
-
-mymosystem = createMultiOmicNetwork(mysystemgenes, mysystemargs)
-
-myinsilicosystem = createInSilicoSystem(mysystemargs)
-
-sysargs = mysystemargs
-indargs = myindividualargs
-mosystem = mymosystem
-nod = mysystemgenes
-
-tic()
-for(i in 1:100){
-  mysystemargs = insilicosystemargs(G = 100)
-  myinsilicosystem = createInSilicoSystem(mysystemargs)
-  }
-toc()
 
 ##############################################
 library(tictoc)

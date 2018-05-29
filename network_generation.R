@@ -362,7 +362,8 @@ insilicoindividualargs = function( ## ----
                             ploidy = 4, ## ploidy = number of alleles for each gene
                             gcnname = "GCN", ## gcnname = name to give to each allele version
                             ngenevariants = 5, ## number of alleles existing for each gene
-                            qtleffect_samplingfct = function(x){rtruncnorm(x, a = 0, b = Inf, mean = 1, sd = 0.1)} ## function from which is sampled the effect of a QTL (input x is the required sample size)
+                            qtleffect_samplingfct = function(x){rtruncnorm(x, a = 0, b = Inf, mean = 1, sd = 0.1)}, ## function from which is sampled the effect of a QTL (input x is the required sample size)
+                            initvar_samplingfct = function(x){rtruncnorm(x, a = 0, b = Inf, mean = 1, sd = 0.1)} ## function from which is sampled the variation in initial abundance of a species (input x is the required sample size)
 ){
   
   gcnList = sapply(1:ploidy, function(x){paste0(gcnname, x)})
@@ -371,7 +372,8 @@ insilicoindividualargs = function( ## ----
                "gcnname" = gcnname,
                "gcnList" = gcnList,
                "ngenevariants" = ngenevariants,
-               "qtleffect_samplingfct" = qtleffect_samplingfct)
+               "qtleffect_samplingfct" = qtleffect_samplingfct,
+               "initvar_samplingfct" = initvar_samplingfct)
   
   
   attr(value, "class") = "insilicoindividualargs"
@@ -423,6 +425,10 @@ createVariants = function(genes, indargs){
 
 createIndividual = function(variantsList, indargs){
 
+  ## -------------------------- ##
+  ## CREATE THE QTLeffects list ##
+  ## -------------------------- ##
+  
   G = length(variantsList)
   QTLeffects = vector("list", indargs$ploidy)
   names(QTLeffects) = indargs$gcnList
@@ -443,12 +449,23 @@ createIndividual = function(variantsList, indargs){
     }
   }
   
-  value = list("QTLeffects" = QTLeffects, "haplotype" = individualvariants)
+  ## ----------------------- ##
+  ## CREATE THE InitVar list ##
+  ## ----------------------- ##
+  
+  InitVar = vector("list", indargs$ploidy)
+  names(InitVar) = indargs$gcnList
+  
+  for(gcn in indargs$gcnList){
+    InitVar[[gcn]] = list("R" = indargs$initvar_samplingfct(G),
+                          "P" = indargs$initvar_samplingfct(G))
+  }
+  
+  value = list("QTLeffects" = QTLeffects, "haplotype" = individualvariants, "InitVar" = InitVar)
   attr(value, "class") = "insilicoindividual"
   
   return(value)
 }
-
 
 createPopulation = function(nind, insilicosystem, indargs){
   
@@ -541,8 +558,8 @@ createRegulatoryNetwork = function(regsList, tarsList, reaction, nod, sysargs){
   ## Construct the regulatory network nodes and edges data.frame
   nwnod = nod[nod$id %in% c(unlist(regsList), unlist(tarsList)),]
   nwnod = data.frame(nwnod, "nodetype" = rep("target", nrow(nwnod)), stringsAsFactors = F) # add a node attribute specifying if the node is a target, a protein regulator or a noncoding regulator (regulators can be also targets but will be labeled as regulators)
-  nwnod[nwnod$id %in% regsList[["PC"]], "nodetype"] = "PCreg"
-  nwnod[nwnod$id %in% regsList[["NC"]], "nodetype"] = "NCreg"
+  nwnod[nwnod$id %in% regsList[["PC"]], "nodetype"] = switch((nrow(nwnod)>0) +1 , NULL, "PCreg")
+  nwnod[nwnod$id %in% regsList[["NC"]], "nodetype"] = switch((nrow(nwnod)>0) +1 , NULL, "NCreg")
   
   ## Call the julia function nwgeneration to generate the regulatory network where the protein regulators are the regulatory nodes
   edgPC = juliaGet(juliaCall("nwgeneration", regsList[["PC"]], tarsList[["PC"]], sysargs[[paste(reaction, "PC", "indeg.distr", sep = ".")]], sysargs[[paste(reaction, "PC", "outdeg.distr", sep = ".")]], sysargs[[paste(reaction, "PC", "outdeg.exp", sep = ".")]], sysargs[[paste(reaction, "PC", "autoregproba", sep = ".")]], sysargs[[paste(reaction, "PC", "twonodesloop", sep = ".")]]))
@@ -552,6 +569,10 @@ createRegulatoryNetwork = function(regsList, tarsList, reaction, nod, sysargs){
   
   ## create the edge dataframe
   nwedg = data.frame("from" = c(edgPC[,1], edgNC[,1]), "to" = c(edgPC[,2], edgNC[,2]), "TargetReaction" = rep(reaction,nrow(edgPC)+nrow(edgNC)), "RegSign" = rep("",nrow(edgPC)+nrow(edgNC)), "RegBy" = rep(c("PC", "NC"), c(nrow(edgPC), nrow(edgNC))), stringsAsFactors = F)
+  
+  if(nrow(edgPC)+nrow(edgNC) == 0) nwedg = data.frame("from" = integer(), "to" = integer(), "TargetReaction" = character(), "RegSign" = character(), "RegBy" = character(), stringsAsFactors = F)
+  
+
   
   ## Choose the sign (activation or repression) of each regulation (=edge)
   ## First for the regulatory interactions exerted by protein regulators
@@ -570,7 +591,6 @@ createRegulatoryNetwork = function(regsList, tarsList, reaction, nod, sysargs){
   if(sysargs[["regcomplexes"]] == "none"){ ## If regulators controlling a same target are not allowed to form a regulatory complex, simply reformat the edg and nod dataframes
     
     nwedgcomp = nwedg
-    nwedgcomp$from = sapply(nwedgcomp$from, toString) ## transform the id of regulators from integer to string (not the id of target because we need it to be integer for computational speed later)
     complexes = list()
     
   }else if(sysargs[["regcomplexes"]] == "prot"){ ## If the regulatory complexes can only be protein complexes
@@ -590,6 +610,7 @@ createRegulatoryNetwork = function(regsList, tarsList, reaction, nod, sysargs){
     
   }
   
+  nwedgcomp$from = vapply(nwedgcomp$from, toString, character(1)) ## transform the id of regulators from integer to string (not the id of target because we need it to be integer for computational speed later)
   nwedg = nwedg[order(nwedg$to),]
   nwedgcomp = nwedgcomp[order(nwedgcomp$to),]
   rownames(nwedg) = NULL
@@ -613,7 +634,7 @@ createMultiOmicNetwork = function(nod, sysargs){
   
 
   ##edg is the edges data frame (1st column "from", 2nd column "to", 3rd column "TargetReaction" (values "TC", "TL", "RD", "PTM", "PD", "MR"), 4th column "RegSign" (value +1 or -1))
-  edg = data.frame("from" = NULL, "to" = NULL, "TargetReaction" = NULL, "RegSign" = NULL, stringsAsFactors = F)
+  edg = data.frame("from" = NULL, "to" = NULL, "TargetReaction" = NULL, "RegSign" = NULL, "RegBy" = NULL, stringsAsFactors = F)
   
   ## complexes is a list where each element gives the components of a regulatory complex, whose id is the name of the element of the list
   complexes = list()
@@ -773,12 +794,36 @@ createMultiOmicNetwork = function(nod, sysargs){
   return(res)
 }
 
+createEmptyMultiOmicNetwork = function(nod, sysargs){
+  
+  res = list("edg" = data.frame("from" = integer(), "to" = integer(), "TargetReaction" = character(), "RegSign" = character(), "RegBy" = character(), stringsAsFactors = F),
+             "complexes" = list(),
+             "complexeskinetics" = list(),
+             "TCRN.edg" = data.frame("from" = integer(), "to" = integer(), "TargetReaction" = character(), "RegSign" = character(), "TCbindingrate" = numeric(), "TCbunindingrate" = numeric(), "TCfoldchange" = numeric(), stringsAsFactors = F),
+             "TLRN.edg" = data.frame("from" = integer(), "to" = integer(), "TargetReaction" = character(), "RegSign" = character(), "TLbindingrate" = numeric(), "TLbunindingrate" = numeric(), "TLfoldchange" = numeric(), stringsAsFactors = F),
+             "RDRN.edg" = data.frame("from" = integer(), "to" = integer(), "TargetReaction" = character(), "RegSign" = character(), "RDbindingrate" = numeric(), stringsAsFactors = F),
+             "RDRN.edg" = data.frame("from" = integer(), "to" = integer(), "TargetReaction" = character(), "RegSign" = character(), "PDbindingrate" = numeric(), stringsAsFactors = F),
+             "PDRN.edg" = data.frame("from" = integer(), "to" = integer(), "TargetReaction" = character(), "RegSign" = character(), "PDbindingrate" = numeric(), stringsAsFactors = F),
+             "PTMRN.edg" = data.frame("from" = integer(), "to" = integer(), "TargetReaction" = character(), "RegSign" = character(), "PTMrate" = numeric(), stringsAsFactors = F),
+             "TCRN.nw" = NULL,
+             "TLRN.nw" = NULL,
+             "RDRN.nw" = NULL,
+             "RDRN.nw" = NULL,
+             "PDRN.nw" = NULL,
+             "PTMRN.nw" = NULL)
+  
+  return(res)
+}
 
-createInSilicoSystem = function(sysargs){
+createInSilicoSystem = function(sysargs, empty = F){
   
   genes = createGenes(sysargs)
   
-  mosystem = createMultiOmicNetwork(genes, sysargs)
+  if(empty){
+    mosystem  = createEmptyMultiOmicNetwork(genes, sysargs)
+  }else{
+    mosystem = createMultiOmicNetwork(genes, sysargs)
+  }
   
   value = list("sysargs" = sysargs, "genes" = genes, "mosystem" = mosystem)
   attr(value, "class") = "insilicosystem"
@@ -791,7 +836,7 @@ createInSilicoSystem = function(sysargs){
 #                   GENERATE THE LIST OF SPECIES AND REACTIONS FOR THE STOCHASTIC SIMULATION                   #
 # ------------------------------------------------------------------------------------------------------------ # 
 
-createStochSystem = function(insilicosystem, indargs){
+createStochSystem = function(insilicosystem, indargs, returnList = T){
   
   ## Create the network and regulatory complexes lists to be sent to Julia (converted to dictionaries in Julia)
   temp = list("TCRN.edg", "TLRN.edg", "RDRN.edg", "PDRN.edg", "PTMRN.edg")
@@ -806,16 +851,30 @@ createStochSystem = function(insilicosystem, indargs){
 
   ## Create the gene list to be sent to Julia (converted to dictionaries in Julia)
   new = list()
-  for(cols in colnames(insilicosystem["genes"])){
-    new[[cols]] = insilicosystem["genes"][,cols]
+  for(cols in colnames(insilicosystem[["genes"]])){
+    new[[cols]] = insilicosystem[["genes"]][,cols]
   }
   assign("nod", new)
+
+  complexes = switch((length(insilicosystem$mosystem$complexes) == 0) + 1, insilicosystem$mosystem$complexes, character(0))
+  complexeskinetics = switch((length(insilicosystem$mosystem$complexeskinetics) == 0) + 1, insilicosystem$mosystem$complexeskinetics, character(0))
   
-  stochsystem = juliaCall("generateReactionList", nod, TCRN.edg, TLRN.edg, RDRN.edg, PDRN.edg, PTMRN.edg, insilicosystem$mosystem$complexes, insilicosystem$mosystem$complexeskinetics, as.integer(insilicosystem$sysargs$regcomplexes.size), indargs$gcnList)
   
-  species = unlist(juliaGet(juliaCall("getDictfromKey", stochsystem, "species")))
-  reactions = unlist(juliaGet(juliaCall("getDictfromKey", stochsystem, "reactions")))
-  reactionsnames = unlist(juliaGet(juliaCall("getDictfromKey", stochsystem, "reactionsnames")))
+  cat("Generating the stochastic system\n")
+  tic()
+  stochsystem = juliaCall("generateReactionList", nod, TCRN.edg, TLRN.edg, RDRN.edg, PDRN.edg, PTMRN.edg, complexes, complexeskinetics, as.integer(insilicosystem$sysargs$regcomplexes.size), indargs$gcnList)
+  toc()
+  
+  if(returnList){
+    cat("Reading species list\n")
+    tic(); species = unlist(juliaGet(juliaCall("getDictfromKey", stochsystem, "species"))); toc()
+    cat("Reading reactions list\n")
+    tic(); reactions = unlist(juliaGet(juliaCall("getDictfromKey", stochsystem, "reactions"))); toc()
+    cat("Reading reactions names list\n")
+    tic(); reactionsnames = unlist(juliaGet(juliaCall("getDictfromKey", stochsystem, "reactionsnames"))); toc()
+  }else{
+    species = reactions = reactionsnames = list()
+  }
   
   return(list("JuliaObject" = stochsystem, "species" = species, "reactions" = reactions, "reactionsnames" = reactionsnames))
   
@@ -862,15 +921,15 @@ plotGlobalSystem = function(insilicosystem, show = T){
   ## Plot overview of regulators ##
   ## --------------------------- ##
   
-  
-  gEdgCS = ggplot(insilicosystem$mosystem$edg, aes(x = "1", fill = RegBy)) +
+  myx = switch((nrow(insilicosystem$mosystem$edg)>0) + 1, NULL, "'1'")
+  gEdgCS = ggplot(insilicosystem$mosystem$edg, aes_string(x = myx, fill = "RegBy")) +
     geom_bar() + 
     scale_fill_manual(values = mycolsCS, drop = F, name = "Regulator\ncoding status", labels = c("PC" = "Protein coding", "NC" = "Noncoding")) + 
     coord_flip() + 
     theme(axis.text.y = element_blank(), axis.title.y = element_blank(), axis.ticks.y = element_blank(), plot.title = element_text(hjust = 0.5, size = rel(1)), axis.title.x = element_text(size = rel(0.9)), legend.title = element_text(size = rel(0.9)), legend.position = "bottom", legend.direction = "horizontal") + 
     ggtitle("Ratio of regulatory interactions performed by\nprotein coding vs noncoding regulators") + ylab("Number of regulatory interactions") 
   
-  gEdgGF = ggplot(insilicosystem$mosystem$edg, aes(x = "1", fill = factor(TargetReaction, levels = rev(c("TC", "TL", "RD", "PD", "PTM"))))) +
+  gEdgGF = ggplot(insilicosystem$mosystem$edg, aes_string(x = myx, fill = factor("TargetReaction", levels = rev(c("TC", "TL", "RD", "PD", "PTM"))))) +
     geom_bar() + 
     scale_fill_manual(values = mycolsGF, breaks = c("TC", "TL", "RD", "PD", "PTM"), drop = F, name = "Gene function ") + 
     coord_flip() +
@@ -961,14 +1020,15 @@ plotRegulationSystem = function(insilicosystem, regreactions = c("TC", "TL", "RD
     genesid = insilicosystem$genes[, c("id", "coding", "TargetReaction")]
     
     ## Plot global edge informations
-    gEdgPosNeg = ggplot(edgtot, aes(x = "A", fill = RegSign)) +
+    myx = switch((nrow(edgcomp)>0) + 1, NULL, "'A'")
+    gEdgPosNeg = ggplot(edgtot, aes_string(x = myx, fill = "RegSign")) +
       geom_bar() + 
       scale_fill_manual(values = mycolsPosNeg, drop = F, name = "Nature of the interactions", labels = c("1" = "Positive\nregulation", "-1" = "Negative\nregulation")) + 
       coord_flip() + 
       theme(axis.text.y = element_blank(), axis.title.y = element_blank(), axis.ticks.y = element_blank(), plot.title = element_text(hjust = 0.5, size = rel(1)), axis.title.x = element_text(size = rel(0.9)), legend.title = element_text(size = rel(0.9)), legend.position = "bottom", legend.direction = "horizontal") + 
       ggtitle("Ratio of activating vs repressing regulatory interactions") + ylab("Number of regulatory interactions") 
     
-    gEdgPCNC = ggplot(edgtot, aes(x = "A", fill = RegBy)) +
+    gEdgPCNC = ggplot(edgtot, aes_string(x = myx, fill = "RegBy")) +
       geom_bar() + 
       scale_fill_manual(values = mycolsCS, drop = F, name = "Nature of the regulators", labels = c("PC" = "Protein coding", "NC" = "Noncoding")) + 
       coord_flip() + 
