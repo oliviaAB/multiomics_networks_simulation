@@ -880,6 +880,44 @@ createStochSystem = function(insilicosystem, indargs, returnList = T){
   
 }
 
+simulateSystemStochastic = function(insilicosystem, insilicopopulation, simtime, nepochs = -1, ntrialsPerInd = 1, simalgorithm = "SSA", returnStochModel = F){
+  
+  stochmodel = createStochSystem(insilicosystem, insilicopopulation$indargs, returnList = returnStochModel)
+  
+  resTable = vector("list", length(insilicopopulation$individualsList))
+  names(resTable) = names(insilicopopulation$individualsList)
+  
+  for(ind in names(insilicopopulation$individualsList)){
+    tic();simJuliaJ = juliaCall("stochasticsimulation", stochmodel$JuliaObject, insilicopopulation$individualsList[[ind]]$QTLeffects, insilicopopulation$individualsList[[ind]]$InitVar, simtime,
+                                  modelname = ind, ntrials = ntrialsPerInd, nepochs = nepochs, simalgorithm = simalgorithm);toc()
+    tic();simJulia = juliaGet(simJuliaJ);toc()
+    mycolnames = names(sort(unlist(simJulia@fields$colindex@fields$lookup)))
+    resTable[[ind]] = data.frame(matrix(unlist(simJulia@fields$columns), ncol = length(simJulia@fields$columns), dimnames = list(c(), mycolnames)))
+  }
+  
+}
+
+# DNAsites = grep("^Pr", names(res), value = T)
+# maxDNAsites = sapply(DNAsites, function(x){max(res[,x])})
+# which(maxDNAsites >1)
+# 
+# 
+# RBSlist = list()
+# for(i in insilicosystem$genes$id[insilicosystem$genes$coding == "PC"]){
+#   RBSlist[[i]] = insilicosystem$mosystem$TLRN.edg$from[insilicosystem$mosystem$TLRN.edg$to == i]
+#   
+#   if(!is.null(RBS.list[[i]])){
+#     
+#   }
+# }
+# 
+# 
+# 
+# RNAsites = grep("^RBS", names(res), value = T)
+# uniqueRNA = unique(sapply(RNAsites, function(x){strsplit(x, "reg")[[1]][1]}))
+# eqRNAsites = sapply(uniqueRNA, function(x){max(res[,x])})
+# which(maxRNAsites >1)
+
 # ############################################################################################################################
 #                                                 VISUALISATION
 # ############################################################################################################################
@@ -929,7 +967,7 @@ plotGlobalSystem = function(insilicosystem, show = T){
     theme(axis.text.y = element_blank(), axis.title.y = element_blank(), axis.ticks.y = element_blank(), plot.title = element_text(hjust = 0.5, size = rel(1)), axis.title.x = element_text(size = rel(0.9)), legend.title = element_text(size = rel(0.9)), legend.position = "bottom", legend.direction = "horizontal") + 
     ggtitle("Ratio of regulatory interactions performed by\nprotein coding vs noncoding regulators") + ylab("Number of regulatory interactions") 
   
-  gEdgGF = ggplot(insilicosystem$mosystem$edg, aes_string(x = myx, fill = factor("TargetReaction", levels = rev(c("TC", "TL", "RD", "PD", "PTM"))))) +
+  gEdgGF = ggplot(insilicosystem$mosystem$edg, aes_string(x = myx, fill = "TargetReaction")) +
     geom_bar() + 
     scale_fill_manual(values = mycolsGF, breaks = c("TC", "TL", "RD", "PD", "PTM"), drop = F, name = "Gene function ") + 
     coord_flip() +

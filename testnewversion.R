@@ -8,7 +8,7 @@ setwd("~/winData/multiomics_networks_simulation")
 source("network_generation.R")
 
 
-mysystemargs = insilicosystemargs(G = 50, PC.p = 0, NC.TC.p = 0)
+mysystemargs = insilicosystemargs(G = 10)
 myinsilicosystem = createInSilicoSystem(mysystemargs)
 
 
@@ -17,7 +17,7 @@ plotGlobalSystem(myinsilicosystem, show = T)
 plotRegulationSystem(myinsilicosystem, c("TC"))
 
 myindivargs = insilicoindividualargs()
-mypopulation = createPopulation(20, myinsilicosystem, myindivargs)
+mypopulation = createPopulation(5, myinsilicosystem, myindivargs)
 
 test = createStochSystem(myinsilicosystem, myindivargs, returnList = F)
 

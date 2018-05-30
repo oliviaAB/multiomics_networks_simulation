@@ -401,7 +401,7 @@ function createbindingpromreactions(edg, exprstep, promPrefix, nod, functform, c
     if exprstep == "TC"
       push!(inicond, :(1))
     else
-      push!(inicond, :(($(nod["TCrate"][tarid]/nod["RDrate"][tarid])*QTLeffects[$(gcn)]["qtlTCrate"][$(tarid)]/QTLeffects[$(gcn)]["qtlRDrate"][$(tarid)])*Initvar[$(gcn)]["R"][$(tarid)]))
+      push!(inicond, :(($(nod["TCrate"][tarid]/nod["RDrate"][tarid])*QTLeffects[$(gcn)]["qtlTCrate"][$(tarid)]/QTLeffects[$(gcn)]["qtlRDrate"][$(tarid)])*InitVar[$(gcn)]["R"][$(tarid)]))
     end    
 
     for gcnreg in gcnList
@@ -450,7 +450,7 @@ function createbindingpromreactions(edg, exprstep, promPrefix, nod, functform, c
     if exprstep == "TC"
       push!(inicond, :(1))
     else
-      push!(inicond, :(($(nod["TCrate"][tarid]/nod["RDrate"][tarid])*QTLeffects[$(gcn)]["qtlTCrate"][$(tarid)]/QTLeffects[$(gcn)]["qtlRDrate"][$(tarid)])*Initvar[$(gcn)]["R"][$(tarid)]))
+      push!(inicond, :(($(nod["TCrate"][tarid]/nod["RDrate"][tarid])*QTLeffects[$(gcn)]["qtlTCrate"][$(tarid)]/QTLeffects[$(gcn)]["qtlRDrate"][$(tarid)])*InitVar[$(gcn)]["R"][$(tarid)]))
     end 
 
     for t in 1:size(complexvariants)[1]
@@ -465,7 +465,7 @@ function createbindingpromreactions(edg, exprstep, promPrefix, nod, functform, c
       push!(tempallstates, prombound)
       push!(react, reactBioSim([prom*"F", complvar], [prombound])) ## promF + complvar -> promB
       push!(reactnames, "binding"*prom*complvar)
-      prop = """$(edg[exprstep*"bindingrate"][r])*QTLeffects[$(gcn)][$("qtl"*exprstep*"regbind")][$(tarid)]"""*join(["""*QTLeffects[$(complexvariants[t, i])]["qtlactivity"][$(complexes[compl][i])]""" for i in 1:complexsize])
+      prop = """$(edg[exprstep*"bindingrate"][r])*QTLeffects["$(gcn)"]["$("qtl"*exprstep*"regbind")"][$(tarid)]"""*join(["""*QTLeffects["$(complexvariants[t, i])"]["qtlactivity"][$(complexes[compl][i])]""" for i in 1:complexsize])
       push!(propens, parse(prop))
       ## add the unbinding of the complex from the binding site
       push!(react, reactBioSim([prombound], [prom*"F", complvar])) ## promB -> promF + complvar
@@ -483,56 +483,58 @@ function createbindingpromreactions(edg, exprstep, promPrefix, nod, functform, c
 end
 
 
+
 function generateReactionList(nod, edgTCRN, edgTLRN, edgRDRN, edgPDRN, edgPTMRN, complexes, complexeskinetics, complexsize, gcnList)
   
-  ## Output of the function
-  species = []
-  initialconditions = []
-  reactions = []
-  reactionsnames = []
-  propensities = []
+    ## Output of the function
+    species = []
+    initialconditions = []
+    reactions = []
+    reactionsnames = []
+    propensities = []
 
 
-  ## Specify the active form of each regulator, ie the species that performs the regulation
-  functform = Dict(zip(map(string, nod["id"]), nod["ActiveForm"]))
+    ## Specify the active form of each regulator, ie the species that performs the regulation
+    functform = Dict(zip(map(string, nod["id"]), nod["ActiveForm"]))
 
-  ## Create all possible allele combinations of the components of a complex
-  complexvariants = allposscomb(gcnList, complexsize)
+    ## Create all possible allele combinations of the components of a complex
+    complexvariants = allposscomb(gcnList, complexsize)
 
-  ## Generate the formation and dissociation reactions of the different regulatory complexes
-  for compl in keys(complexes), t in 1:size(complexvariants)[1]
-    complvar = compl*"comp"*join([string(complexes[compl][i])*complexvariants[t, i] for i in 1:complexsize])
-    push!(species, complvar) ## add the complex form to the list of species
-    push!(initialconditions, :(0)) ## add the initial abundance of the complex form to the list of initial conditions. For complexes, initial abundance set to 0
-    ## Create the reaction of complex formation
-    push!(reactions, reactBioSim([functform[string(complexes[compl][i])]*complexvariants[t, i] for i in 1:complexsize], [complvar])) ## sum of complex components -> compl
-    push!(reactionsnames, "formation"*complvar) 
-    push!(propensities, :($(complexeskinetics[compl]["formationrate"])))
-    ## Create the reaction of complex dissociation
-    push!(reactions, reactBioSim([complvar], [functform[string(complexes[compl][i])]*complexvariants[t, i] for i in 1:complexsize])) ## compl -> sum of complex components
-    push!(reactionsnames, "dissociation"*complvar) 
-    push!(propensities, :($(complexeskinetics[compl]["dissociationrate"])))
-  end
-
-
-
-  TLbinding = createbindingpromreactions(edgTLRN, "TL", "RBS", nod, functform, complexes, complexeskinetics, complexsize, complexvariants, gcnList)
-  promactiveTL = TLbinding["promActiveStates"]
-  promallTL = TLbinding["promAllStates"]
-
-  TCbinding = createbindingpromreactions(edgTCRN, "TC", "Pr", nod, functform, complexes, complexeskinetics, complexsize, complexvariants, gcnList)
-  promactiveTC = TCbinding["promActiveStates"]
-
-  species  = vcat(species, TCbinding["species"], TLbinding["species"])
-  initialconditions  = vcat(initialconditions, TCbinding["initialconditions"], TLbinding["initialconditions"])
-  reactions  = vcat(reactions, TCbinding["reactions"], TLbinding["reactions"])
-  reactionsnames  = vcat(reactionsnames, TCbinding["reactionsnames"], TLbinding["reactionsnames"])
-  propensities  = vcat(propensities, TCbinding["propensities"], TLbinding["propensities"])
+    ## Generate the formation and dissociation reactions of the different regulatory complexes
+    for compl in keys(complexes), t in 1:size(complexvariants)[1]
+        complvar = compl*"comp"*join([string(complexes[compl][i])*complexvariants[t, i] for i in 1:complexsize])
+        push!(species, complvar) ## add the complex form to the list of species
+        push!(initialconditions, :(0)) ## add the initial abundance of the complex form to the list of initial conditions. For complexes, initial abundance set to 0
+        ## Create the reaction of complex formation
+        push!(reactions, reactBioSim([functform[string(complexes[compl][i])]*complexvariants[t, i] for i in 1:complexsize], [complvar])) ## sum of complex components -> compl
+        push!(reactionsnames, "formation"*complvar) 
+        push!(propensities, :($(complexeskinetics[compl]["formationrate"])))
+        ## Create the reaction of complex dissociation
+        push!(reactions, reactBioSim([complvar], [functform[string(complexes[compl][i])]*complexvariants[t, i] for i in 1:complexsize])) ## compl -> sum of complex components
+        push!(reactionsnames, "dissociation"*complvar) 
+        push!(propensities, :($(complexeskinetics[compl]["dissociationrate"])))
+    end
 
 
-  ## CREATE TRANSCRIPTION AND RNA DECAY REACTIONS
 
-  for g in nod["id"], gcn in gcnList
+    TLbinding = createbindingpromreactions(edgTLRN, "TL", "RBS", nod, functform, complexes, complexeskinetics, complexsize, complexvariants, gcnList)
+    promactiveTL = TLbinding["promActiveStates"]
+    promallTL = TLbinding["promAllStates"]
+
+    TCbinding = createbindingpromreactions(edgTCRN, "TC", "Pr", nod, functform, complexes, complexeskinetics, complexsize, complexvariants, gcnList)
+    promactiveTC = TCbinding["promActiveStates"]
+    promallTC = TCbinding["promAllStates"]
+
+    species  = vcat(species, TCbinding["species"], TLbinding["species"])
+    initialconditions  = vcat(initialconditions, TCbinding["initialconditions"], TLbinding["initialconditions"])
+    reactions  = vcat(reactions, TCbinding["reactions"], TLbinding["reactions"])
+    reactionsnames  = vcat(reactionsnames, TCbinding["reactionsnames"], TLbinding["reactionsnames"])
+    propensities  = vcat(propensities, TCbinding["propensities"], TLbinding["propensities"])
+
+
+    ## CREATE TRANSCRIPTION AND RNA DECAY REACTIONS
+
+    for g in nod["id"], gcn in gcnList
     gname = string(g) * gcn
     TCreg = promactiveTC[gname]
     TLreg = promallTL[gname]
@@ -543,7 +545,7 @@ function generateReactionList(nod, edgTCRN, edgTLRN, edgRDRN, edgPDRN, edgPTMRN,
     if length(TLreg) == 0
       RNAform = ["R"*gname]
       push!(species, "R"*gname)
-      push!(initialconditions, :(($(nod["TCrate"][g]/nod["RDrate"][g])*QTLeffects[$(gcn)]["qtlTCrate"][$(g)]/QTLeffects[$(gcn)]["qtlRDrate"][$(g)])*Initvar[$(gcn)]["R"][$(g)]))
+      push!(initialconditions, :(($(nod["TCrate"][g]/nod["RDrate"][g])*QTLeffects[$(gcn)]["qtlTCrate"][$(g)]/QTLeffects[$(gcn)]["qtlRDrate"][$(g)])*InitVar[$(gcn)]["R"][$(g)]))
       transcriptforms = ["R"*gname] ## for RNA decay
     else
       RNAform = [t[1] for t in TLreg] ## The TLreg dictionary is constructed such that each free binding site name is at the position 1
@@ -588,7 +590,7 @@ function generateReactionList(nod, edgTCRN, edgTLRN, edgRDRN, edgPDRN, edgPTMRN,
         complvar = compl*"comp"*join([string(complexes[compl][i])*complexvariants[j, i] for i in 1:complexsize])
         push!(reactions, reactBioSim(vcat(transcriptforms[t,:], complvar), [complvar]))
         push!(reactionsnames, "RNAdecay"*join(transcriptforms[t,:])*"reg"*complvar)
-        propens = """$(edgRDRN["RDbindingrate"][r])"""*join(["*"*"""QTLeffects[$(complexvariants[j, i])]["qtlactivity"][$(complexes[compl][i])]""" for i in 1:complexsize])
+        propens = """$(edgRDRN["RDbindingrate"][r])"""*join(["*"*"""QTLeffects["$(complexvariants[j, i])"]["qtlactivity"][$(complexes[compl][i])]""" for i in 1:complexsize])
         push!(propensities, parse(propens))
       end
 
@@ -597,151 +599,238 @@ function generateReactionList(nod, edgTCRN, edgTLRN, edgRDRN, edgPDRN, edgPTMRN,
   end
 
 
+    ## CREATE TRANSLATION AND PROTEIN DECAY REACTIONS
+    for g in nod["id"][nod["coding"] .== "PC"], gcn in gcnList
+        gname = string(g) * gcn
+        TLreg = promactiveTL[gname]
 
-  ## CREATE TRANSLATION AND PROTEIN DECAY REACTIONS
-  for g in nod["id"][nod["coding"] .== "PC"], gcn in gcnList
-    gname = string(g) * gcn
-    TLreg = promactiveTL[gname]
-
-    push!(species, "P"*gname)
-    ## Initial abundance of a protein = TCrate/RDrate * TLrate/PDrate (given the QTL effects as well)
-    push!(initialconditions, :(($(nod["TCrate"][g]*nod["TLrate"][g]/(nod["RDrate"][g]*nod["PDrate"][g]))*QTLeffects[$(gcn)]["qtlTCrate"][$(g)]*QTLeffects[$(gcn)]["qtlTLrate"][$(g)]/(QTLeffects[$(gcn)]["qtlRDrate"][$(g)]*QTLeffects[$(gcn)]["qtlPDrate"][$(g)]))*Initvar[$(gcn)]["P"][$(g)]))
+        push!(species, "P"*gname)
+        ## Initial abundance of a protein = TCrate/RDrate * TLrate/PDrate (given the QTL effects as well)
+        push!(initialconditions, :(($(nod["TCrate"][g]*nod["TLrate"][g]/(nod["RDrate"][g]*nod["PDrate"][g]))*QTLeffects[$(gcn)]["qtlTCrate"][$(g)]*QTLeffects[$(gcn)]["qtlTLrate"][$(g)]/(QTLeffects[$(gcn)]["qtlRDrate"][$(g)]*QTLeffects[$(gcn)]["qtlPDrate"][$(g)]))*InitVar[$(gcn)]["P"][$(g)]))
 
 
-    if length(TLreg) == 0
-      ## Create transltion of the gene
-      push!(reactions, reactBioSim(["R"*gname], ["R"*gname, "P"*gname]))
-      push!(reactionsnames, "translation"*gname)
-      push!(propensities, :($(nod["TLrate"][g])*QTLeffects[$(gcn)]["qtlTLrate"][$(g)]))
+        if length(TLreg) == 0
+            ## Create transltion of the gene
+            push!(reactions, reactBioSim(["R"*gname], ["R"*gname, "P"*gname]))
+            push!(reactionsnames, "translation"*gname)
+            push!(propensities, :($(nod["TLrate"][g])*QTLeffects[$(gcn)]["qtlTLrate"][$(g)]))
 
-    else
-      promcomb = combinactivepromstates(TLreg) ## gives all possible active combinations of the different binding site states
-      for t in 1:size(promcomb["proms"])[1]
-          push!(reactions, reactBioSim(promcomb["proms"][t,:], vcat(promcomb["proms"][t,:], "P"*gname)))
-          push!(reactionsnames, "translation"*join(promcomb["proms"][t,:]))
-          push!(propensities, :($(nod["TLrate"][g])*QTLeffects[$(gcn)]["qtlTLrate"][$(g)]*$(prod(promcomb["fcs"][t,:]))))
-      end
+        else
+            promcomb = combinactivepromstates(TLreg) ## gives all possible active combinations of the different binding site states
+            for t in 1:size(promcomb["proms"])[1]
+                push!(reactions, reactBioSim(promcomb["proms"][t,:], vcat(promcomb["proms"][t,:], "P"*gname)))
+                push!(reactionsnames, "translation"*join(promcomb["proms"][t,:]))
+                push!(propensities, :($(nod["TLrate"][g])*QTLeffects[$(gcn)]["qtlTLrate"][$(g)]*$(prod(promcomb["fcs"][t,:]))))
+            end
+        end
+
+        ## Create basal protein decay rate
+        push!(reactions, reactBioSim(["P"*gname], [0]))
+        push!(reactionsnames, "proteindecay"*"P"*gname)
+        push!(propensities, :($(nod["PDrate"][g])*QTLeffects[$(gcn)]["qtlPDrate"][$(g)]))
+        if nod["PTMform"][g] =="1"
+
+            ## Add to the list of species the PTM form of the protein
+            push!(species, "Pm"*string(g)*gcn)
+            push!(initialconditions, :(0)) ## initial abundance of modified proteins set to 0
+
+            push!(reactions, reactBioSim(["Pm"*gname], [0]))
+            push!(reactionsnames, "proteindecay"*"Pm"*gname)
+            push!(propensities, :($(nod["PDrate"][g])*QTLeffects[$(gcn)]["qtlPDrate"][$(g)]))
+        end
     end
 
-    ## Create basal protein decay rate
-    push!(reactions, reactBioSim(["P"*gname], [0]))
-    push!(reactionsnames, "proteindecay"*"P"*gname)
-    push!(propensities, :($(nod["PDrate"][g])*QTLeffects[$(gcn)]["qtlPDrate"][$(g)]))
-    if nod["PTMform"][g] =="1"
+      ## CREATE REGULATED PROTEIN DECAY
 
-      ## Add to the list of species the PTM form of the protein
-      push!(species, "Pm"*string(g)*gcn)
-      push!(initialconditions, :(0)) ## initial abundance of modified proteins set to 0
+    regsingl = find( x -> !in('C', x), edgPDRN["from"]) ## identify single-molecule regulators (i.e. not regulatory complexes)
+    regcompl = find( x -> in('C', x), edgPDRN["from"]) ## identify regulatory complexes
 
-      push!(reactions, reactBioSim(["Pm"*gname], [0]))
-      push!(reactionsnames, "proteindecay"*"Pm"*gname)
-      push!(propensities, :($(nod["PDrate"][g])*QTLeffects[$(gcn)]["qtlPDrate"][$(g)]))
-    end
-  end
+    for r in regsingl, gcn in gcnList
+        tarid = edgPDRN["to"][r]
+        tar = string(tarid) * gcn
+        reg = edgPDRN["from"][r]
 
-  ## CREATE REGULATED PROTEIN DECAY
+        pform = ["P"*tar]
+        if nod["PTMform"][tarid] == "1"
+          push!(pform, "Pm"*tar)
+        end
 
-  regsingl = find( x -> !in('C', x), edgPDRN["from"]) ## identify single-molecule regulators (i.e. not regulatory complexes)
-  regcompl = find( x -> in('C', x), edgPDRN["from"]) ## identify regulatory complexes
-
-  for r in regsingl, gcn in gcnList
-    tarid = edgPDRN["to"][r]
-    tar = string(tarid) * gcn
-    reg = edgPDRN["from"][r]
-
-    pform = ["P"*tar]
-    if nod["PTMform"][tarid] == "1"
-      push!(pform, "Pm"*tar)
+        for p in pform, gcnreg in gcnList
+            push!(reactions, reactBioSim([p, functform[reg]*gcnreg], [functform[reg]*gcnreg]))
+            push!(reactionsnames, "proteindecay"*p*"reg"*reg*gcnreg)
+            push!(propensities, :($(edgPDRN["PDbindingrate"][r])*QTLeffects[$(gcnreg)]["qtlactivity"][$(parse(Int64, reg))]))
+        end
     end
 
-    for p in pform, gcnreg in gcnList
-      push!(reactions, reactBioSim([p, functform[reg]*gcnreg], [functform[reg]*gcnreg]))
-      push!(reactionsnames, "proteindecay"*p*"reg"*reg*gcnreg)
-      push!(propensities, :($(edgPDRN["PDbindingrate"][r])*QTLeffects[$(gcnreg)][qtlactivity][$(parse(Int64, reg))]))
+    for r in regcompl, gcn in gcnList
+        tarid = edgPDRN["to"][r]
+        tar = string(tarid) * gcn
+        compl = edgPDRN["from"][r]
+
+        pform = ["P"*tar]
+        if nod["PTMform"][tarid] == "1"
+            push!(pform, "Pm"*tar)
+        end
+
+        for p in pform, t in 1:size(complexvariants)[1]
+            complvariant = compl*"comp"*join([string(complexes[compl][i])*complexvariants[t, i] for i in 1:complexsize])
+            push!(reactions, reactBioSim([p, complvariant], [complvariant]))
+            push!(reactionsnames, "proteindecay"*p*"reg"*complvariant)
+            propens = """$(edgPDRN["PDbindingrate"][r])"""*join(["*"*"""QTLeffects["$(complexvariants[t, i])"]["qtlactivity"][$(complexes[compl][i])]""" for i in 1:complexsize])
+            push!(propensities, parse(propens))
+        end
     end
-  end
-
-  for r in regcompl, gcn in gcnList
-    tarid = edgPDRN["to"][r]
-    tar = string(tarid) * gcn
-    compl = edgPDRN["from"][r]
-
-    pform = ["P"*tar]
-    if nod["PTMform"][tarid] == "1"
-      push!(pform, "Pm"*tar)
-    end
-
-    for p in pform, t in 1:size(complexvariants)[1]
-      complvariant = compl*"comp"*join([string(complexes[compl][i])*complexvariants[t, i] for i in 1:complexsize])
-      push!(reactions, reactBioSim([p, complvariant], [complvariant]))
-      push!(reactionsnames, "proteindecay"*p*"reg"*complvariant)
-      propens = """$(edgPDRN["PDbindingrate"][r])"""*join(["*"*"""QTLeffects[$(complexvariants[t, i])]["qtlactivity"][$(complexes[compl][i])]""" for i in 1:complexsize])
-      push!(propensities, parse(propens))
-    end
-
-  end
 
 
   ## CREATE PROTEIN POST-TRANSLATIONAL MODIFICATION
 
 
-  regsingl = find( x -> !in('C', x), edgPTMRN["from"]) ## identify single-molecule regulators (i.e. not regulatory complexes)
-  regcompl = find( x -> in('C', x), edgPTMRN["from"]) ## identify regulatory complexes
+    regsingl = find( x -> !in('C', x), edgPTMRN["from"]) ## identify single-molecule regulators (i.e. not regulatory complexes)
+    regcompl = find( x -> in('C', x), edgPTMRN["from"]) ## identify regulatory complexes
 
-  for r in regsingl, gcn in gcnList
-    tarid = edgPTMRN["to"][r]
-    tar = string(tarid) * gcn
-    reg = edgPTMRN["from"][r]
-    ispos = edgPTMRN["RegSign"][r] == "1" ## is the regulator transforming the orginal protein into its modified form (RegSign = "1") or the opposite (RegSign = "-1")
+    for r in regsingl, gcn in gcnList
+        tarid = edgPTMRN["to"][r]
+        tar = string(tarid) * gcn
+        reg = edgPTMRN["from"][r]
+        ispos = edgPTMRN["RegSign"][r] == "1" ## is the regulator transforming the orginal protein into its modified form (RegSign = "1") or the opposite (RegSign = "-1")
 
-    for gcnreg in gcnList
-      if ispos
-        push!(reactions, reactBioSim([ "P"*tar, functform[reg]*gcnreg], ["Pm"*tar, functform[reg]*gcnreg]))
-        push!(reactionsnames, "PTM"*tar*"reg"*reg*gcnreg)
-        push!(propensities, :($(edgPTM["PTMbindingrate"][r])*QTLeffects[$(gcnreg)]["qtlactivity"][$(parse(Int64, reg))]))
-      else
-        push!(reactions, reactBioSim([ "Pm"*tar, functform[reg]*gcnreg], ["P"*tar, functform[reg]*gcnreg]))
-        push!(reactionsnames, "de-PTM"*tar*"reg"*reg*gcnreg)
-        push!(propensities, :($(edgPTM["PTMbindingrate"][r])*QTLeffects[$(gcnreg)]["qtlactivity"][$(parse(Int64, reg))])) 
-      end
+        for gcnreg in gcnList
+            if ispos
+                push!(reactions, reactBioSim([ "P"*tar, functform[reg]*gcnreg], ["Pm"*tar, functform[reg]*gcnreg]))
+                push!(reactionsnames, "PTM"*tar*"reg"*reg*gcnreg)
+                push!(propensities, :($(edgPTM["PTMbindingrate"][r])*QTLeffects[$(gcnreg)]["qtlactivity"][$(parse(Int64, reg))]))
+            else
+                push!(reactions, reactBioSim([ "Pm"*tar, functform[reg]*gcnreg], ["P"*tar, functform[reg]*gcnreg]))
+                push!(reactionsnames, "de-PTM"*tar*"reg"*reg*gcnreg)
+                push!(propensities, :($(edgPTM["PTMbindingrate"][r])*QTLeffects[$(gcnreg)]["qtlactivity"][$(parse(Int64, reg))])) 
+            end
+        end
     end
 
-  end
-
-  for r in regcompl, gcn in gcnList
-    tarid = edgPTMRN["to"][r]
-    tar = string(tarid) * gcn
-    compl = edgPTMRN["from"][r]
-    ispos = edgPTMRN["RegSign"][r] == "1" ## is the regulator transforming the orginal protein into its modified form (RegSign = "1") or the opposite (RegSign = "-1")
+    for r in regcompl, gcn in gcnList
+        tarid = edgPTMRN["to"][r]
+        tar = string(tarid) * gcn
+        compl = edgPTMRN["from"][r]
+        ispos = edgPTMRN["RegSign"][r] == "1" ## is the regulator transforming the orginal protein into its modified form (RegSign = "1") or the opposite (RegSign = "-1")
 
 
-    for p in pform, t in 1:size(complexvariants)[1]
-      complvariant = compl*"comp"*join([string(complexes[compl][i])*complexvariants[t, i] for i in 1:complexsize])
-      
-      if ispos
-        push!(reactions, reactBioSim([ "P"*tar, complvariant], ["Pm"*tar, complvariant]))
-        push!(reactionsnames, "PTM"*tar*"reg"*reg*complvariant)
-        propens = """$(edgPTM["PTMbindingrate"][r])"""*join(["*"*"""QTLeffects[$(complexvariants[t, i])]["qtlactivity"][$(complexes[compl][i])]""" for i in 1:complexsize])
-        push!(propensities, parse(propens))
-      else
-        push!(reactions, reactBioSim([ "Pm"*tar, complvariant], ["P"*tar, complvariant]))
-        push!(reactionsnames, "de-PTM"*tar*"reg"*reg*complvariant)
-        propens = """$(edgPTM["PTMbindingrate"][r])"""*join(["*"*"""QTLeffects[$(complexvariants[t, i])]["qtlactivity"][$(complexes[compl][i])]""" for i in 1:complexsize])
-        push!(propensities, parse(propens))
-      end
-
+        for p in pform, t in 1:size(complexvariants)[1]
+            complvariant = compl*"comp"*join([string(complexes[compl][i])*complexvariants[t, i] for i in 1:complexsize])
+          
+            if ispos
+                push!(reactions, reactBioSim([ "P"*tar, complvariant], ["Pm"*tar, complvariant]))
+                push!(reactionsnames, "PTM"*tar*"reg"*reg*complvariant)
+                propens = """$(edgPTM["PTMbindingrate"][r])"""*join(["*"*"""QTLeffects["$(complexvariants[t, i])"]["qtlactivity"][$(complexes[compl][i])]""" for i in 1:complexsize])
+                push!(propensities, parse(propens))
+            else
+                push!(reactions, reactBioSim([ "Pm"*tar, complvariant], ["P"*tar, complvariant]))
+                push!(reactionsnames, "de-PTM"*tar*"reg"*reg*complvariant)
+                propens = """$(edgPTM["PTMbindingrate"][r])"""*join(["*"*"""QTLeffects["$(complexvariants[t, i])"]["qtlactivity"][$(complexes[compl][i])]""" for i in 1:complexsize])
+                push!(propensities, parse(propens))
+            end
+        end
     end
 
-  end
-
-  return Dict("species" => species, "initialconditions" => initialconditions, "reactions" => reactions, "reactionsnames" => reactionsnames, "propensities" => propensities)
-
+    return Dict("species" => species, "initialconditions" => initialconditions, "reactions" => reactions, "reactionsnames" => reactionsnames, "propensities" => propensities, "TCproms" => promallTC, "TLproms" => promallTL)
 end
 
 function getDictfromKey(mydict, mykey)
-  return mydict[mykey]
+    return mydict[mykey]
 end
 
+
+
+
+# ------------------------------------------------------------------------------------------------ #
+##              FUNCTIONS FOR CREATING THE REACTION LIST AND PROPENSITY LIST                      ##
+# ------------------------------------------------------------------------------------------------ #
+
+
+using BioSimulator
+
+
+
+
+function res2df(output :: BioSimulator.SimData)
+    t, data = get_data(output)
+    id2ind  = output.id2ind
+
+    d1, d2, d3 = size(data)
+
+    ids = collect(keys(id2ind))
+
+    df = DataFrame()
+    df[:time] = repeat(collect(t), outer=[d3])
+    for i = ids
+        df[i] = vec(convert(Array, view(data, id2ind[i], :, :)))
+    end
+    df[:trial] = repeat(collect(1:d3), inner=[d2])
+    return df
+end
+
+
+function smallmodel()
+
+
+    model = BioSimulator.Network("coucou")
+
+    model <= BioSimulator.Species("X", 25)
+    model <= BioSimulator.Reaction("transcription", 0.02, "0 --> X")
+    model <= BioSimulator.Reaction("decay", 0.00069, "X --> 0")
+
+    result = BioSimulator.simulate(model, algorithm = SSA, time = 1000.0, epochs = 1000)
+    resdf = res2df(result)
+
+    return resdf
+end
+
+
+
+function stochasticsimulation(stochmodel, QTLeffectslocal, InitVarlocal, simtime; modelname = "MySimulation", ntrials = 1, nepochs = -1, simalgorithm = "SSA")
+
+    ## Only way to use eval inside the function
+    global QTLeffects = QTLeffectslocal
+    global InitVar = InitVarlocal
+
+    ## If no nepochs provided, record abundance at each time units of the simulation
+    if nepochs == -1
+        nepochs = simtime
+    end
+
+    ## Convert the String name of the simulator to use into a BioSimulator object of type inheriting from Algorithm
+    if in(simalgorithm, ["SSA", "FRM", "NRM", "ODM", "SAL"])
+        simalgorithm = eval(parse("BioSimulator."*simalgorithm))
+    else
+        error("Specified algorithm is not implemented in module BioSimulator")
+    end
+
+    model = BioSimulator.Network(modelname)
+
+
+    ## Add the species in the model, with their initial abundance
+    for i in 1:length(stochmodel["species"])
+        i0 = round(Int, eval(stochmodel["initialconditions"][i]))
+        #println(stochmodel["species"][i]* "\t"*string(i0))
+        model <= BioSimulator.Species(stochmodel["species"][i], i0)
+    end
+
+
+    ## Add the reactions in the model, with their name and rate
+    for i in eachindex(stochmodel["reactions"])
+        model <= BioSimulator.Reaction(stochmodel["reactionsnames"][i], eval(stochmodel["propensities"][i]), stochmodel["reactions"][i])
+    end
+
+    result = simulate(model, algorithm = simalgorithm, time = convert(Float64, simtime), epochs = round(Int64, nepochs), trials = convert(Int64, ntrials))
+
+    resultdf = res2df(result)
+
+
+    for g in collect(keys(stochmodel["TCproms"]))
+        nbspec = colwise(sum, resultdf[:, stochmodel["TCproms"]])
+    end
+
+    return resultdf
+end
 
 #=
 
@@ -806,10 +895,10 @@ gcnList = ["GCN"*string(i) for i in 1:xploidy]
 using BioSimulator
 include("winData/multiomics_networks_simulation/julia_functions.jl")
 
-stochmodel = Dict("reactionsnames"=>Any["transcription1GCN1", "RNAdecayR1GCN1", "transcription1GCN2", "RNAdecayR1GCN2", "transcription1GCN3", "RNAdecayR1GCN3", "transcription1GCN4", "RNAdecayR1GCN4", "transcription2GCN1", "RNAdecayR2GCN1", "transcription2GCN2", "RNAdecayR2GCN2", "transcription2GCN3", "RNAdecayR2GCN3", "transcription2GCN4", "RNAdecayR2GCN4", "transcription3GCN1", "RNAdecayR3GCN1", "transcription3GCN2", "RNAdecayR3GCN2", "transcription3GCN3", "RNAdecayR3GCN3", "transcription3GCN4", "RNAdecayR3GCN4", "transcription4GCN1", "RNAdecayR4GCN1", "transcription4GCN2", "RNAdecayR4GCN2", "transcription4GCN3", "RNAdecayR4GCN3", "transcription4GCN4", "RNAdecayR4GCN4", "transcription5GCN1", "RNAdecayR5GCN1", "transcription5GCN2", "RNAdecayR5GCN2", "transcription5GCN3", "RNAdecayR5GCN3", "transcription5GCN4", "RNAdecayR5GCN4", "transcription6GCN1", "RNAdecayR6GCN1", "transcription6GCN2", "RNAdecayR6GCN2", "transcription6GCN3", "RNAdecayR6GCN3", "transcription6GCN4", "RNAdecayR6GCN4", "transcription7GCN1", "RNAdecayR7GCN1", "transcription7GCN2", "RNAdecayR7GCN2", "transcription7GCN3", "RNAdecayR7GCN3", "transcription7GCN4", "RNAdecayR7GCN4", "transcription8GCN1", "RNAdecayR8GCN1", "transcription8GCN2", "RNAdecayR8GCN2", "transcription8GCN3", "RNAdecayR8GCN3", "transcription8GCN4", "RNAdecayR8GCN4", "transcription9GCN1", "RNAdecayR9GCN1", "transcription9GCN2", "RNAdecayR9GCN2", "transcription9GCN3", "RNAdecayR9GCN3", "transcription9GCN4", "RNAdecayR9GCN4", "transcription10GCN1", "RNAdecayR10GCN1", "transcription10GCN2", "RNAdecayR10GCN2", "transcription10GCN3", "RNAdecayR10GCN3", "transcription10GCN4", "RNAdecayR10GCN4", "translation1GCN1", "proteindecayP1GCN1", "translation1GCN2", "proteindecayP1GCN2", "translation1GCN3", "proteindecayP1GCN3", "translation1GCN4", "proteindecayP1GCN4", "translation2GCN1", "proteindecayP2GCN1", "translation2GCN2", "proteindecayP2GCN2", "translation2GCN3", "proteindecayP2GCN3", "translation2GCN4", "proteindecayP2GCN4", "translation3GCN1", "proteindecayP3GCN1", "translation3GCN2", "proteindecayP3GCN2", "translation3GCN3", "proteindecayP3GCN3", "translation3GCN4", "proteindecayP3GCN4", "translation4GCN1", "proteindecayP4GCN1", "translation4GCN2", "proteindecayP4GCN2", "translation4GCN3", "proteindecayP4GCN3", "translation4GCN4", "proteindecayP4GCN4", "translation5GCN1", "proteindecayP5GCN1", "translation5GCN2", "proteindecayP5GCN2", "translation5GCN3", "proteindecayP5GCN3", "translation5GCN4", "proteindecayP5GCN4", "translation7GCN1", "proteindecayP7GCN1", "translation7GCN2", "proteindecayP7GCN2", "translation7GCN3", "proteindecayP7GCN3", "translation7GCN4", "proteindecayP7GCN4"],"propensities"=>Any[:(0.020032 * ((QTLeffects["GCN1"])["qtlTCrate"])[1]), :(0.000694444 * ((QTLeffects["GCN1"])["qtlRDrate"])[1]), :(0.020032 * ((QTLeffects["GCN2"])["qtlTCrate"])[1]), :(0.000694444 * ((QTLeffects["GCN2"])["qtlRDrate"])[1]), :(0.020032 * ((QTLeffects["GCN3"])["qtlTCrate"])[1]), :(0.000694444 * ((QTLeffects["GCN3"])["qtlRDrate"])[1]), :(0.020032 * ((QTLeffects["GCN4"])["qtlTCrate"])[1]), :(0.000694444 * ((QTLeffects["GCN4"])["qtlRDrate"])[1]), :(0.0435213 * ((QTLeffects["GCN1"])["qtlTCrate"])[2]), :(0.000534759 * ((QTLeffects["GCN1"])["qtlRDrate"])[2]), :(0.0435213 * ((QTLeffects["GCN2"])["qtlTCrate"])[2]), :(0.000534759 * ((QTLeffects["GCN2"])["qtlRDrate"])[2]), :(0.0435213 * ((QTLeffects["GCN3"])["qtlTCrate"])[2]), :(0.000534759 * ((QTLeffects["GCN3"])["qtlRDrate"])[2]), :(0.0435213 * ((QTLeffects["GCN4"])["qtlTCrate"])[2]), :(0.000534759 * ((QTLeffects["GCN4"])["qtlRDrate"])[2]), :(0.0766692 * ((QTLeffects["GCN1"])["qtlTCrate"])[3]), :(0.00310559 * ((QTLeffects["GCN1"])["qtlRDrate"])[3]), :(0.0766692 * ((QTLeffects["GCN2"])["qtlTCrate"])[3]), :(0.00310559 * ((QTLeffects["GCN2"])["qtlRDrate"])[3]), :(0.0766692 * ((QTLeffects["GCN3"])["qtlTCrate"])[3]), :(0.00310559 * ((QTLeffects["GCN3"])["qtlRDrate"])[3]), :(0.0766692 * ((QTLeffects["GCN4"])["qtlTCrate"])[3]), :(0.00310559 * ((QTLeffects["GCN4"])["qtlRDrate"])[3]), :(0.0897525 * ((QTLeffects["GCN1"])["qtlTCrate"])[4]), :(0.000286451 * ((QTLeffects["GCN1"])["qtlRDrate"])[4]), :(0.0897525 * ((QTLeffects["GCN2"])["qtlTCrate"])[4]), :(0.000286451 * ((QTLeffects["GCN2"])["qtlRDrate"])[4]), :(0.0897525 * ((QTLeffects["GCN3"])["qtlTCrate"])[4]), :(0.000286451 * ((QTLeffects["GCN3"])["qtlRDrate"])[4]), :(0.0897525 * ((QTLeffects["GCN4"])["qtlTCrate"])[4]), :(0.000286451 * ((QTLeffects["GCN4"])["qtlRDrate"])[4]), :(0.071785 * ((QTLeffects["GCN1"])["qtlTCrate"])[5]), :(0.00247525 * ((QTLeffects["GCN1"])["qtlRDrate"])[5]), :(0.071785 * ((QTLeffects["GCN2"])["qtlTCrate"])[5]), :(0.00247525 * ((QTLeffects["GCN2"])["qtlRDrate"])[5]), :(0.071785 * ((QTLeffects["GCN3"])["qtlTCrate"])[5]), :(0.00247525 * ((QTLeffects["GCN3"])["qtlRDrate"])[5]), :(0.071785 * ((QTLeffects["GCN4"])["qtlTCrate"])[5]), :(0.00247525 * ((QTLeffects["GCN4"])["qtlRDrate"])[5]), :(0.0514678 * ((QTLeffects["GCN1"])["qtlTCrate"])[6]), :(0.000312891 * ((QTLeffects["GCN1"])["qtlRDrate"])[6]), :(0.0514678 * ((QTLeffects["GCN2"])["qtlTCrate"])[6]), :(0.000312891 * ((QTLeffects["GCN2"])["qtlRDrate"])[6]), :(0.0514678 * ((QTLeffects["GCN3"])["qtlTCrate"])[6]), :(0.000312891 * ((QTLeffects["GCN3"])["qtlRDrate"])[6]), :(0.0514678 * ((QTLeffects["GCN4"])["qtlTCrate"])[6]), :(0.000312891 * ((QTLeffects["GCN4"])["qtlRDrate"])[6]), :(0.0220153 * ((QTLeffects["GCN1"])["qtlTCrate"])[7]), :(0.000307692 * ((QTLeffects["GCN1"])["qtlRDrate"])[7]), :(0.0220153 * ((QTLeffects["GCN2"])["qtlTCrate"])[7]), :(0.000307692 * ((QTLeffects["GCN2"])["qtlRDrate"])[7]), :(0.0220153 * ((QTLeffects["GCN3"])["qtlTCrate"])[7]), :(0.000307692 * ((QTLeffects["GCN3"])["qtlRDrate"])[7]), :(0.0220153 * ((QTLeffects["GCN4"])["qtlTCrate"])[7]), :(0.000307692 * ((QTLeffects["GCN4"])["qtlRDrate"])[7]), :(0.0721572 * ((QTLeffects["GCN1"])["qtlTCrate"])[8]), :(0.000376506 * ((QTLeffects["GCN1"])["qtlRDrate"])[8]), :(0.0721572 * ((QTLeffects["GCN2"])["qtlTCrate"])[8]), :(0.000376506 * ((QTLeffects["GCN2"])["qtlRDrate"])[8]), :(0.0721572 * ((QTLeffects["GCN3"])["qtlTCrate"])[8]), :(0.000376506 * ((QTLeffects["GCN3"])["qtlRDrate"])[8]), :(0.0721572 * ((QTLeffects["GCN4"])["qtlTCrate"])[8]), :(0.000376506 * ((QTLeffects["GCN4"])["qtlRDrate"])[8]), :(0.0658958 * ((QTLeffects["GCN1"])["qtlTCrate"])[9]), :(0.000824402 * ((QTLeffects["GCN1"])["qtlRDrate"])[9]), :(0.0658958 * ((QTLeffects["GCN2"])["qtlTCrate"])[9]), :(0.000824402 * ((QTLeffects["GCN2"])["qtlRDrate"])[9]), :(0.0658958 * ((QTLeffects["GCN3"])["qtlTCrate"])[9]), :(0.000824402 * ((QTLeffects["GCN3"])["qtlRDrate"])[9]), :(0.0658958 * ((QTLeffects["GCN4"])["qtlTCrate"])[9]), :(0.000824402 * ((QTLeffects["GCN4"])["qtlRDrate"])[9]), :(0.0930883 * ((QTLeffects["GCN1"])["qtlTCrate"])[10]), :(0.000316957 * ((QTLeffects["GCN1"])["qtlRDrate"])[10]), :(0.0930883 * ((QTLeffects["GCN2"])["qtlTCrate"])[10]), :(0.000316957 * ((QTLeffects["GCN2"])["qtlRDrate"])[10]), :(0.0930883 * ((QTLeffects["GCN3"])["qtlTCrate"])[10]), :(0.000316957 * ((QTLeffects["GCN3"])["qtlRDrate"])[10]), :(0.0930883 * ((QTLeffects["GCN4"])["qtlTCrate"])[10]), :(0.000316957 * ((QTLeffects["GCN4"])["qtlRDrate"])[10]), :(3.34576 * ((QTLeffects["GCN1"])["qtlTLrate"])[1]), :(7.62369e-5 * ((QTLeffects["GCN1"])["qtlPDrate"])[1]), :(3.34576 * ((QTLeffects["GCN2"])["qtlTLrate"])[1]), :(7.62369e-5 * ((QTLeffects["GCN2"])["qtlPDrate"])[1]), :(3.34576 * ((QTLeffects["GCN3"])["qtlTLrate"])[1]), :(7.62369e-5 * ((QTLeffects["GCN3"])["qtlPDrate"])[1]), :(3.34576 * ((QTLeffects["GCN4"])["qtlTLrate"])[1]), :(7.62369e-5 * ((QTLeffects["GCN4"])["qtlPDrate"])[1]), :(3.00529 * ((QTLeffects["GCN1"])["qtlTLrate"])[2]), :(0.00012364 * ((QTLeffects["GCN1"])["qtlPDrate"])[2]), :(3.00529 * ((QTLeffects["GCN2"])["qtlTLrate"])[2]), :(0.00012364 * ((QTLeffects["GCN2"])["qtlPDrate"])[2]), :(3.00529 * ((QTLeffects["GCN3"])["qtlTLrate"])[2]), :(0.00012364 * ((QTLeffects["GCN3"])["qtlPDrate"])[2]), :(3.00529 * ((QTLeffects["GCN4"])["qtlTLrate"])[2]), :(0.00012364 * ((QTLeffects["GCN4"])["qtlPDrate"])[2]), :(1.15585 * ((QTLeffects["GCN1"])["qtlTLrate"])[3]), :(0.00010269 * ((QTLeffects["GCN1"])["qtlPDrate"])[3]), :(1.15585 * ((QTLeffects["GCN2"])["qtlTLrate"])[3]), :(0.00010269 * ((QTLeffects["GCN2"])["qtlPDrate"])[3]), :(1.15585 * ((QTLeffects["GCN3"])["qtlTLrate"])[3]), :(0.00010269 * ((QTLeffects["GCN3"])["qtlPDrate"])[3]), :(1.15585 * ((QTLeffects["GCN4"])["qtlTLrate"])[3]), :(0.00010269 * ((QTLeffects["GCN4"])["qtlPDrate"])[3]), :(3.5602 * ((QTLeffects["GCN1"])["qtlTLrate"])[4]), :(0.000100725 * ((QTLeffects["GCN1"])["qtlPDrate"])[4]), :(3.5602 * ((QTLeffects["GCN2"])["qtlTLrate"])[4]), :(0.000100725 * ((QTLeffects["GCN2"])["qtlPDrate"])[4]), :(3.5602 * ((QTLeffects["GCN3"])["qtlTLrate"])[4]), :(0.000100725 * ((QTLeffects["GCN3"])["qtlPDrate"])[4]), :(3.5602 * ((QTLeffects["GCN4"])["qtlTLrate"])[4]), :(0.000100725 * ((QTLeffects["GCN4"])["qtlPDrate"])[4]), :(0.567232 * ((QTLeffects["GCN1"])["qtlTLrate"])[5]), :(9.17936e-5 * ((QTLeffects["GCN1"])["qtlPDrate"])[5]), :(0.567232 * ((QTLeffects["GCN2"])["qtlTLrate"])[5]), :(9.17936e-5 * ((QTLeffects["GCN2"])["qtlPDrate"])[5]), :(0.567232 * ((QTLeffects["GCN3"])["qtlTLrate"])[5]), :(9.17936e-5 * ((QTLeffects["GCN3"])["qtlPDrate"])[5]), :(0.567232 * ((QTLeffects["GCN4"])["qtlTLrate"])[5]), :(9.17936e-5 * ((QTLeffects["GCN4"])["qtlPDrate"])[5]), :(4.44623 * ((QTLeffects["GCN1"])["qtlTLrate"])[7]), :(0.00010015 * ((QTLeffects["GCN1"])["qtlPDrate"])[7]), :(4.44623 * ((QTLeffects["GCN2"])["qtlTLrate"])[7]), :(0.00010015 * ((QTLeffects["GCN2"])["qtlPDrate"])[7]), :(4.44623 * ((QTLeffects["GCN3"])["qtlTLrate"])[7]), :(0.00010015 * ((QTLeffects["GCN3"])["qtlPDrate"])[7]), :(4.44623 * ((QTLeffects["GCN4"])["qtlTLrate"])[7]), :(0.00010015 * ((QTLeffects["GCN4"])["qtlPDrate"])[7])],"reactions"=>Any["0 --> R1GCN1", "R1GCN1 --> 0", "0 --> R1GCN2", "R1GCN2 --> 0", "0 --> R1GCN3", "R1GCN3 --> 0", "0 --> R1GCN4", "R1GCN4 --> 0", "0 --> R2GCN1", "R2GCN1 --> 0", "0 --> R2GCN2", "R2GCN2 --> 0", "0 --> R2GCN3", "R2GCN3 --> 0", "0 --> R2GCN4", "R2GCN4 --> 0", "0 --> R3GCN1", "R3GCN1 --> 0", "0 --> R3GCN2", "R3GCN2 --> 0", "0 --> R3GCN3", "R3GCN3 --> 0", "0 --> R3GCN4", "R3GCN4 --> 0", "0 --> R4GCN1", "R4GCN1 --> 0", "0 --> R4GCN2", "R4GCN2 --> 0", "0 --> R4GCN3", "R4GCN3 --> 0", "0 --> R4GCN4", "R4GCN4 --> 0", "0 --> R5GCN1", "R5GCN1 --> 0", "0 --> R5GCN2", "R5GCN2 --> 0", "0 --> R5GCN3", "R5GCN3 --> 0", "0 --> R5GCN4", "R5GCN4 --> 0", "0 --> R6GCN1", "R6GCN1 --> 0", "0 --> R6GCN2", "R6GCN2 --> 0", "0 --> R6GCN3", "R6GCN3 --> 0", "0 --> R6GCN4", "R6GCN4 --> 0", "0 --> R7GCN1", "R7GCN1 --> 0", "0 --> R7GCN2", "R7GCN2 --> 0", "0 --> R7GCN3", "R7GCN3 --> 0", "0 --> R7GCN4", "R7GCN4 --> 0", "0 --> R8GCN1", "R8GCN1 --> 0", "0 --> R8GCN2", "R8GCN2 --> 0", "0 --> R8GCN3", "R8GCN3 --> 0", "0 --> R8GCN4", "R8GCN4 --> 0", "0 --> R9GCN1", "R9GCN1 --> 0", "0 --> R9GCN2", "R9GCN2 --> 0", "0 --> R9GCN3", "R9GCN3 --> 0", "0 --> R9GCN4", "R9GCN4 --> 0", "0 --> R10GCN1", "R10GCN1 --> 0", "0 --> R10GCN2", "R10GCN2 --> 0", "0 --> R10GCN3", "R10GCN3 --> 0", "0 --> R10GCN4", "R10GCN4 --> 0", "R1GCN1 --> P1GCN1", "P1GCN1 --> 0", "R1GCN2 --> P1GCN2", "P1GCN2 --> 0", "R1GCN3 --> P1GCN3", "P1GCN3 --> 0", "R1GCN4 --> P1GCN4", "P1GCN4 --> 0", "R2GCN1 --> P2GCN1", "P2GCN1 --> 0", "R2GCN2 --> P2GCN2", "P2GCN2 --> 0", "R2GCN3 --> P2GCN3", "P2GCN3 --> 0", "R2GCN4 --> P2GCN4", "P2GCN4 --> 0", "R3GCN1 --> P3GCN1", "P3GCN1 --> 0", "R3GCN2 --> P3GCN2", "P3GCN2 --> 0", "R3GCN3 --> P3GCN3", "P3GCN3 --> 0", "R3GCN4 --> P3GCN4", "P3GCN4 --> 0", "R4GCN1 --> P4GCN1", "P4GCN1 --> 0", "R4GCN2 --> P4GCN2", "P4GCN2 --> 0", "R4GCN3 --> P4GCN3", "P4GCN3 --> 0", "R4GCN4 --> P4GCN4", "P4GCN4 --> 0", "R5GCN1 --> P5GCN1", "P5GCN1 --> 0", "R5GCN2 --> P5GCN2", "P5GCN2 --> 0", "R5GCN3 --> P5GCN3", "P5GCN3 --> 0", "R5GCN4 --> P5GCN4", "P5GCN4 --> 0", "R7GCN1 --> P7GCN1", "P7GCN1 --> 0", "R7GCN2 --> P7GCN2", "P7GCN2 --> 0", "R7GCN3 --> P7GCN3", "P7GCN3 --> 0", "R7GCN4 --> P7GCN4", "P7GCN4 --> 0"],"initialconditions"=>Any[:(((28.8461 * ((QTLeffects["GCN1"])["qtlTCrate"])[1]) / ((QTLeffects["GCN1"])["qtlRDrate"])[1]) * ((Initvar["GCN1"])["R"])[1]), :(((28.8461 * ((QTLeffects["GCN2"])["qtlTCrate"])[1]) / ((QTLeffects["GCN2"])["qtlRDrate"])[1]) * ((Initvar["GCN2"])["R"])[1]), :(((28.8461 * ((QTLeffects["GCN3"])["qtlTCrate"])[1]) / ((QTLeffects["GCN3"])["qtlRDrate"])[1]) * ((Initvar["GCN3"])["R"])[1]), :(((28.8461 * ((QTLeffects["GCN4"])["qtlTCrate"])[1]) / ((QTLeffects["GCN4"])["qtlRDrate"])[1]) * ((Initvar["GCN4"])["R"])[1]), :(((81.3848 * ((QTLeffects["GCN1"])["qtlTCrate"])[2]) / ((QTLeffects["GCN1"])["qtlRDrate"])[2]) * ((Initvar["GCN1"])["R"])[2]), :(((81.3848 * ((QTLeffects["GCN2"])["qtlTCrate"])[2]) / ((QTLeffects["GCN2"])["qtlRDrate"])[2]) * ((Initvar["GCN2"])["R"])[2]), :(((81.3848 * ((QTLeffects["GCN3"])["qtlTCrate"])[2]) / ((QTLeffects["GCN3"])["qtlRDrate"])[2]) * ((Initvar["GCN3"])["R"])[2]), :(((81.3848 * ((QTLeffects["GCN4"])["qtlTCrate"])[2]) / ((QTLeffects["GCN4"])["qtlRDrate"])[2]) * ((Initvar["GCN4"])["R"])[2]), :(((24.6875 * ((QTLeffects["GCN1"])["qtlTCrate"])[3]) / ((QTLeffects["GCN1"])["qtlRDrate"])[3]) * ((Initvar["GCN1"])["R"])[3]), :(((24.6875 * ((QTLeffects["GCN2"])["qtlTCrate"])[3]) / ((QTLeffects["GCN2"])["qtlRDrate"])[3]) * ((Initvar["GCN2"])["R"])[3]), :(((24.6875 * ((QTLeffects["GCN3"])["qtlTCrate"])[3]) / ((QTLeffects["GCN3"])["qtlRDrate"])[3]) * ((Initvar["GCN3"])["R"])[3]), :(((24.6875 * ((QTLeffects["GCN4"])["qtlTCrate"])[3]) / ((QTLeffects["GCN4"])["qtlRDrate"])[3]) * ((Initvar["GCN4"])["R"])[3]), :(((313.326 * ((QTLeffects["GCN1"])["qtlTCrate"])[4]) / ((QTLeffects["GCN1"])["qtlRDrate"])[4]) * ((Initvar["GCN1"])["R"])[4]), :(((313.326 * ((QTLeffects["GCN2"])["qtlTCrate"])[4]) / ((QTLeffects["GCN2"])["qtlRDrate"])[4]) * ((Initvar["GCN2"])["R"])[4]), :(((313.326 * ((QTLeffects["GCN3"])["qtlTCrate"])[4]) / ((QTLeffects["GCN3"])["qtlRDrate"])[4]) * ((Initvar["GCN3"])["R"])[4]), :(((313.326 * ((QTLeffects["GCN4"])["qtlTCrate"])[4]) / ((QTLeffects["GCN4"])["qtlRDrate"])[4]) * ((Initvar["GCN4"])["R"])[4]), :(((29.0011 * ((QTLeffects["GCN1"])["qtlTCrate"])[5]) / ((QTLeffects["GCN1"])["qtlRDrate"])[5]) * ((Initvar["GCN1"])["R"])[5]), :(((29.0011 * ((QTLeffects["GCN2"])["qtlTCrate"])[5]) / ((QTLeffects["GCN2"])["qtlRDrate"])[5]) * ((Initvar["GCN2"])["R"])[5]), :(((29.0011 * ((QTLeffects["GCN3"])["qtlTCrate"])[5]) / ((QTLeffects["GCN3"])["qtlRDrate"])[5]) * ((Initvar["GCN3"])["R"])[5]), :(((29.0011 * ((QTLeffects["GCN4"])["qtlTCrate"])[5]) / ((QTLeffects["GCN4"])["qtlRDrate"])[5]) * ((Initvar["GCN4"])["R"])[5]), :(((164.491 * ((QTLeffects["GCN1"])["qtlTCrate"])[6]) / ((QTLeffects["GCN1"])["qtlRDrate"])[6]) * ((Initvar["GCN1"])["R"])[6]), :(((164.491 * ((QTLeffects["GCN2"])["qtlTCrate"])[6]) / ((QTLeffects["GCN2"])["qtlRDrate"])[6]) * ((Initvar["GCN2"])["R"])[6]), :(((164.491 * ((QTLeffects["GCN3"])["qtlTCrate"])[6]) / ((QTLeffects["GCN3"])["qtlRDrate"])[6]) * ((Initvar["GCN3"])["R"])[6]), :(((164.491 * ((QTLeffects["GCN4"])["qtlTCrate"])[6]) / ((QTLeffects["GCN4"])["qtlRDrate"])[6]) * ((Initvar["GCN4"])["R"])[6]), :(((71.5497 * ((QTLeffects["GCN1"])["qtlTCrate"])[7]) / ((QTLeffects["GCN1"])["qtlRDrate"])[7]) * ((Initvar["GCN1"])["R"])[7]), :(((71.5497 * ((QTLeffects["GCN2"])["qtlTCrate"])[7]) / ((QTLeffects["GCN2"])["qtlRDrate"])[7]) * ((Initvar["GCN2"])["R"])[7]), :(((71.5497 * ((QTLeffects["GCN3"])["qtlTCrate"])[7]) / ((QTLeffects["GCN3"])["qtlRDrate"])[7]) * ((Initvar["GCN3"])["R"])[7]), :(((71.5497 * ((QTLeffects["GCN4"])["qtlTCrate"])[7]) / ((QTLeffects["GCN4"])["qtlRDrate"])[7]) * ((Initvar["GCN4"])["R"])[7]), :(((191.649 * ((QTLeffects["GCN1"])["qtlTCrate"])[8]) / ((QTLeffects["GCN1"])["qtlRDrate"])[8]) * ((Initvar["GCN1"])["R"])[8]), :(((191.649 * ((QTLeffects["GCN2"])["qtlTCrate"])[8]) / ((QTLeffects["GCN2"])["qtlRDrate"])[8]) * ((Initvar["GCN2"])["R"])[8]), :(((191.649 * ((QTLeffects["GCN3"])["qtlTCrate"])[8]) / ((QTLeffects["GCN3"])["qtlRDrate"])[8]) * ((Initvar["GCN3"])["R"])[8]), :(((191.649 * ((QTLeffects["GCN4"])["qtlTCrate"])[8]) / ((QTLeffects["GCN4"])["qtlRDrate"])[8]) * ((Initvar["GCN4"])["R"])[8]), :(((79.9315 * ((QTLeffects["GCN1"])["qtlTCrate"])[9]) / ((QTLeffects["GCN1"])["qtlRDrate"])[9]) * ((Initvar["GCN1"])["R"])[9]), :(((79.9315 * ((QTLeffects["GCN2"])["qtlTCrate"])[9]) / ((QTLeffects["GCN2"])["qtlRDrate"])[9]) * ((Initvar["GCN2"])["R"])[9]), :(((79.9315 * ((QTLeffects["GCN3"])["qtlTCrate"])[9]) / ((QTLeffects["GCN3"])["qtlRDrate"])[9]) * ((Initvar["GCN3"])["R"])[9]), :(((79.9315 * ((QTLeffects["GCN4"])["qtlTCrate"])[9]) / ((QTLeffects["GCN4"])["qtlRDrate"])[9]) * ((Initvar["GCN4"])["R"])[9]), :(((293.694 * ((QTLeffects["GCN1"])["qtlTCrate"])[10]) / ((QTLeffects["GCN1"])["qtlRDrate"])[10]) * ((Initvar["GCN1"])["R"])[10]), :(((293.694 * ((QTLeffects["GCN2"])["qtlTCrate"])[10]) / ((QTLeffects["GCN2"])["qtlRDrate"])[10]) * ((Initvar["GCN2"])["R"])[10]), :(((293.694 * ((QTLeffects["GCN3"])["qtlTCrate"])[10]) / ((QTLeffects["GCN3"])["qtlRDrate"])[10]) * ((Initvar["GCN3"])["R"])[10]), :(((293.694 * ((QTLeffects["GCN4"])["qtlTCrate"])[10]) / ((QTLeffects["GCN4"])["qtlRDrate"])[10]) * ((Initvar["GCN4"])["R"])[10]), :(((1.26595e6 * ((QTLeffects["GCN1"])["qtlTCrate"])[1] * ((QTLeffects["GCN1"])["qtlTLrate"])[1]) / (((QTLeffects["GCN1"])["qtlRDrate"])[1] * ((QTLeffects["GCN1"])["qtlPDrate"])[1])) * ((Initvar["GCN1"])["P"])[1]), :(((1.26595e6 * ((QTLeffects["GCN2"])["qtlTCrate"])[1] * ((QTLeffects["GCN2"])["qtlTLrate"])[1]) / (((QTLeffects["GCN2"])["qtlRDrate"])[1] * ((QTLeffects["GCN2"])["qtlPDrate"])[1])) * ((Initvar["GCN2"])["P"])[1]), :(((1.26595e6 * ((QTLeffects["GCN3"])["qtlTCrate"])[1] * ((QTLeffects["GCN3"])["qtlTLrate"])[1]) / (((QTLeffects["GCN3"])["qtlRDrate"])[1] * ((QTLeffects["GCN3"])["qtlPDrate"])[1])) * ((Initvar["GCN3"])["P"])[1]), :(((1.26595e6 * ((QTLeffects["GCN4"])["qtlTCrate"])[1] * ((QTLeffects["GCN4"])["qtlTLrate"])[1]) / (((QTLeffects["GCN4"])["qtlRDrate"])[1] * ((QTLeffects["GCN4"])["qtlPDrate"])[1])) * ((Initvar["GCN4"])["P"])[1]), :(((1.97821e6 * ((QTLeffects["GCN1"])["qtlTCrate"])[2] * ((QTLeffects["GCN1"])["qtlTLrate"])[2]) / (((QTLeffects["GCN1"])["qtlRDrate"])[2] * ((QTLeffects["GCN1"])["qtlPDrate"])[2])) * ((Initvar["GCN1"])["P"])[2]), :(((1.97821e6 * ((QTLeffects["GCN2"])["qtlTCrate"])[2] * ((QTLeffects["GCN2"])["qtlTLrate"])[2]) / (((QTLeffects["GCN2"])["qtlRDrate"])[2] * ((QTLeffects["GCN2"])["qtlPDrate"])[2])) * ((Initvar["GCN2"])["P"])[2]), :(((1.97821e6 * ((QTLeffects["GCN3"])["qtlTCrate"])[2] * ((QTLeffects["GCN3"])["qtlTLrate"])[2]) / (((QTLeffects["GCN3"])["qtlRDrate"])[2] * ((QTLeffects["GCN3"])["qtlPDrate"])[2])) * ((Initvar["GCN3"])["P"])[2]), :(((1.97821e6 * ((QTLeffects["GCN4"])["qtlTCrate"])[2] * ((QTLeffects["GCN4"])["qtlTLrate"])[2]) / (((QTLeffects["GCN4"])["qtlRDrate"])[2] * ((QTLeffects["GCN4"])["qtlPDrate"])[2])) * ((Initvar["GCN4"])["P"])[2]), :(((2.77873e5 * ((QTLeffects["GCN1"])["qtlTCrate"])[3] * ((QTLeffects["GCN1"])["qtlTLrate"])[3]) / (((QTLeffects["GCN1"])["qtlRDrate"])[3] * ((QTLeffects["GCN1"])["qtlPDrate"])[3])) * ((Initvar["GCN1"])["P"])[3]), :(((2.77873e5 * ((QTLeffects["GCN2"])["qtlTCrate"])[3] * ((QTLeffects["GCN2"])["qtlTLrate"])[3]) / (((QTLeffects["GCN2"])["qtlRDrate"])[3] * ((QTLeffects["GCN2"])["qtlPDrate"])[3])) * ((Initvar["GCN2"])["P"])[3]), :(((2.77873e5 * ((QTLeffects["GCN3"])["qtlTCrate"])[3] * ((QTLeffects["GCN3"])["qtlTLrate"])[3]) / (((QTLeffects["GCN3"])["qtlRDrate"])[3] * ((QTLeffects["GCN3"])["qtlPDrate"])[3])) * ((Initvar["GCN3"])["P"])[3]), :(((2.77873e5 * ((QTLeffects["GCN4"])["qtlTCrate"])[3] * ((QTLeffects["GCN4"])["qtlTLrate"])[3]) / (((QTLeffects["GCN4"])["qtlRDrate"])[3] * ((QTLeffects["GCN4"])["qtlPDrate"])[3])) * ((Initvar["GCN4"])["P"])[3]), :(((1.10747e7 * ((QTLeffects["GCN1"])["qtlTCrate"])[4] * ((QTLeffects["GCN1"])["qtlTLrate"])[4]) / (((QTLeffects["GCN1"])["qtlRDrate"])[4] * ((QTLeffects["GCN1"])["qtlPDrate"])[4])) * ((Initvar["GCN1"])["P"])[4]), :(((1.10747e7 * ((QTLeffects["GCN2"])["qtlTCrate"])[4] * ((QTLeffects["GCN2"])["qtlTLrate"])[4]) / (((QTLeffects["GCN2"])["qtlRDrate"])[4] * ((QTLeffects["GCN2"])["qtlPDrate"])[4])) * ((Initvar["GCN2"])["P"])[4]), :(((1.10747e7 * ((QTLeffects["GCN3"])["qtlTCrate"])[4] * ((QTLeffects["GCN3"])["qtlTLrate"])[4]) / (((QTLeffects["GCN3"])["qtlRDrate"])[4] * ((QTLeffects["GCN3"])["qtlPDrate"])[4])) * ((Initvar["GCN3"])["P"])[4]), :(((1.10747e7 * ((QTLeffects["GCN4"])["qtlTCrate"])[4] * ((QTLeffects["GCN4"])["qtlTLrate"])[4]) / (((QTLeffects["GCN4"])["qtlRDrate"])[4] * ((QTLeffects["GCN4"])["qtlPDrate"])[4])) * ((Initvar["GCN4"])["P"])[4]), :(((1.7921e5 * ((QTLeffects["GCN1"])["qtlTCrate"])[5] * ((QTLeffects["GCN1"])["qtlTLrate"])[5]) / (((QTLeffects["GCN1"])["qtlRDrate"])[5] * ((QTLeffects["GCN1"])["qtlPDrate"])[5])) * ((Initvar["GCN1"])["P"])[5]), :(((1.7921e5 * ((QTLeffects["GCN2"])["qtlTCrate"])[5] * ((QTLeffects["GCN2"])["qtlTLrate"])[5]) / (((QTLeffects["GCN2"])["qtlRDrate"])[5] * ((QTLeffects["GCN2"])["qtlPDrate"])[5])) * ((Initvar["GCN2"])["P"])[5]), :(((1.7921e5 * ((QTLeffects["GCN3"])["qtlTCrate"])[5] * ((QTLeffects["GCN3"])["qtlTLrate"])[5]) / (((QTLeffects["GCN3"])["qtlRDrate"])[5] * ((QTLeffects["GCN3"])["qtlPDrate"])[5])) * ((Initvar["GCN3"])["P"])[5]), :(((1.7921e5 * ((QTLeffects["GCN4"])["qtlTCrate"])[5] * ((QTLeffects["GCN4"])["qtlTLrate"])[5]) / (((QTLeffects["GCN4"])["qtlRDrate"])[5] * ((QTLeffects["GCN4"])["qtlPDrate"])[5])) * ((Initvar["GCN4"])["P"])[5]), :(((3.17649e6 * ((QTLeffects["GCN1"])["qtlTCrate"])[7] * ((QTLeffects["GCN1"])["qtlTLrate"])[7]) / (((QTLeffects["GCN1"])["qtlRDrate"])[7] * ((QTLeffects["GCN1"])["qtlPDrate"])[7])) * ((Initvar["GCN1"])["P"])[7]), :(((3.17649e6 * ((QTLeffects["GCN2"])["qtlTCrate"])[7] * ((QTLeffects["GCN2"])["qtlTLrate"])[7]) / (((QTLeffects["GCN2"])["qtlRDrate"])[7] * ((QTLeffects["GCN2"])["qtlPDrate"])[7])) * ((Initvar["GCN2"])["P"])[7]), :(((3.17649e6 * ((QTLeffects["GCN3"])["qtlTCrate"])[7] * ((QTLeffects["GCN3"])["qtlTLrate"])[7]) / (((QTLeffects["GCN3"])["qtlRDrate"])[7] * ((QTLeffects["GCN3"])["qtlPDrate"])[7])) * ((Initvar["GCN3"])["P"])[7]), :(((3.17649e6 * ((QTLeffects["GCN4"])["qtlTCrate"])[7] * ((QTLeffects["GCN4"])["qtlTLrate"])[7]) / (((QTLeffects["GCN4"])["qtlRDrate"])[7] * ((QTLeffects["GCN4"])["qtlPDrate"])[7])) * ((Initvar["GCN4"])["P"])[7])],"species"=>Any["R1GCN1", "R1GCN2", "R1GCN3", "R1GCN4", "R2GCN1", "R2GCN2", "R2GCN3", "R2GCN4", "R3GCN1", "R3GCN2", "R3GCN3", "R3GCN4", "R4GCN1", "R4GCN2", "R4GCN3", "R4GCN4", "R5GCN1", "R5GCN2", "R5GCN3", "R5GCN4", "R6GCN1", "R6GCN2", "R6GCN3", "R6GCN4", "R7GCN1", "R7GCN2", "R7GCN3", "R7GCN4", "R8GCN1", "R8GCN2", "R8GCN3", "R8GCN4", "R9GCN1", "R9GCN2", "R9GCN3", "R9GCN4", "R10GCN1", "R10GCN2", "R10GCN3", "R10GCN4", "P1GCN1", "P1GCN2", "P1GCN3", "P1GCN4", "P2GCN1", "P2GCN2", "P2GCN3", "P2GCN4", "P3GCN1", "P3GCN2", "P3GCN3", "P3GCN4", "P4GCN1", "P4GCN2", "P4GCN3", "P4GCN4", "P5GCN1", "P5GCN2", "P5GCN3", "P5GCN4", "P7GCN1", "P7GCN2", "P7GCN3", "P7GCN4"])
+stochmodel = Dict("reactionsnames"=>Any["transcription1GCN1", "RNAdecayR1GCN1", "transcription1GCN2", "RNAdecayR1GCN2", "transcription1GCN3", "RNAdecayR1GCN3", "transcription1GCN4", "RNAdecayR1GCN4", "transcription2GCN1", "RNAdecayR2GCN1", "transcription2GCN2", "RNAdecayR2GCN2", "transcription2GCN3", "RNAdecayR2GCN3", "transcription2GCN4", "RNAdecayR2GCN4", "transcription3GCN1", "RNAdecayR3GCN1", "transcription3GCN2", "RNAdecayR3GCN2", "transcription3GCN3", "RNAdecayR3GCN3", "transcription3GCN4", "RNAdecayR3GCN4", "transcription4GCN1", "RNAdecayR4GCN1", "transcription4GCN2", "RNAdecayR4GCN2", "transcription4GCN3", "RNAdecayR4GCN3", "transcription4GCN4", "RNAdecayR4GCN4", "transcription5GCN1", "RNAdecayR5GCN1", "transcription5GCN2", "RNAdecayR5GCN2", "transcription5GCN3", "RNAdecayR5GCN3", "transcription5GCN4", "RNAdecayR5GCN4", "transcription6GCN1", "RNAdecayR6GCN1", "transcription6GCN2", "RNAdecayR6GCN2", "transcription6GCN3", "RNAdecayR6GCN3", "transcription6GCN4", "RNAdecayR6GCN4", "transcription7GCN1", "RNAdecayR7GCN1", "transcription7GCN2", "RNAdecayR7GCN2", "transcription7GCN3", "RNAdecayR7GCN3", "transcription7GCN4", "RNAdecayR7GCN4", "transcription8GCN1", "RNAdecayR8GCN1", "transcription8GCN2", "RNAdecayR8GCN2", "transcription8GCN3", "RNAdecayR8GCN3", "transcription8GCN4", "RNAdecayR8GCN4", "transcription9GCN1", "RNAdecayR9GCN1", "transcription9GCN2", "RNAdecayR9GCN2", "transcription9GCN3", "RNAdecayR9GCN3", "transcription9GCN4", "RNAdecayR9GCN4", "transcription10GCN1", "RNAdecayR10GCN1", "transcription10GCN2", "RNAdecayR10GCN2", "transcription10GCN3", "RNAdecayR10GCN3", "transcription10GCN4", "RNAdecayR10GCN4", "translation1GCN1", "proteindecayP1GCN1", "translation1GCN2", "proteindecayP1GCN2", "translation1GCN3", "proteindecayP1GCN3", "translation1GCN4", "proteindecayP1GCN4", "translation2GCN1", "proteindecayP2GCN1", "translation2GCN2", "proteindecayP2GCN2", "translation2GCN3", "proteindecayP2GCN3", "translation2GCN4", "proteindecayP2GCN4", "translation3GCN1", "proteindecayP3GCN1", "translation3GCN2", "proteindecayP3GCN2", "translation3GCN3", "proteindecayP3GCN3", "translation3GCN4", "proteindecayP3GCN4", "translation4GCN1", "proteindecayP4GCN1", "translation4GCN2", "proteindecayP4GCN2", "translation4GCN3", "proteindecayP4GCN3", "translation4GCN4", "proteindecayP4GCN4", "translation5GCN1", "proteindecayP5GCN1", "translation5GCN2", "proteindecayP5GCN2", "translation5GCN3", "proteindecayP5GCN3", "translation5GCN4", "proteindecayP5GCN4", "translation7GCN1", "proteindecayP7GCN1", "translation7GCN2", "proteindecayP7GCN2", "translation7GCN3", "proteindecayP7GCN3", "translation7GCN4", "proteindecayP7GCN4"],"propensities"=>Any[:(0.020032 * ((QTLeffects["GCN1"])["qtlTCrate"])[1]), :(0.000694444 * ((QTLeffects["GCN1"])["qtlRDrate"])[1]), :(0.020032 * ((QTLeffects["GCN2"])["qtlTCrate"])[1]), :(0.000694444 * ((QTLeffects["GCN2"])["qtlRDrate"])[1]), :(0.020032 * ((QTLeffects["GCN3"])["qtlTCrate"])[1]), :(0.000694444 * ((QTLeffects["GCN3"])["qtlRDrate"])[1]), :(0.020032 * ((QTLeffects["GCN4"])["qtlTCrate"])[1]), :(0.000694444 * ((QTLeffects["GCN4"])["qtlRDrate"])[1]), :(0.0435213 * ((QTLeffects["GCN1"])["qtlTCrate"])[2]), :(0.000534759 * ((QTLeffects["GCN1"])["qtlRDrate"])[2]), :(0.0435213 * ((QTLeffects["GCN2"])["qtlTCrate"])[2]), :(0.000534759 * ((QTLeffects["GCN2"])["qtlRDrate"])[2]), :(0.0435213 * ((QTLeffects["GCN3"])["qtlTCrate"])[2]), :(0.000534759 * ((QTLeffects["GCN3"])["qtlRDrate"])[2]), :(0.0435213 * ((QTLeffects["GCN4"])["qtlTCrate"])[2]), :(0.000534759 * ((QTLeffects["GCN4"])["qtlRDrate"])[2]), :(0.0766692 * ((QTLeffects["GCN1"])["qtlTCrate"])[3]), :(0.00310559 * ((QTLeffects["GCN1"])["qtlRDrate"])[3]), :(0.0766692 * ((QTLeffects["GCN2"])["qtlTCrate"])[3]), :(0.00310559 * ((QTLeffects["GCN2"])["qtlRDrate"])[3]), :(0.0766692 * ((QTLeffects["GCN3"])["qtlTCrate"])[3]), :(0.00310559 * ((QTLeffects["GCN3"])["qtlRDrate"])[3]), :(0.0766692 * ((QTLeffects["GCN4"])["qtlTCrate"])[3]), :(0.00310559 * ((QTLeffects["GCN4"])["qtlRDrate"])[3]), :(0.0897525 * ((QTLeffects["GCN1"])["qtlTCrate"])[4]), :(0.000286451 * ((QTLeffects["GCN1"])["qtlRDrate"])[4]), :(0.0897525 * ((QTLeffects["GCN2"])["qtlTCrate"])[4]), :(0.000286451 * ((QTLeffects["GCN2"])["qtlRDrate"])[4]), :(0.0897525 * ((QTLeffects["GCN3"])["qtlTCrate"])[4]), :(0.000286451 * ((QTLeffects["GCN3"])["qtlRDrate"])[4]), :(0.0897525 * ((QTLeffects["GCN4"])["qtlTCrate"])[4]), :(0.000286451 * ((QTLeffects["GCN4"])["qtlRDrate"])[4]), :(0.071785 * ((QTLeffects["GCN1"])["qtlTCrate"])[5]), :(0.00247525 * ((QTLeffects["GCN1"])["qtlRDrate"])[5]), :(0.071785 * ((QTLeffects["GCN2"])["qtlTCrate"])[5]), :(0.00247525 * ((QTLeffects["GCN2"])["qtlRDrate"])[5]), :(0.071785 * ((QTLeffects["GCN3"])["qtlTCrate"])[5]), :(0.00247525 * ((QTLeffects["GCN3"])["qtlRDrate"])[5]), :(0.071785 * ((QTLeffects["GCN4"])["qtlTCrate"])[5]), :(0.00247525 * ((QTLeffects["GCN4"])["qtlRDrate"])[5]), :(0.0514678 * ((QTLeffects["GCN1"])["qtlTCrate"])[6]), :(0.000312891 * ((QTLeffects["GCN1"])["qtlRDrate"])[6]), :(0.0514678 * ((QTLeffects["GCN2"])["qtlTCrate"])[6]), :(0.000312891 * ((QTLeffects["GCN2"])["qtlRDrate"])[6]), :(0.0514678 * ((QTLeffects["GCN3"])["qtlTCrate"])[6]), :(0.000312891 * ((QTLeffects["GCN3"])["qtlRDrate"])[6]), :(0.0514678 * ((QTLeffects["GCN4"])["qtlTCrate"])[6]), :(0.000312891 * ((QTLeffects["GCN4"])["qtlRDrate"])[6]), :(0.0220153 * ((QTLeffects["GCN1"])["qtlTCrate"])[7]), :(0.000307692 * ((QTLeffects["GCN1"])["qtlRDrate"])[7]), :(0.0220153 * ((QTLeffects["GCN2"])["qtlTCrate"])[7]), :(0.000307692 * ((QTLeffects["GCN2"])["qtlRDrate"])[7]), :(0.0220153 * ((QTLeffects["GCN3"])["qtlTCrate"])[7]), :(0.000307692 * ((QTLeffects["GCN3"])["qtlRDrate"])[7]), :(0.0220153 * ((QTLeffects["GCN4"])["qtlTCrate"])[7]), :(0.000307692 * ((QTLeffects["GCN4"])["qtlRDrate"])[7]), :(0.0721572 * ((QTLeffects["GCN1"])["qtlTCrate"])[8]), :(0.000376506 * ((QTLeffects["GCN1"])["qtlRDrate"])[8]), :(0.0721572 * ((QTLeffects["GCN2"])["qtlTCrate"])[8]), :(0.000376506 * ((QTLeffects["GCN2"])["qtlRDrate"])[8]), :(0.0721572 * ((QTLeffects["GCN3"])["qtlTCrate"])[8]), :(0.000376506 * ((QTLeffects["GCN3"])["qtlRDrate"])[8]), :(0.0721572 * ((QTLeffects["GCN4"])["qtlTCrate"])[8]), :(0.000376506 * ((QTLeffects["GCN4"])["qtlRDrate"])[8]), :(0.0658958 * ((QTLeffects["GCN1"])["qtlTCrate"])[9]), :(0.000824402 * ((QTLeffects["GCN1"])["qtlRDrate"])[9]), :(0.0658958 * ((QTLeffects["GCN2"])["qtlTCrate"])[9]), :(0.000824402 * ((QTLeffects["GCN2"])["qtlRDrate"])[9]), :(0.0658958 * ((QTLeffects["GCN3"])["qtlTCrate"])[9]), :(0.000824402 * ((QTLeffects["GCN3"])["qtlRDrate"])[9]), :(0.0658958 * ((QTLeffects["GCN4"])["qtlTCrate"])[9]), :(0.000824402 * ((QTLeffects["GCN4"])["qtlRDrate"])[9]), :(0.0930883 * ((QTLeffects["GCN1"])["qtlTCrate"])[10]), :(0.000316957 * ((QTLeffects["GCN1"])["qtlRDrate"])[10]), :(0.0930883 * ((QTLeffects["GCN2"])["qtlTCrate"])[10]), :(0.000316957 * ((QTLeffects["GCN2"])["qtlRDrate"])[10]), :(0.0930883 * ((QTLeffects["GCN3"])["qtlTCrate"])[10]), :(0.000316957 * ((QTLeffects["GCN3"])["qtlRDrate"])[10]), :(0.0930883 * ((QTLeffects["GCN4"])["qtlTCrate"])[10]), :(0.000316957 * ((QTLeffects["GCN4"])["qtlRDrate"])[10]), :(3.34576 * ((QTLeffects["GCN1"])["qtlTLrate"])[1]), :(7.62369e-5 * ((QTLeffects["GCN1"])["qtlPDrate"])[1]), :(3.34576 * ((QTLeffects["GCN2"])["qtlTLrate"])[1]), :(7.62369e-5 * ((QTLeffects["GCN2"])["qtlPDrate"])[1]), :(3.34576 * ((QTLeffects["GCN3"])["qtlTLrate"])[1]), :(7.62369e-5 * ((QTLeffects["GCN3"])["qtlPDrate"])[1]), :(3.34576 * ((QTLeffects["GCN4"])["qtlTLrate"])[1]), :(7.62369e-5 * ((QTLeffects["GCN4"])["qtlPDrate"])[1]), :(3.00529 * ((QTLeffects["GCN1"])["qtlTLrate"])[2]), :(0.00012364 * ((QTLeffects["GCN1"])["qtlPDrate"])[2]), :(3.00529 * ((QTLeffects["GCN2"])["qtlTLrate"])[2]), :(0.00012364 * ((QTLeffects["GCN2"])["qtlPDrate"])[2]), :(3.00529 * ((QTLeffects["GCN3"])["qtlTLrate"])[2]), :(0.00012364 * ((QTLeffects["GCN3"])["qtlPDrate"])[2]), :(3.00529 * ((QTLeffects["GCN4"])["qtlTLrate"])[2]), :(0.00012364 * ((QTLeffects["GCN4"])["qtlPDrate"])[2]), :(1.15585 * ((QTLeffects["GCN1"])["qtlTLrate"])[3]), :(0.00010269 * ((QTLeffects["GCN1"])["qtlPDrate"])[3]), :(1.15585 * ((QTLeffects["GCN2"])["qtlTLrate"])[3]), :(0.00010269 * ((QTLeffects["GCN2"])["qtlPDrate"])[3]), :(1.15585 * ((QTLeffects["GCN3"])["qtlTLrate"])[3]), :(0.00010269 * ((QTLeffects["GCN3"])["qtlPDrate"])[3]), :(1.15585 * ((QTLeffects["GCN4"])["qtlTLrate"])[3]), :(0.00010269 * ((QTLeffects["GCN4"])["qtlPDrate"])[3]), :(3.5602 * ((QTLeffects["GCN1"])["qtlTLrate"])[4]), :(0.000100725 * ((QTLeffects["GCN1"])["qtlPDrate"])[4]), :(3.5602 * ((QTLeffects["GCN2"])["qtlTLrate"])[4]), :(0.000100725 * ((QTLeffects["GCN2"])["qtlPDrate"])[4]), :(3.5602 * ((QTLeffects["GCN3"])["qtlTLrate"])[4]), :(0.000100725 * ((QTLeffects["GCN3"])["qtlPDrate"])[4]), :(3.5602 * ((QTLeffects["GCN4"])["qtlTLrate"])[4]), :(0.000100725 * ((QTLeffects["GCN4"])["qtlPDrate"])[4]), :(0.567232 * ((QTLeffects["GCN1"])["qtlTLrate"])[5]), :(9.17936e-5 * ((QTLeffects["GCN1"])["qtlPDrate"])[5]), :(0.567232 * ((QTLeffects["GCN2"])["qtlTLrate"])[5]), :(9.17936e-5 * ((QTLeffects["GCN2"])["qtlPDrate"])[5]), :(0.567232 * ((QTLeffects["GCN3"])["qtlTLrate"])[5]), :(9.17936e-5 * ((QTLeffects["GCN3"])["qtlPDrate"])[5]), :(0.567232 * ((QTLeffects["GCN4"])["qtlTLrate"])[5]), :(9.17936e-5 * ((QTLeffects["GCN4"])["qtlPDrate"])[5]), :(4.44623 * ((QTLeffects["GCN1"])["qtlTLrate"])[7]), :(0.00010015 * ((QTLeffects["GCN1"])["qtlPDrate"])[7]), :(4.44623 * ((QTLeffects["GCN2"])["qtlTLrate"])[7]), :(0.00010015 * ((QTLeffects["GCN2"])["qtlPDrate"])[7]), :(4.44623 * ((QTLeffects["GCN3"])["qtlTLrate"])[7]), :(0.00010015 * ((QTLeffects["GCN3"])["qtlPDrate"])[7]), :(4.44623 * ((QTLeffects["GCN4"])["qtlTLrate"])[7]), :(0.00010015 * ((QTLeffects["GCN4"])["qtlPDrate"])[7])],"reactions"=>Any["0 --> R1GCN1", "R1GCN1 --> 0", "0 --> R1GCN2", "R1GCN2 --> 0", "0 --> R1GCN3", "R1GCN3 --> 0", "0 --> R1GCN4", "R1GCN4 --> 0", "0 --> R2GCN1", "R2GCN1 --> 0", "0 --> R2GCN2", "R2GCN2 --> 0", "0 --> R2GCN3", "R2GCN3 --> 0", "0 --> R2GCN4", "R2GCN4 --> 0", "0 --> R3GCN1", "R3GCN1 --> 0", "0 --> R3GCN2", "R3GCN2 --> 0", "0 --> R3GCN3", "R3GCN3 --> 0", "0 --> R3GCN4", "R3GCN4 --> 0", "0 --> R4GCN1", "R4GCN1 --> 0", "0 --> R4GCN2", "R4GCN2 --> 0", "0 --> R4GCN3", "R4GCN3 --> 0", "0 --> R4GCN4", "R4GCN4 --> 0", "0 --> R5GCN1", "R5GCN1 --> 0", "0 --> R5GCN2", "R5GCN2 --> 0", "0 --> R5GCN3", "R5GCN3 --> 0", "0 --> R5GCN4", "R5GCN4 --> 0", "0 --> R6GCN1", "R6GCN1 --> 0", "0 --> R6GCN2", "R6GCN2 --> 0", "0 --> R6GCN3", "R6GCN3 --> 0", "0 --> R6GCN4", "R6GCN4 --> 0", "0 --> R7GCN1", "R7GCN1 --> 0", "0 --> R7GCN2", "R7GCN2 --> 0", "0 --> R7GCN3", "R7GCN3 --> 0", "0 --> R7GCN4", "R7GCN4 --> 0", "0 --> R8GCN1", "R8GCN1 --> 0", "0 --> R8GCN2", "R8GCN2 --> 0", "0 --> R8GCN3", "R8GCN3 --> 0", "0 --> R8GCN4", "R8GCN4 --> 0", "0 --> R9GCN1", "R9GCN1 --> 0", "0 --> R9GCN2", "R9GCN2 --> 0", "0 --> R9GCN3", "R9GCN3 --> 0", "0 --> R9GCN4", "R9GCN4 --> 0", "0 --> R10GCN1", "R10GCN1 --> 0", "0 --> R10GCN2", "R10GCN2 --> 0", "0 --> R10GCN3", "R10GCN3 --> 0", "0 --> R10GCN4", "R10GCN4 --> 0", "R1GCN1 --> P1GCN1", "P1GCN1 --> 0", "R1GCN2 --> P1GCN2", "P1GCN2 --> 0", "R1GCN3 --> P1GCN3", "P1GCN3 --> 0", "R1GCN4 --> P1GCN4", "P1GCN4 --> 0", "R2GCN1 --> P2GCN1", "P2GCN1 --> 0", "R2GCN2 --> P2GCN2", "P2GCN2 --> 0", "R2GCN3 --> P2GCN3", "P2GCN3 --> 0", "R2GCN4 --> P2GCN4", "P2GCN4 --> 0", "R3GCN1 --> P3GCN1", "P3GCN1 --> 0", "R3GCN2 --> P3GCN2", "P3GCN2 --> 0", "R3GCN3 --> P3GCN3", "P3GCN3 --> 0", "R3GCN4 --> P3GCN4", "P3GCN4 --> 0", "R4GCN1 --> P4GCN1", "P4GCN1 --> 0", "R4GCN2 --> P4GCN2", "P4GCN2 --> 0", "R4GCN3 --> P4GCN3", "P4GCN3 --> 0", "R4GCN4 --> P4GCN4", "P4GCN4 --> 0", "R5GCN1 --> P5GCN1", "P5GCN1 --> 0", "R5GCN2 --> P5GCN2", "P5GCN2 --> 0", "R5GCN3 --> P5GCN3", "P5GCN3 --> 0", "R5GCN4 --> P5GCN4", "P5GCN4 --> 0", "R7GCN1 --> P7GCN1", "P7GCN1 --> 0", "R7GCN2 --> P7GCN2", "P7GCN2 --> 0", "R7GCN3 --> P7GCN3", "P7GCN3 --> 0", "R7GCN4 --> P7GCN4", "P7GCN4 --> 0"],"initialconditions"=>Any[:(((28.8461 * ((QTLeffects["GCN1"])["qtlTCrate"])[1]) / ((QTLeffects["GCN1"])["qtlRDrate"])[1]) * ((InitVar["GCN1"])["R"])[1]), :(((28.8461 * ((QTLeffects["GCN2"])["qtlTCrate"])[1]) / ((QTLeffects["GCN2"])["qtlRDrate"])[1]) * ((InitVar["GCN2"])["R"])[1]), :(((28.8461 * ((QTLeffects["GCN3"])["qtlTCrate"])[1]) / ((QTLeffects["GCN3"])["qtlRDrate"])[1]) * ((InitVar["GCN3"])["R"])[1]), :(((28.8461 * ((QTLeffects["GCN4"])["qtlTCrate"])[1]) / ((QTLeffects["GCN4"])["qtlRDrate"])[1]) * ((InitVar["GCN4"])["R"])[1]), :(((81.3848 * ((QTLeffects["GCN1"])["qtlTCrate"])[2]) / ((QTLeffects["GCN1"])["qtlRDrate"])[2]) * ((InitVar["GCN1"])["R"])[2]), :(((81.3848 * ((QTLeffects["GCN2"])["qtlTCrate"])[2]) / ((QTLeffects["GCN2"])["qtlRDrate"])[2]) * ((InitVar["GCN2"])["R"])[2]), :(((81.3848 * ((QTLeffects["GCN3"])["qtlTCrate"])[2]) / ((QTLeffects["GCN3"])["qtlRDrate"])[2]) * ((InitVar["GCN3"])["R"])[2]), :(((81.3848 * ((QTLeffects["GCN4"])["qtlTCrate"])[2]) / ((QTLeffects["GCN4"])["qtlRDrate"])[2]) * ((InitVar["GCN4"])["R"])[2]), :(((24.6875 * ((QTLeffects["GCN1"])["qtlTCrate"])[3]) / ((QTLeffects["GCN1"])["qtlRDrate"])[3]) * ((InitVar["GCN1"])["R"])[3]), :(((24.6875 * ((QTLeffects["GCN2"])["qtlTCrate"])[3]) / ((QTLeffects["GCN2"])["qtlRDrate"])[3]) * ((InitVar["GCN2"])["R"])[3]), :(((24.6875 * ((QTLeffects["GCN3"])["qtlTCrate"])[3]) / ((QTLeffects["GCN3"])["qtlRDrate"])[3]) * ((InitVar["GCN3"])["R"])[3]), :(((24.6875 * ((QTLeffects["GCN4"])["qtlTCrate"])[3]) / ((QTLeffects["GCN4"])["qtlRDrate"])[3]) * ((InitVar["GCN4"])["R"])[3]), :(((313.326 * ((QTLeffects["GCN1"])["qtlTCrate"])[4]) / ((QTLeffects["GCN1"])["qtlRDrate"])[4]) * ((InitVar["GCN1"])["R"])[4]), :(((313.326 * ((QTLeffects["GCN2"])["qtlTCrate"])[4]) / ((QTLeffects["GCN2"])["qtlRDrate"])[4]) * ((InitVar["GCN2"])["R"])[4]), :(((313.326 * ((QTLeffects["GCN3"])["qtlTCrate"])[4]) / ((QTLeffects["GCN3"])["qtlRDrate"])[4]) * ((InitVar["GCN3"])["R"])[4]), :(((313.326 * ((QTLeffects["GCN4"])["qtlTCrate"])[4]) / ((QTLeffects["GCN4"])["qtlRDrate"])[4]) * ((InitVar["GCN4"])["R"])[4]), :(((29.0011 * ((QTLeffects["GCN1"])["qtlTCrate"])[5]) / ((QTLeffects["GCN1"])["qtlRDrate"])[5]) * ((InitVar["GCN1"])["R"])[5]), :(((29.0011 * ((QTLeffects["GCN2"])["qtlTCrate"])[5]) / ((QTLeffects["GCN2"])["qtlRDrate"])[5]) * ((InitVar["GCN2"])["R"])[5]), :(((29.0011 * ((QTLeffects["GCN3"])["qtlTCrate"])[5]) / ((QTLeffects["GCN3"])["qtlRDrate"])[5]) * ((InitVar["GCN3"])["R"])[5]), :(((29.0011 * ((QTLeffects["GCN4"])["qtlTCrate"])[5]) / ((QTLeffects["GCN4"])["qtlRDrate"])[5]) * ((InitVar["GCN4"])["R"])[5]), :(((164.491 * ((QTLeffects["GCN1"])["qtlTCrate"])[6]) / ((QTLeffects["GCN1"])["qtlRDrate"])[6]) * ((InitVar["GCN1"])["R"])[6]), :(((164.491 * ((QTLeffects["GCN2"])["qtlTCrate"])[6]) / ((QTLeffects["GCN2"])["qtlRDrate"])[6]) * ((InitVar["GCN2"])["R"])[6]), :(((164.491 * ((QTLeffects["GCN3"])["qtlTCrate"])[6]) / ((QTLeffects["GCN3"])["qtlRDrate"])[6]) * ((InitVar["GCN3"])["R"])[6]), :(((164.491 * ((QTLeffects["GCN4"])["qtlTCrate"])[6]) / ((QTLeffects["GCN4"])["qtlRDrate"])[6]) * ((InitVar["GCN4"])["R"])[6]), :(((71.5497 * ((QTLeffects["GCN1"])["qtlTCrate"])[7]) / ((QTLeffects["GCN1"])["qtlRDrate"])[7]) * ((InitVar["GCN1"])["R"])[7]), :(((71.5497 * ((QTLeffects["GCN2"])["qtlTCrate"])[7]) / ((QTLeffects["GCN2"])["qtlRDrate"])[7]) * ((InitVar["GCN2"])["R"])[7]), :(((71.5497 * ((QTLeffects["GCN3"])["qtlTCrate"])[7]) / ((QTLeffects["GCN3"])["qtlRDrate"])[7]) * ((InitVar["GCN3"])["R"])[7]), :(((71.5497 * ((QTLeffects["GCN4"])["qtlTCrate"])[7]) / ((QTLeffects["GCN4"])["qtlRDrate"])[7]) * ((InitVar["GCN4"])["R"])[7]), :(((191.649 * ((QTLeffects["GCN1"])["qtlTCrate"])[8]) / ((QTLeffects["GCN1"])["qtlRDrate"])[8]) * ((InitVar["GCN1"])["R"])[8]), :(((191.649 * ((QTLeffects["GCN2"])["qtlTCrate"])[8]) / ((QTLeffects["GCN2"])["qtlRDrate"])[8]) * ((InitVar["GCN2"])["R"])[8]), :(((191.649 * ((QTLeffects["GCN3"])["qtlTCrate"])[8]) / ((QTLeffects["GCN3"])["qtlRDrate"])[8]) * ((InitVar["GCN3"])["R"])[8]), :(((191.649 * ((QTLeffects["GCN4"])["qtlTCrate"])[8]) / ((QTLeffects["GCN4"])["qtlRDrate"])[8]) * ((InitVar["GCN4"])["R"])[8]), :(((79.9315 * ((QTLeffects["GCN1"])["qtlTCrate"])[9]) / ((QTLeffects["GCN1"])["qtlRDrate"])[9]) * ((InitVar["GCN1"])["R"])[9]), :(((79.9315 * ((QTLeffects["GCN2"])["qtlTCrate"])[9]) / ((QTLeffects["GCN2"])["qtlRDrate"])[9]) * ((InitVar["GCN2"])["R"])[9]), :(((79.9315 * ((QTLeffects["GCN3"])["qtlTCrate"])[9]) / ((QTLeffects["GCN3"])["qtlRDrate"])[9]) * ((InitVar["GCN3"])["R"])[9]), :(((79.9315 * ((QTLeffects["GCN4"])["qtlTCrate"])[9]) / ((QTLeffects["GCN4"])["qtlRDrate"])[9]) * ((InitVar["GCN4"])["R"])[9]), :(((293.694 * ((QTLeffects["GCN1"])["qtlTCrate"])[10]) / ((QTLeffects["GCN1"])["qtlRDrate"])[10]) * ((InitVar["GCN1"])["R"])[10]), :(((293.694 * ((QTLeffects["GCN2"])["qtlTCrate"])[10]) / ((QTLeffects["GCN2"])["qtlRDrate"])[10]) * ((InitVar["GCN2"])["R"])[10]), :(((293.694 * ((QTLeffects["GCN3"])["qtlTCrate"])[10]) / ((QTLeffects["GCN3"])["qtlRDrate"])[10]) * ((InitVar["GCN3"])["R"])[10]), :(((293.694 * ((QTLeffects["GCN4"])["qtlTCrate"])[10]) / ((QTLeffects["GCN4"])["qtlRDrate"])[10]) * ((InitVar["GCN4"])["R"])[10]), :(((1.26595e6 * ((QTLeffects["GCN1"])["qtlTCrate"])[1] * ((QTLeffects["GCN1"])["qtlTLrate"])[1]) / (((QTLeffects["GCN1"])["qtlRDrate"])[1] * ((QTLeffects["GCN1"])["qtlPDrate"])[1])) * ((InitVar["GCN1"])["P"])[1]), :(((1.26595e6 * ((QTLeffects["GCN2"])["qtlTCrate"])[1] * ((QTLeffects["GCN2"])["qtlTLrate"])[1]) / (((QTLeffects["GCN2"])["qtlRDrate"])[1] * ((QTLeffects["GCN2"])["qtlPDrate"])[1])) * ((InitVar["GCN2"])["P"])[1]), :(((1.26595e6 * ((QTLeffects["GCN3"])["qtlTCrate"])[1] * ((QTLeffects["GCN3"])["qtlTLrate"])[1]) / (((QTLeffects["GCN3"])["qtlRDrate"])[1] * ((QTLeffects["GCN3"])["qtlPDrate"])[1])) * ((InitVar["GCN3"])["P"])[1]), :(((1.26595e6 * ((QTLeffects["GCN4"])["qtlTCrate"])[1] * ((QTLeffects["GCN4"])["qtlTLrate"])[1]) / (((QTLeffects["GCN4"])["qtlRDrate"])[1] * ((QTLeffects["GCN4"])["qtlPDrate"])[1])) * ((InitVar["GCN4"])["P"])[1]), :(((1.97821e6 * ((QTLeffects["GCN1"])["qtlTCrate"])[2] * ((QTLeffects["GCN1"])["qtlTLrate"])[2]) / (((QTLeffects["GCN1"])["qtlRDrate"])[2] * ((QTLeffects["GCN1"])["qtlPDrate"])[2])) * ((InitVar["GCN1"])["P"])[2]), :(((1.97821e6 * ((QTLeffects["GCN2"])["qtlTCrate"])[2] * ((QTLeffects["GCN2"])["qtlTLrate"])[2]) / (((QTLeffects["GCN2"])["qtlRDrate"])[2] * ((QTLeffects["GCN2"])["qtlPDrate"])[2])) * ((InitVar["GCN2"])["P"])[2]), :(((1.97821e6 * ((QTLeffects["GCN3"])["qtlTCrate"])[2] * ((QTLeffects["GCN3"])["qtlTLrate"])[2]) / (((QTLeffects["GCN3"])["qtlRDrate"])[2] * ((QTLeffects["GCN3"])["qtlPDrate"])[2])) * ((InitVar["GCN3"])["P"])[2]), :(((1.97821e6 * ((QTLeffects["GCN4"])["qtlTCrate"])[2] * ((QTLeffects["GCN4"])["qtlTLrate"])[2]) / (((QTLeffects["GCN4"])["qtlRDrate"])[2] * ((QTLeffects["GCN4"])["qtlPDrate"])[2])) * ((InitVar["GCN4"])["P"])[2]), :(((2.77873e5 * ((QTLeffects["GCN1"])["qtlTCrate"])[3] * ((QTLeffects["GCN1"])["qtlTLrate"])[3]) / (((QTLeffects["GCN1"])["qtlRDrate"])[3] * ((QTLeffects["GCN1"])["qtlPDrate"])[3])) * ((InitVar["GCN1"])["P"])[3]), :(((2.77873e5 * ((QTLeffects["GCN2"])["qtlTCrate"])[3] * ((QTLeffects["GCN2"])["qtlTLrate"])[3]) / (((QTLeffects["GCN2"])["qtlRDrate"])[3] * ((QTLeffects["GCN2"])["qtlPDrate"])[3])) * ((InitVar["GCN2"])["P"])[3]), :(((2.77873e5 * ((QTLeffects["GCN3"])["qtlTCrate"])[3] * ((QTLeffects["GCN3"])["qtlTLrate"])[3]) / (((QTLeffects["GCN3"])["qtlRDrate"])[3] * ((QTLeffects["GCN3"])["qtlPDrate"])[3])) * ((InitVar["GCN3"])["P"])[3]), :(((2.77873e5 * ((QTLeffects["GCN4"])["qtlTCrate"])[3] * ((QTLeffects["GCN4"])["qtlTLrate"])[3]) / (((QTLeffects["GCN4"])["qtlRDrate"])[3] * ((QTLeffects["GCN4"])["qtlPDrate"])[3])) * ((InitVar["GCN4"])["P"])[3]), :(((1.10747e7 * ((QTLeffects["GCN1"])["qtlTCrate"])[4] * ((QTLeffects["GCN1"])["qtlTLrate"])[4]) / (((QTLeffects["GCN1"])["qtlRDrate"])[4] * ((QTLeffects["GCN1"])["qtlPDrate"])[4])) * ((InitVar["GCN1"])["P"])[4]), :(((1.10747e7 * ((QTLeffects["GCN2"])["qtlTCrate"])[4] * ((QTLeffects["GCN2"])["qtlTLrate"])[4]) / (((QTLeffects["GCN2"])["qtlRDrate"])[4] * ((QTLeffects["GCN2"])["qtlPDrate"])[4])) * ((InitVar["GCN2"])["P"])[4]), :(((1.10747e7 * ((QTLeffects["GCN3"])["qtlTCrate"])[4] * ((QTLeffects["GCN3"])["qtlTLrate"])[4]) / (((QTLeffects["GCN3"])["qtlRDrate"])[4] * ((QTLeffects["GCN3"])["qtlPDrate"])[4])) * ((InitVar["GCN3"])["P"])[4]), :(((1.10747e7 * ((QTLeffects["GCN4"])["qtlTCrate"])[4] * ((QTLeffects["GCN4"])["qtlTLrate"])[4]) / (((QTLeffects["GCN4"])["qtlRDrate"])[4] * ((QTLeffects["GCN4"])["qtlPDrate"])[4])) * ((InitVar["GCN4"])["P"])[4]), :(((1.7921e5 * ((QTLeffects["GCN1"])["qtlTCrate"])[5] * ((QTLeffects["GCN1"])["qtlTLrate"])[5]) / (((QTLeffects["GCN1"])["qtlRDrate"])[5] * ((QTLeffects["GCN1"])["qtlPDrate"])[5])) * ((InitVar["GCN1"])["P"])[5]), :(((1.7921e5 * ((QTLeffects["GCN2"])["qtlTCrate"])[5] * ((QTLeffects["GCN2"])["qtlTLrate"])[5]) / (((QTLeffects["GCN2"])["qtlRDrate"])[5] * ((QTLeffects["GCN2"])["qtlPDrate"])[5])) * ((InitVar["GCN2"])["P"])[5]), :(((1.7921e5 * ((QTLeffects["GCN3"])["qtlTCrate"])[5] * ((QTLeffects["GCN3"])["qtlTLrate"])[5]) / (((QTLeffects["GCN3"])["qtlRDrate"])[5] * ((QTLeffects["GCN3"])["qtlPDrate"])[5])) * ((InitVar["GCN3"])["P"])[5]), :(((1.7921e5 * ((QTLeffects["GCN4"])["qtlTCrate"])[5] * ((QTLeffects["GCN4"])["qtlTLrate"])[5]) / (((QTLeffects["GCN4"])["qtlRDrate"])[5] * ((QTLeffects["GCN4"])["qtlPDrate"])[5])) * ((InitVar["GCN4"])["P"])[5]), :(((3.17649e6 * ((QTLeffects["GCN1"])["qtlTCrate"])[7] * ((QTLeffects["GCN1"])["qtlTLrate"])[7]) / (((QTLeffects["GCN1"])["qtlRDrate"])[7] * ((QTLeffects["GCN1"])["qtlPDrate"])[7])) * ((InitVar["GCN1"])["P"])[7]), :(((3.17649e6 * ((QTLeffects["GCN2"])["qtlTCrate"])[7] * ((QTLeffects["GCN2"])["qtlTLrate"])[7]) / (((QTLeffects["GCN2"])["qtlRDrate"])[7] * ((QTLeffects["GCN2"])["qtlPDrate"])[7])) * ((InitVar["GCN2"])["P"])[7]), :(((3.17649e6 * ((QTLeffects["GCN3"])["qtlTCrate"])[7] * ((QTLeffects["GCN3"])["qtlTLrate"])[7]) / (((QTLeffects["GCN3"])["qtlRDrate"])[7] * ((QTLeffects["GCN3"])["qtlPDrate"])[7])) * ((InitVar["GCN3"])["P"])[7]), :(((3.17649e6 * ((QTLeffects["GCN4"])["qtlTCrate"])[7] * ((QTLeffects["GCN4"])["qtlTLrate"])[7]) / (((QTLeffects["GCN4"])["qtlRDrate"])[7] * ((QTLeffects["GCN4"])["qtlPDrate"])[7])) * ((InitVar["GCN4"])["P"])[7])],"species"=>Any["R1GCN1", "R1GCN2", "R1GCN3", "R1GCN4", "R2GCN1", "R2GCN2", "R2GCN3", "R2GCN4", "R3GCN1", "R3GCN2", "R3GCN3", "R3GCN4", "R4GCN1", "R4GCN2", "R4GCN3", "R4GCN4", "R5GCN1", "R5GCN2", "R5GCN3", "R5GCN4", "R6GCN1", "R6GCN2", "R6GCN3", "R6GCN4", "R7GCN1", "R7GCN2", "R7GCN3", "R7GCN4", "R8GCN1", "R8GCN2", "R8GCN3", "R8GCN4", "R9GCN1", "R9GCN2", "R9GCN3", "R9GCN4", "R10GCN1", "R10GCN2", "R10GCN3", "R10GCN4", "P1GCN1", "P1GCN2", "P1GCN3", "P1GCN4", "P2GCN1", "P2GCN2", "P2GCN3", "P2GCN4", "P3GCN1", "P3GCN2", "P3GCN3", "P3GCN4", "P4GCN1", "P4GCN2", "P4GCN3", "P4GCN4", "P5GCN1", "P5GCN2", "P5GCN3", "P5GCN4", "P7GCN1", "P7GCN2", "P7GCN3", "P7GCN4"])
 
 QTLeffects = Dict("GCN3"=>Dict("qtlPDregbind"=>[1.0, 0.903064, 1.0, 1.01958, 0.908109, 0.0, 0.985851, 0.0, 0.0, 0.0],"qtlTLrate"=>[1.0, 0.98387, 1.12259, 0.947592, 1.02447, 0.0, 0.897265, 0.0, 0.0, 0.0],"qtlTCrate"=>[1.0, 1.17192, 1.0, 0.973951, 1.07116, 1.11191, 1.0003, 1.04185, 0.96825, 1.0],"qtlRDbindreg"=>[1.0, 0.969047, 0.883935, 1.16487, 1.18382, 0.926073, 1.13709, 1.16358, 1.20015, 1.0],"qtlTCregbind"=>[1.0, 0.939463, 1.0, 0.996446, 1.11144, 1.0, 0.92738, 1.0, 1.11756, 1.0],"qtlactivity"=>[1.0, 1.07163, 1.0, 0.948701, 1.00975, 1.0, 1.00126, 0.875307, 1.03423, 1.0],"qtlRDrate"=>[1.0, 1.0, 1.0, 1.08387, 1.02613, 1.0, 1.20753, 1.06082, 1.0, 1.0],"qtlTLregbind"=>[1.0, 0.969293, 1.0, 0.9764, 0.932668, 0.0, 0.918416, 0.0, 0.0, 0.0],"qtlPDrate"=>[1.0, 1.14071, 1.0, 0.93931, 1.02331, 0.0, 1.05153, 0.0, 0.0, 0.0]),"GCN2"=>Dict("qtlPDregbind"=>[1.0, 0.903064, 1.0, 0.904002, 1.0, 0.0, 0.947351, 0.0, 0.0, 0.0],"qtlTLrate"=>[0.888289, 0.98387, 1.0, 0.633331, 0.927585, 0.0, 1.03055, 0.0, 0.0, 0.0],"qtlTCrate"=>[1.0, 1.17192, 1.0, 1.12524, 1.0, 1.0, 0.993596, 0.99752, 1.0, 1.0],"qtlRDbindreg"=>[1.0, 0.969047, 1.0, 1.04387, 1.0, 0.888253, 1.0, 0.843412, 1.0, 1.0],"qtlTCregbind"=>[1.0, 0.939463, 1.0, 1.15848, 1.0, 0.919143, 1.0, 0.813784, 0.975534, 1.0],"qtlactivity"=>[1.0, 1.07163, 1.0, 0.864578, 1.0, 1.13318, 0.918793, 1.08566, 1.0, 1.0],"qtlRDrate"=>[1.0, 1.0, 1.0, 1.01624, 1.0, 1.0, 1.0, 0.926551, 0.941337, 1.0],"qtlTLregbind"=>[1.0, 0.969293, 1.0, 1.05993, 1.0, 0.0, 0.992744, 0.0, 0.0, 0.0],"qtlPDrate"=>[1.0, 1.14071, 1.0, 1.00784, 1.0, 0.0, 0.990836, 0.0, 0.0, 0.0]),"GCN4"=>Dict("qtlPDregbind"=>[1.0, 0.903064, 1.0, 1.0, 1.0, 0.0, 0.985851, 0.0, 0.0, 0.0],"qtlTLrate"=>[0.888289, 0.98387, 1.04376, 1.0, 1.0, 0.0, 0.897265, 0.0, 0.0, 0.0],"qtlTCrate"=>[1.0, 1.17192, 1.0, 1.0, 1.0, 1.0, 1.0003, 1.0, 0.934712, 1.09404],"qtlRDbindreg"=>[1.0, 0.969047, 1.08212, 1.0, 1.0, 1.0, 1.13709, 1.0, 0.953415, 1.08835],"qtlTCregbind"=>[1.0, 0.939463, 1.0, 1.0, 1.0, 1.0, 0.92738, 1.0, 1.0, 0.874129],"qtlactivity"=>[1.0, 1.07163, 0.985766, 1.0, 1.0, 1.0, 1.00126, 1.0, 0.87951, 0.774213],"qtlRDrate"=>[1.0, 1.0, 0.923331, 1.0, 1.0, 1.0, 1.20753, 1.0, 1.0, 1.0],"qtlTLregbind"=>[1.0, 0.969293, 0.947754, 0.790886, 1.0, 0.0, 0.918416, 0.0, 0.0, 0.0],"qtlPDrate"=>[1.0, 1.14071, 1.0, 1.0, 1.0, 0.0, 1.05153, 0.0, 0.0, 0.0]),"GCN1"=>Dict("qtlPDregbind"=>[1.15029, 1.16139, 1.0, 1.0, 0.965733, 0.0, 1.0, 0.0, 0.0, 0.0],"qtlTLrate"=>[1.0, 0.961051, 1.12259, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0],"qtlTCrate"=>[1.0, 1.24792, 1.0, 0.894408, 1.0, 1.0, 1.0, 0.99752, 0.96825, 1.0],"qtlRDbindreg"=>[1.0, 0.83549, 0.883935, 1.07553, 1.0, 0.870481, 1.0, 0.843412, 1.20015, 1.0],"qtlTCregbind"=>[1.0, 1.08633, 1.0, 1.06498, 1.03092, 1.0, 1.0, 0.813784, 1.11756, 1.0],"qtlactivity"=>[1.0, 0.791183, 1.0, 1.0, 0.948967, 1.0, 1.0, 1.08566, 1.03423, 1.0],"qtlRDrate"=>[1.0, 0.818898, 1.0, 1.16617, 1.09283, 1.0, 1.0, 0.926551, 1.0, 1.0],"qtlTLregbind"=>[1.0, 0.9524, 1.0, 0.970783, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0],"qtlPDrate"=>[1.11645, 0.940561, 1.0, 0.949767, 0.837376, 0.0, 1.0, 0.0, 0.0, 0.0]))
-Initvar = Dict("GCN3"=>Dict("P"=>[0.922647, 0.827737, 0.962663, 1.07635, 0.848211, 1.01387, 1.15418, 0.997701, 0.989415, 1.06221],"R"=>[1.01076, 0.903517, 0.931234, 0.948392, 1.08051, 1.07374, 0.843925, 0.956626, 1.1761, 1.09528]),"GCN2"=>Dict("P"=>[0.853842, 0.93087, 1.12092, 0.964489, 1.08834, 1.05661, 0.833048, 1.06602, 1.16125, 1.10232],"R"=>[0.97554, 0.932472, 1.0511, 0.898645, 1.05261, 1.05966, 0.7716, 0.90272, 0.807083, 1.06358]),"GCN4"=>Dict("P"=>[0.990594, 1.09941, 1.0421, 0.930396, 0.81033, 0.90876, 0.86762, 1.13135, 0.93453, 1.04141],"R"=>[1.00492, 1.1564, 1.14431, 0.93374, 0.970863, 1.13996, 1.1174, 0.978497, 1.10544, 1.00269]),"GCN1"=>Dict("P"=>[1.07192, 1.15348, 1.06973, 0.926324, 1.04767, 0.955735, 1.08041, 0.796943, 0.988385, 0.919596],"R"=>[0.855099, 0.818183, 0.857508, 0.910632, 1.00853, 0.99178, 0.934635, 0.879292, 0.843702, 0.908478]))
+InitVar = Dict("GCN3"=>Dict("P"=>[0.922647, 0.827737, 0.962663, 1.07635, 0.848211, 1.01387, 1.15418, 0.997701, 0.989415, 1.06221],"R"=>[1.01076, 0.903517, 0.931234, 0.948392, 1.08051, 1.07374, 0.843925, 0.956626, 1.1761, 1.09528]),"GCN2"=>Dict("P"=>[0.853842, 0.93087, 1.12092, 0.964489, 1.08834, 1.05661, 0.833048, 1.06602, 1.16125, 1.10232],"R"=>[0.97554, 0.932472, 1.0511, 0.898645, 1.05261, 1.05966, 0.7716, 0.90272, 0.807083, 1.06358]),"GCN4"=>Dict("P"=>[0.990594, 1.09941, 1.0421, 0.930396, 0.81033, 0.90876, 0.86762, 1.13135, 0.93453, 1.04141],"R"=>[1.00492, 1.1564, 1.14431, 0.93374, 0.970863, 1.13996, 1.1174, 0.978497, 1.10544, 1.00269]),"GCN1"=>Dict("P"=>[1.07192, 1.15348, 1.06973, 0.926324, 1.04767, 0.955735, 1.08041, 0.796943, 0.988385, 0.919596],"R"=>[0.855099, 0.818183, 0.857508, 0.910632, 1.00853, 0.99178, 0.934635, 0.879292, 0.843702, 0.908478]))
 
 model = Network("coucou")
 
