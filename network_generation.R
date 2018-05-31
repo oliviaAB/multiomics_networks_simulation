@@ -120,6 +120,8 @@ systemvisualize = function(mysystem){
   
 }
 
+
+
 # ------------------------------------------------------------------------------------------------------------ #
 #                                     PARAMETERS FOR NETWORK GENERATION                                        #
 # ------------------------------------------------------------------------------------------------------------ # 
@@ -836,25 +838,32 @@ createInSilicoSystem = function(sysargs, empty = F){
 #                   GENERATE THE LIST OF SPECIES AND REACTIONS FOR THE STOCHASTIC SIMULATION                   #
 # ------------------------------------------------------------------------------------------------------------ # 
 
+df2list = function(mydf){
+  new = list()
+  if(nrow(mydf)!=1){
+    for(cols in colnames(mydf)){
+      new[[cols]] = mydf[,cols]
+    }
+  }else{ ## If only 1 row in the data frame needs to convert the column element in a vector, otherwise Julia interprets each column as a single value
+    for(cols in colnames(mydf)){
+      new[[cols]] = list(mydf[,cols])
+    }
+  }
+  return(new)
+}
+
+
 createStochSystem = function(insilicosystem, indargs, returnList = T){
   
   ## Create the network and regulatory complexes lists to be sent to Julia (converted to dictionaries in Julia)
   temp = list("TCRN.edg", "TLRN.edg", "RDRN.edg", "PDRN.edg", "PTMRN.edg")
   for(t in temp){
-   new = list()
-   for(cols in colnames(insilicosystem[["mosystem"]][[t]])){
-     new[[cols]] = insilicosystem[["mosystem"]][[t]][,cols]
-   }
-  assign(t, new)
+    assign(t, df2list(insilicosystem[["mosystem"]][[t]]))
   }
   
 
   ## Create the gene list to be sent to Julia (converted to dictionaries in Julia)
-  new = list()
-  for(cols in colnames(insilicosystem[["genes"]])){
-    new[[cols]] = insilicosystem[["genes"]][,cols]
-  }
-  assign("nod", new)
+  assign("nod", df2list(insilicosystem[["genes"]]))
 
   complexes = switch((length(insilicosystem$mosystem$complexes) == 0) + 1, insilicosystem$mosystem$complexes, character(0))
   complexeskinetics = switch((length(insilicosystem$mosystem$complexeskinetics) == 0) + 1, insilicosystem$mosystem$complexeskinetics, character(0))
@@ -888,13 +897,14 @@ simulateSystemStochastic = function(insilicosystem, insilicopopulation, simtime,
   names(resTable) = names(insilicopopulation$individualsList)
   
   for(ind in names(insilicopopulation$individualsList)){
-    tic();simJuliaJ = juliaCall("stochasticsimulation", stochmodel$JuliaObject, insilicopopulation$individualsList[[ind]]$QTLeffects, insilicopopulation$individualsList[[ind]]$InitVar, simtime,
+    tic();simJuliaJ = juliaCall("stochasticsimulation", stochmodel$JuliaObject, insilicopopulation$individualsList[[ind]]$QTLeffects, insilicopopulation$individualsList[[ind]]$InitVar, df2list(insilicosystem$genes), simtime,
                                   modelname = ind, ntrials = ntrialsPerInd, nepochs = nepochs, simalgorithm = simalgorithm);toc()
     tic();simJulia = juliaGet(simJuliaJ);toc()
     mycolnames = names(sort(unlist(simJulia@fields$colindex@fields$lookup)))
     resTable[[ind]] = data.frame(matrix(unlist(simJulia@fields$columns), ncol = length(simJulia@fields$columns), dimnames = list(c(), mycolnames)))
   }
   
+  return(resTable)
 }
 
 # DNAsites = grep("^Pr", names(res), value = T)

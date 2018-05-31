@@ -535,68 +535,66 @@ function generateReactionList(nod, edgTCRN, edgTLRN, edgRDRN, edgPDRN, edgPTMRN,
     ## CREATE TRANSCRIPTION AND RNA DECAY REACTIONS
 
     for g in nod["id"], gcn in gcnList
-    gname = string(g) * gcn
-    TCreg = promactiveTC[gname]
-    TLreg = promallTL[gname]
+        gname = string(g) * gcn
+        TCreg = promactiveTC[gname]
+        TLreg = promallTL[gname]
 
-    ## What is the RNA form of the gene? 
-    ##    R[gene] if the gene is not controlled at the translation level
-    ##    otherwise transcription produces the free (unbound) form of each binding site present on the RNA (1 site per TL regulator)
-    if length(TLreg) == 0
-      RNAform = ["R"*gname]
-      push!(species, "R"*gname)
-      push!(initialconditions, :(($(nod["TCrate"][g]/nod["RDrate"][g])*QTLeffects[$(gcn)]["qtlTCrate"][$(g)]/QTLeffects[$(gcn)]["qtlRDrate"][$(g)])*InitVar[$(gcn)]["R"][$(g)]))
-      transcriptforms = ["R"*gname] ## for RNA decay
-    else
-      RNAform = [t[1] for t in TLreg] ## The TLreg dictionary is constructed such that each free binding site name is at the position 1
-      transcriptforms = combinallpromstates(TLreg) ## for RNA decay
+        ## What is the RNA form of the gene? 
+        ##    R[gene] if the gene is not controlled at the translation level
+        ##    otherwise transcription produces the free (unbound) form of each binding site present on the RNA (1 site per TL regulator)
+        if length(TLreg) == 0
+            RNAform = ["R"*gname]
+            push!(species, "R"*gname)
+            push!(initialconditions, :(($(nod["TCrate"][g]/nod["RDrate"][g])*QTLeffects[$(gcn)]["qtlTCrate"][$(g)]/QTLeffects[$(gcn)]["qtlRDrate"][$(g)])*InitVar[$(gcn)]["R"][$(g)]))
+            transcriptforms = ["R"*gname] ## for RNA decay
+        else
+            RNAform = [t[1] for t in TLreg] ## The TLreg dictionary is constructed such that each free binding site name is at the position 1
+            transcriptforms = combinallpromstates(TLreg) ## for RNA decay
+        end
+
+        if length(TCreg) == 0
+            ## Create transcription of the gene 
+            push!(reactions, reactBioSim([0], RNAform))
+            push!(reactionsnames, "transcription"*gname)
+            push!(propensities, :($(nod["TCrate"][g])*QTLeffects[$(gcn)]["qtlTCrate"][$(g)]))
+        else
+            promcomb = combinactivepromstates(TCreg) ## gives all possible active combinations of the different binding site states
+            for t in 1:size(promcomb["proms"])[1]
+                push!(reactions, reactBioSim(promcomb["proms"][t,:], vcat(promcomb["proms"][t,:], RNAform)))
+                push!(reactionsnames, "transcription"*join(promcomb["proms"][t,:]))
+                push!(propensities, :($(nod["TCrate"][g])*QTLeffects[$(gcn)]["qtlTCrate"][$(g)]*$(prod(promcomb["fcs"][t,:]))))
+            end
+        end
+
+
+        ## Generate RNA decay reactions
+        edgreg = find(edgRDRN["to"] .== g)
+        edgsingl = edgreg[map(x -> !in('C',x), edgRDRN["from"][edgreg])]
+        edgcompl = edgreg[map(x -> in('C',x), edgRDRN["from"][edgreg])]
+
+        for t in 1:size(transcriptforms)[1]
+            ## Basal decay rate
+            push!(reactions, reactBioSim(transcriptforms[t,:], [0]))
+            push!(reactionsnames, "RNAdecay"*join(transcriptforms[t,:]))
+            push!(propensities, :($(nod["RDrate"][g])*QTLeffects[$(gcn)]["qtlRDrate"][$(g)]))
+
+            for r in edgsingl, gcnreg in gcnList
+                reg = edgRDRN["from"][r]
+                push!(reactions, reactBioSim(vcat(transcriptforms[t,:], functform[reg]*gcnreg), [functform[reg]*gcnreg]))
+                push!(reactionsnames, "RNAdecay"*join(transcriptforms[t,:])*"reg"*reg*gcnreg)
+                push!(propensities, :($(edgRDRN["RDbindingrate"][r])*QTLeffects[$(gcnreg)]["qtlactivity"][$(parse(Int64, reg))]))
+            end
+
+            for r in edgcompl, j in 1:size(complexvariants)[1]
+                compl = edgRDRN["from"][r]
+                complvar = compl*"comp"*join([string(complexes[compl][i])*complexvariants[j, i] for i in 1:complexsize])
+                push!(reactions, reactBioSim(vcat(transcriptforms[t,:], complvar), [complvar]))
+                push!(reactionsnames, "RNAdecay"*join(transcriptforms[t,:])*"reg"*complvar)
+                propens = """$(edgRDRN["RDbindingrate"][r])"""*join(["*"*"""QTLeffects["$(complexvariants[j, i])"]["qtlactivity"][$(complexes[compl][i])]""" for i in 1:complexsize])
+                push!(propensities, parse(propens))
+            end
+        end
     end
-
-    if length(TCreg) == 0
-      ## Create transcription of the gene 
-      push!(reactions, reactBioSim([0], RNAform))
-      push!(reactionsnames, "transcription"*gname)
-      push!(propensities, :($(nod["TCrate"][g])*QTLeffects[$(gcn)]["qtlTCrate"][$(g)]))
-    else
-      promcomb = combinactivepromstates(TCreg) ## gives all possible active combinations of the different binding site states
-      for t in 1:size(promcomb["proms"])[1]
-        push!(reactions, reactBioSim(promcomb["proms"][t,:], vcat(promcomb["proms"][t,:], RNAform)))
-        push!(reactionsnames, "transcription"*join(promcomb["proms"][t,:]))
-        push!(propensities, :($(nod["TCrate"][g])*QTLeffects[$(gcn)]["qtlTCrate"][$(g)]*$(prod(promcomb["fcs"][t,:]))))
-      end
-    end
-
-
-    ## Generate RNA decay reactions
-    edgreg = find(edgRDRN["to"] .== g)
-    edgsingl = edgreg[map(x -> !in('C',x), edgRDRN["from"][edgreg])]
-    edgcompl = edgreg[map(x -> in('C',x), edgRDRN["from"][edgreg])]
-
-    for t in 1:size(transcriptforms)[1]
-      ## Basal decay rate
-      push!(reactions, reactBioSim(transcriptforms[t,:], [0]))
-      push!(reactionsnames, "RNAdecay"*join(transcriptforms[t,:]))
-      push!(propensities, :($(nod["RDrate"][g])*QTLeffects[$(gcn)]["qtlRDrate"][$(g)]))
-
-      for r in edgsingl, gcnreg in gcnList
-        reg = edgRDRN["from"][r]
-        push!(reactions, reactBioSim(vcat(transcriptforms[t,:], functform[reg]*gcnreg), [functform[reg]*gcnreg]))
-        push!(reactionsnames, "RNAdecay"*join(transcriptforms[t,:])*"reg"*reg*gcnreg)
-        push!(propensities, :($(edgRDRN["RDbindingrate"][r])*QTLeffects[$(gcnreg)]["qtlactivity"][$(parse(Int64, reg))]))
-      end
-
-      for r in edgcompl, j in 1:size(complexvariants)[1]
-        compl = edgRDRN["from"][r]
-        complvar = compl*"comp"*join([string(complexes[compl][i])*complexvariants[j, i] for i in 1:complexsize])
-        push!(reactions, reactBioSim(vcat(transcriptforms[t,:], complvar), [complvar]))
-        push!(reactionsnames, "RNAdecay"*join(transcriptforms[t,:])*"reg"*complvar)
-        propens = """$(edgRDRN["RDbindingrate"][r])"""*join(["*"*"""QTLeffects["$(complexvariants[j, i])"]["qtlactivity"][$(complexes[compl][i])]""" for i in 1:complexsize])
-        push!(propensities, parse(propens))
-      end
-
-    end
-
-  end
 
 
     ## CREATE TRANSLATION AND PROTEIN DECAY REACTIONS
@@ -784,9 +782,11 @@ function smallmodel()
     return resdf
 end
 
+function allequal(x)
+    all(y->y==x[1], x)
+end
 
-
-function stochasticsimulation(stochmodel, QTLeffectslocal, InitVarlocal, simtime; modelname = "MySimulation", ntrials = 1, nepochs = -1, simalgorithm = "SSA")
+function stochasticsimulation(stochmodel, QTLeffectslocal, InitVarlocal, nod, simtime; modelname = "MySimulation", ntrials = 1, nepochs = -1, simalgorithm = "SSA")
 
     ## Only way to use eval inside the function
     global QTLeffects = QTLeffectslocal
@@ -820,16 +820,54 @@ function stochasticsimulation(stochmodel, QTLeffectslocal, InitVarlocal, simtime
         model <= BioSimulator.Reaction(stochmodel["reactionsnames"][i], eval(stochmodel["propensities"][i]), stochmodel["reactions"][i])
     end
 
-    result = simulate(model, algorithm = simalgorithm, time = convert(Float64, simtime), epochs = round(Int64, nepochs), trials = convert(Int64, ntrials))
+    println("Running simulation ...")
+    tic();result = simulate(model, algorithm = simalgorithm, time = convert(Float64, simtime), epochs = round(Int64, nepochs), trials = convert(Int64, ntrials));toc()
 
     resultdf = res2df(result)
 
+    abundancedf = resultdf[:, [:time, :trial]]
 
     for g in collect(keys(stochmodel["TCproms"]))
-        nbspec = colwise(sum, resultdf[:, stochmodel["TCproms"]])
+
+        gid = parse(Int64, replace(g, r"GCN.+$","")) ## gives the gene id
+        
+        ## Check that for each binding site on the promoter of each gene, at each time the sum of the abundance of all species corresponding to all possible binding site states equals 1 (bc only 1 binding site per gene)
+        for i in eachindex(stochmodel["TCproms"][g])
+            prabundance = resultdf[:, map(Symbol, stochmodel["TCproms"][g][i])]
+            sumprom = [sum(convert(Array, row)) for row in eachrow(prabundance)]
+            if any(sumprom .!=1)
+                error("The sum of promoter states for "*stochmodel["TCproms"][g][i][1]*"not equal to 1.")
+            end
+        end
+
+        if length(stochmodel["TLproms"][g]) > 0
+            
+            ## Check for each RNA that the different binding sites on the RNA are in equal abundance at each time of the simulation
+            rbsabundance = [sum(convert(Array, resultdf[t, map(Symbol, x)]))for t in 1:size(resultdf)[1], x in stochmodel["TLproms"][g]]
+            
+            if !all(mapslices(allequal, rbsabundance, 2))
+                error("The abundance of the different binding sites on the RNA "*g*"are not equal.")
+            end
+
+            ## Add to abundancedf a column corresponding to the abundance of the RNA associated with g
+            abundancedf[Symbol("R"*g)] = rbsabundance[:,1]
+        else
+            abundancedf[Symbol("R"*g)] = resultdf[:, Symbol("R"*g)]
+        end
+
+
+        ## MAYBE to change if we don't make the disctinction between original and modified protein
+        if nod["coding"][gid] == "PC"
+            abundancedf[Symbol("P"*g)] = resultdf[:, Symbol("P"*g)]
+
+            if nod["PTMform"][gid] == "1"
+                abundancedf[Symbol("Pm"*g)] = resultdf[:, Symbol("Pm"*g)]
+            end
+
+        end
     end
 
-    return resultdf
+    return abundancedf
 end
 
 #=
