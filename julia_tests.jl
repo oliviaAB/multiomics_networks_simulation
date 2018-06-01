@@ -280,3 +280,33 @@ for g in genes
     end
 
 end
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import Base.Cartesian.lreplace
+    
+function myeval(mystr, myvector)
+    #res = eval(lreplace(myexpr, :myvector, myvector))
+    mystr = replace(mystr, "myvector", "$myvector")
+    eval(parse(mystr))
+end
+
+
+exp1 = "3*myvector[2]"
+avector = [1,2,3]
+
+myeval(exp1, avector)

@@ -1,9 +1,5 @@
-library(tictoc)
-
 setwd("~/winData/multiomics_networks_simulation")
 #setwd("~/GitHub/multiomics_networks_simulation")
-
-
 
 source("network_generation.R")
 
@@ -12,60 +8,15 @@ mysystemargs = insilicosystemargs(G = 10, RD.NC.outdeg.exp = 3)
 insilicosystem = createInSilicoSystem(mysystemargs)
 
 
-#plotGlobalSystem(myinsilicosystem, show = T)
+# plotGlobalSystem(insilicosystem, show = T)
 
-#plotRegulationSystem(myinsilicosystem, c("TC"))
+# plotRegulationSystem(insilicosystem, show = T)
 
 myindivargs = insilicoindividualargs()
-insilicopopulation = createPopulation(5, insilicosystem, myindivargs)
+insilicopopulation = createPopulation(2, insilicosystem, myindivargs)
 
-simtime = 100
-nepochs = 200
-ntrialsPerInd = 1
-simalgorithm = "SSA"
-returnStochModel = F
-ind = names(insilicopopulation$individualsList)[1]
-library(viridis)
+resTable = simulateSystemStochastic(insilicosystem, insilicopopulation, simtime = 1000, nepochs = 2000, ntrialsPerInd = 1, simalgorithm = "ODM", returnStochModel = F)
 
-resTable = simulateSystemStochastic(insilicosystem, insilicopopulation, simtime, nepochs, ntrialsPerInd, simalgorithm , returnStochModel)
-
-mycolsvariants = viridis(insilicopopulation$indargs$ngenevariants)
-names(mycolsvariants) = as.character(1:insilicopopulation$indargs$ngenevariants)
-
-for(ind in names(insilicopopulation$individualsList)){
-
-    profiles = resTable[[ind]]
-    for(g in insilicosystem$genes$id){
-      RNAspecies = grep(paste0("^R",g,"GCN"), names(profiles), value = T)
-      alleleVariants = sapply(RNAspecies, function(x){
-        id = rev(strsplit(as.character(x), "GCN")[[1]])[1]
-        allelevar = insilicopopulation$individualsList[[ind]]$haplotype[g, paste0("GCN", id)]
-        return(as.character(allelevar))
-      })
-      
-      colsAllelevariants = mycolsvariants[alleleVariants]
-      names(colsAllelevariants) = names(alleleVariants)
-      RNAprofile = melt(profiles, id.vars = c("time", "trial"), measure.vars = RNAspecies)
-      
-      plotRNA = ggplot(RNAprofile, aes(x = time, y = value, color = variable)) +
-        geom_line() + 
-        scale_color_manual(values = colsAllelevariants, breaks = names(colsAllelevariants), drop = F, name = "Allele variant") + 
-        ggtitle(paste(c("Expression profile of gene", as.character(g), "- RNA"), collapse = " "))
-
-      if(insilicosystem$genes[g, "coding"] == "PC"){
-        colsAllelevariantsP = colsAllelevariants
-        names(colsAllelevariantsP) = sub("^R", "P", names(colsAllelevariants))
-        protspecies = grep(paste0("^P",g,"GCN"), names(profiles), value = T)
-        protprofile = melt(profiles, id.vars = c("time", "trial"), measure.vars = protspecies)
-        plotprot = ggplot(protprofile, aes(x = time, y = value, color = variable)) +
-          geom_line() + 
-          scale_color_manual(values = colsAllelevariantsP, breaks = names(colsAllelevariantsP), drop = F, name = "Allele variant") + 
-          ggtitle(paste(c("Expression profile of gene", as.character(g), "- Protein"), collapse = " "))
-
-        ggarrange(plotRNA, plotprot, ncol = 2, draw = T)
-      }else{ggarrange(plotRNA, draw = T)}
-  }
-}  
 
 
 

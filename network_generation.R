@@ -16,6 +16,8 @@ if(!suppressWarnings(require("egg", quietly = T))){install.packages("egg")}
 library(egg)
 if(!suppressWarnings(require("RColorBrewer", quietly = T))){install.packages("RColorBrewer")}
 library(RColorBrewer)
+if(!suppressWarnings(require("tictoc", quietly = T))){install.packages("tictoc")}
+library(tictoc)
 
 ## Test if Julia is installed on the computer
 if(!findJulia(test = T)) stop("Julia is not installed on the computer or not accessible by R. Check that Julia is correcly installed and/or in the PATH variable\n")
@@ -36,7 +38,16 @@ if(!findJulia(test = T)) stop("Julia is not installed on the computer or not acc
 ##########################################################################################################################
 
 ## Get Julia functions from source code
-juliaSource(paste0(getwd(),"/julia_functions.jl"))
+
+juliaCommand("
+if !haskey(Pkg.installed(), \"ClobberingReload\") 
+	Pkg.clone(\"git://github.com/cstjean/ClobberingReload.jl.git\")
+end
+")
+
+juliaUsing("ClobberingReload") ## Use the Julia module ClobberingReload to suppress redefinition warnings
+juliaCommand(paste0("sinclude(\"", getwd(),"/julia_functions.jl\")")) ## include (i.e. Julia equivalent of source) the Julia file, using sinclude from module ClobberingReload
+#juliaSource(paste0(getwd(),"/julia_functions.jl"))
 
 
 # ------------------------------------------------------------------------------------------------------------ #
@@ -226,7 +237,10 @@ insilicosystemargs = function( ## ----
                        regcomplexes.p = 1, ## probability that regulators controlling a common target form regulatory complexes; ignore if regcomplexes = 'none'
                        regcomplexes.size = 2, ## number of components of a regulatory complex; ignore if regcomplexes = 'none'
                        complexesformationrate_samplingfct = function(x){ runif(x, 0.001, 0.01) }, ## Function from which the formation rate of regulatory complexes are sampled (input x is the required sample size)
-                       complexesdissociationrate_samplingfct = function(x){ runif(x, 0.001, 0.01) } ## Function from which the dissociation rate of regulatory complexes are sampled (input x is the required sample size)
+                       complexesdissociationrate_samplingfct = function(x){ runif(x, 0.001, 0.01) }, ## Function from which the dissociation rate of regulatory complexes are sampled (input x is the required sample size)
+                       mycolsCS = c("PC" = "#e03616",  "NC" = "#58355e", "Tot" = "#31161F"), ## Colours used in the plots to represent portein-coding and noncoding genes
+                       mycolsGF = c("TC" = "#FF7F11", "TL" = "#FF963C", "RD" = "#5AB7A4", "PD" = "#78C4B4", "PTM" = "#FF1B1C", "MR" = "#FF6D6E"), ## Colours used in the plots to represent the different gene expression steps (transcription, translation, etc)
+                       mycolsPosNeg = c("1" = "#D63230", "-1" = "#69BAF4") ## Colours used in plots to represent positive/negative regulatory interactions
 ){
   
   NC.p = 1 - PC.p
@@ -344,7 +358,10 @@ insilicosystemargs = function( ## ----
                  "regcomplexes.p" = regcomplexes.p,
                  "regcomplexes.size" = regcomplexes.size ,
                  "complexesformationrate_samplingfct" = complexesformationrate_samplingfct, 
-                 "complexesdissociationrate_samplingfct" = complexesdissociationrate_samplingfct)
+                 "complexesdissociationrate_samplingfct" = complexesdissociationrate_samplingfct,
+                 "mycolsCS" = mycolsCS,
+                 "mycolsGF" = mycolsGF,
+                 "mycolsPosNeg" = mycolsPosNeg)
   
   
   attr(value, "class") = "insilicosystemargs"
@@ -891,54 +908,44 @@ createStochSystem = function(insilicosystem, indargs, returnList = T){
 
 simulateSystemStochastic = function(insilicosystem, insilicopopulation, simtime, nepochs = -1, ntrialsPerInd = 1, simalgorithm = "SSA", returnStochModel = F){
   
+  cat("\n")
   stochmodel = createStochSystem(insilicosystem, insilicopopulation$indargs, returnList = returnStochModel)
+  cat("\n")
   
+  ## Store the running time of each simulation
+  runningtime = vector("numeric", length(insilicopopulation$individualsList)*ntrialsPerInd)
+  ri = 1
+  
+  ## Set a progress bar
+  cat("Starting simulations at", format(Sys.time(), usetz = T), "\n")
+  progress = txtProgressBar(min = 0, max = length(insilicopopulation$individualsList)*ntrialsPerInd, style = 3)
   resTable = vector("list", length(insilicopopulation$individualsList))
   names(resTable) = names(insilicopopulation$individualsList)
   
   for(ind in names(insilicopopulation$individualsList)){
-    tic();simJuliaJ = juliaCall("stochasticsimulation", stochmodel$JuliaObject, insilicopopulation$individualsList[[ind]]$QTLeffects, insilicopopulation$individualsList[[ind]]$InitVar, df2list(insilicosystem$genes), simtime,
-                                  modelname = ind, ntrials = ntrialsPerInd, nepochs = nepochs, simalgorithm = simalgorithm);toc()
-    tic();simJulia = juliaGet(simJuliaJ);toc()
+    tic()
+    simJuliaJ = juliaCall("stochasticsimulation", stochmodel$JuliaObject, insilicopopulation$individualsList[[ind]]$QTLeffects, insilicopopulation$individualsList[[ind]]$InitVar, df2list(insilicosystem$genes), simtime,
+                                  modelname = ind, ntrials = ntrialsPerInd, nepochs = nepochs, simalgorithm = simalgorithm)
+    temp = toc(quiet = T)
+    runningtime[ri]  = temp$toc - temp$tic
+    setTxtProgressBar(progress, ri)
+    ri = ri + 1
+    simJulia = juliaGet(simJuliaJ)
     mycolnames = names(sort(unlist(simJulia@fields$colindex@fields$lookup)))
     resTable[[ind]] = data.frame(matrix(unlist(simJulia@fields$columns), ncol = length(simJulia@fields$columns), dimnames = list(c(), mycolnames)))
   }
   
-  return(resTable)
+  cat("\nMean running time per simulation: ", mean(runningtime),"seconds. \n")
+  return(list("resTable" = resTable, "runningtime" = runningtime))
 }
 
-# DNAsites = grep("^Pr", names(res), value = T)
-# maxDNAsites = sapply(DNAsites, function(x){max(res[,x])})
-# which(maxDNAsites >1)
-# 
-# 
-# RBSlist = list()
-# for(i in insilicosystem$genes$id[insilicosystem$genes$coding == "PC"]){
-#   RBSlist[[i]] = insilicosystem$mosystem$TLRN.edg$from[insilicosystem$mosystem$TLRN.edg$to == i]
-#   
-#   if(!is.null(RBS.list[[i]])){
-#     
-#   }
-# }
-# 
-# 
-# 
-# RNAsites = grep("^RBS", names(res), value = T)
-# uniqueRNA = unique(sapply(RNAsites, function(x){strsplit(x, "reg")[[1]][1]}))
-# eqRNAsites = sapply(uniqueRNA, function(x){max(res[,x])})
-# which(maxRNAsites >1)
 
 # ############################################################################################################################
 #                                                 VISUALISATION
 # ############################################################################################################################
 
-plotGlobalSystem = function(insilicosystem, show = T){
+plotGlobalSystem = function(insilicosystem, show = T, returnplots = F){
   ## Define the colour palettes
-  mycolsCS = c("PC" = "#e03616",  "NC" = "#58355e", "Tot" = "#31161F")
-  #mycolsCS = c("PC" = "#bf614c",  "NC" = "#a887b4", "Tot" = "#69555c")
-  
-  #mycolsGF = brewer.pal(6, "RdYlBu")
-  mycolsGF = c("TC" = "#FF7F11", "TL" = "#FF963C", "RD" = "#5AB7A4", "PD" = "#78C4B4", "PTM" = "#FF1B1C", "MR" = "#FF6D6E")
   
   reactionsnames = c("TC" = "transcription", "TL" = "translation", "RD" = "RNA decay", "PD" = "protein decay", "PTM" = "protein post-translational modification", "MR" = "metabolic reaction")
   
@@ -949,7 +956,7 @@ plotGlobalSystem = function(insilicosystem, show = T){
   
   gCS = ggplot(insilicosystem$genes, aes(x = "1", fill = coding)) +
     geom_bar() + 
-    scale_fill_manual(values = mycolsCS, drop = F, name = "Coding status", labels = c("PC" = "Protein coding", "NC" = "Noncoding")) + 
+    scale_fill_manual(values = insilicosystem$sysargs$mycolsCS, drop = F, name = "Coding status", labels = c("PC" = "Protein coding", "NC" = "Noncoding")) + 
     coord_flip() + 
     theme(axis.text.y = element_blank(), axis.title.y = element_blank(), axis.ticks.y = element_blank(), plot.title = element_text(hjust = 0.5, size = rel(1)), axis.title.x = element_text(size = rel(0.9)), legend.title = element_text(size = rel(0.9))) + 
     ggtitle("Coding status of genes in the system") + ylab("Number of genes") 
@@ -957,7 +964,7 @@ plotGlobalSystem = function(insilicosystem, show = T){
   
   gGF = ggplot(insilicosystem$genes, aes(x = coding, fill = factor(TargetReaction, levels = rev(c("TC", "TL", "RD", "PD", "PTM", "MR"))))) +
     geom_bar() + 
-    scale_fill_manual(values = mycolsGF, breaks = c("TC", "TL", "RD", "PD", "PTM", "MR"), drop = F, name = "Gene function ") + 
+    scale_fill_manual(values = insilicosystem$sysargs$mycolsGF, breaks = c("TC", "TL", "RD", "PD", "PTM", "MR"), drop = F, name = "Gene function ") + 
     scale_x_discrete(limits = c("PC", "NC"), labels = c("Protein-coding", "Noncoding")) +
     coord_flip() +
     theme(axis.text.y = element_text(angle = 90, hjust = 0.5), plot.title = element_text(hjust = 0.5, size = rel(1)), axis.title.x = element_text(size = rel(0.9)), legend.title = element_text(size = rel(0.9))) + 
@@ -972,14 +979,14 @@ plotGlobalSystem = function(insilicosystem, show = T){
   myx = switch((nrow(insilicosystem$mosystem$edg)>0) + 1, NULL, "'1'")
   gEdgCS = ggplot(insilicosystem$mosystem$edg, aes_string(x = myx, fill = "RegBy")) +
     geom_bar() + 
-    scale_fill_manual(values = mycolsCS, drop = F, name = "Regulator\ncoding status", labels = c("PC" = "Protein coding", "NC" = "Noncoding")) + 
+    scale_fill_manual(values = insilicosystem$sysargs$mycolsCS, drop = F, name = "Regulator\ncoding status", labels = c("PC" = "Protein coding", "NC" = "Noncoding")) + 
     coord_flip() + 
     theme(axis.text.y = element_blank(), axis.title.y = element_blank(), axis.ticks.y = element_blank(), plot.title = element_text(hjust = 0.5, size = rel(1)), axis.title.x = element_text(size = rel(0.9)), legend.title = element_text(size = rel(0.9)), legend.position = "bottom", legend.direction = "horizontal") + 
     ggtitle("Ratio of regulatory interactions performed by\nprotein coding vs noncoding regulators") + ylab("Number of regulatory interactions") 
   
   gEdgGF = ggplot(insilicosystem$mosystem$edg, aes_string(x = myx, fill = "TargetReaction")) +
     geom_bar() + 
-    scale_fill_manual(values = mycolsGF, breaks = c("TC", "TL", "RD", "PD", "PTM"), drop = F, name = "Gene function ") + 
+    scale_fill_manual(values = insilicosystem$sysargs$mycolsGF, breaks = c("TC", "TL", "RD", "PD", "PTM"), drop = F, name = "Gene function ") + 
     coord_flip() +
     theme(axis.text.y = element_blank(),axis.title.y = element_blank(), axis.ticks.y = element_blank(), plot.title = element_text(hjust = 0.5, size = rel(1)), axis.title.x = element_text(size = rel(0.9)), legend.title = element_text(size = rel(0.9)), legend.position = "bottom", legend.direction = "horizontal") + 
     ggtitle("Nature of expression step targeted by each regulatory interactions") + ylab("Number of regulatory interactions")
@@ -994,7 +1001,7 @@ plotGlobalSystem = function(insilicosystem, show = T){
   
   gIDTGF = ggplot(insilicosystem$mosystem$edg, aes(x = factor(to, as.character(genorder)), fill = factor(TargetReaction, levels = rev(c("TC", "TL", "RD", "PD", "PTM"))))) + 
     geom_bar() + 
-    scale_fill_manual(values = mycolsGF, breaks = c("TC", "TL", "RD", "PD", "PTM"), drop = F, name = "Type of\nregulation", guide = F) + 
+    scale_fill_manual(values = insilicosystem$sysargs$mycolsGF, breaks = c("TC", "TL", "RD", "PD", "PTM"), drop = F, name = "Type of\nregulation", guide = F) + 
     theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(), plot.title = element_text(hjust = 0.5, size = rel(1)), axis.title.y = element_text(size = rel(0.9)), legend.title = element_text(size = rel(0.9))) + 
     ggtitle("Number and type of regulators for each gene") + xlab("Genes in the system") + ylab("Number of  regulators")
   
@@ -1009,7 +1016,7 @@ plotGlobalSystem = function(insilicosystem, show = T){
   
   gIDTCS = ggplot(insilicosystem$mosystem$edg, aes(x = factor(to, as.character(genorder)), fill = factor(RegBy, levels = c("NC", "PC")))) + 
     geom_bar() + 
-    scale_fill_manual(values = mycolsCS, drop = F, name = "Regulator\ncoding status", labels = c("PC" = "Protein coding", "NC" = "Noncoding"), guide = F) + 
+    scale_fill_manual(values = insilicosystem$sysargs$mycolsCS, drop = F, name = "Regulator\ncoding status", labels = c("PC" = "Protein coding", "NC" = "Noncoding"), guide = F) + 
     theme(axis.text.x = element_blank(), axis.ticks.x = element_blank(), plot.title = element_text(hjust = 0.5, size = rel(1)), axis.title.y = element_text(size = rel(0.9)), legend.title = element_text(size = rel(0.9))) + 
     ggtitle("Number and type of regulators for each gene") + xlab("Genes in the system") + ylab("Number of regulators")
   
@@ -1029,7 +1036,7 @@ plotGlobalSystem = function(insilicosystem, show = T){
   
   for(g in names(concnod)){
     myplot = ggplot(insilicosystem$genes[insilicosystem$genes$coding %in% concnod[[g]], ], aes_string(x = g)) + 
-      geom_histogram(bins = 20, fill = mycolsCS["Tot"]) +
+      geom_histogram(bins = 20, fill = insilicosystem$sysargs$mycolsCS["Tot"]) +
       theme(plot.title = element_text(hjust = 0.5, size = rel(1)), axis.title.x = element_text(size = rel(0.9)), axis.title.y = element_text(size = rel(0.9))) + 
       ggtitle(graphtitles[[g]]) + xlab(paste(graphtitles[[g]], "(1/s)", sep = " ")) + ylab("Frequency")
     
@@ -1038,23 +1045,13 @@ plotGlobalSystem = function(insilicosystem, show = T){
   
   globalPanel4 = ggarrange(plotTCrate, plotTLrate, plotRDrate, plotPDrate, ncol = 2, draw = show)
 
-  return(list("globalPanel1" = globalPanel1, "globalPanel2" = globalPanel2, "globalPanel3" = globalPanel3, "globalPanel4" = globalPanel4))
+  if(returnplots) return(list("globalPanel1" = globalPanel1, "globalPanel2" = globalPanel2, "globalPanel3" = globalPanel3, "globalPanel4" = globalPanel4))
   
 }
 
-plotRegulationSystem = function(insilicosystem, regreactions = c("TC", "TL", "RD", "PD", "PTM"), show = T){
+plotRegulationSystem = function(insilicosystem, regreactions = c("TC", "TL", "RD", "PD", "PTM"), show = T, returnplots = F){
   
   res = list()
-  
-  ## Define the colour palettes
-  mycolsCS = c("PC" = "#e03616",  "NC" = "#58355e", "Tot" = "#31161F")
-  #mycolsCS = c("PC" = "#bf614c",  "NC" = "#a887b4", "Tot" = "#69555c")
-  
-  #mycolsGF = brewer.pal(6, "RdYlBu")
-  mycolsGF = c("TC" = "#FF7F11", "TL" = "#FF963C", "RD" = "#5AB7A4", "PD" = "#78C4B4", "PTM" = "#FF1B1C", "MR" = "#FF6D6E")
-  
-  
-  mycolsPosNeg = c("1" = "#D63230", "-1" = "#69BAF4")
   
   reactionsnames = c("TC" = "transcription", "TL" = "translation", "RD" = "RNA decay", "PD" = "protein decay", "PTM" = "protein post-translational modification", "MR" = "metabolic reaction")
   
@@ -1071,14 +1068,14 @@ plotRegulationSystem = function(insilicosystem, regreactions = c("TC", "TL", "RD
     myx = switch((nrow(edgcomp)>0) + 1, NULL, "'A'")
     gEdgPosNeg = ggplot(edgtot, aes_string(x = myx, fill = "RegSign")) +
       geom_bar() + 
-      scale_fill_manual(values = mycolsPosNeg, drop = F, name = "Nature of the interactions", labels = c("1" = "Positive\nregulation", "-1" = "Negative\nregulation")) + 
+      scale_fill_manual(values = insilicosystem$sysargs$mycolsPosNeg, drop = F, name = "Nature of the interactions", labels = c("1" = "Positive\nregulation", "-1" = "Negative\nregulation")) + 
       coord_flip() + 
       theme(axis.text.y = element_blank(), axis.title.y = element_blank(), axis.ticks.y = element_blank(), plot.title = element_text(hjust = 0.5, size = rel(1)), axis.title.x = element_text(size = rel(0.9)), legend.title = element_text(size = rel(0.9)), legend.position = "bottom", legend.direction = "horizontal") + 
-      ggtitle("Ratio of activating vs repressing regulatory interactions") + ylab("Number of regulatory interactions") 
+      ggtitle(paste0(reactionsnames[t]," regulation\nRatio of activating vs repressing regulatory interactions")) + ylab("Number of regulatory interactions") 
     
     gEdgPCNC = ggplot(edgtot, aes_string(x = myx, fill = "RegBy")) +
       geom_bar() + 
-      scale_fill_manual(values = mycolsCS, drop = F, name = "Nature of the regulators", labels = c("PC" = "Protein coding", "NC" = "Noncoding")) + 
+      scale_fill_manual(values = insilicosystem$sysargs$mycolsCS, drop = F, name = "Nature of the regulators", labels = c("PC" = "Protein coding", "NC" = "Noncoding")) + 
       coord_flip() + 
       theme(axis.text.y = element_blank(), axis.title.y = element_blank(), axis.ticks.y = element_blank(), plot.title = element_text(hjust = 0.5, size = rel(1)), axis.title.x = element_text(size = rel(0.9)), legend.title = element_text(size = rel(0.9)), legend.position = "bottom", legend.direction = "horizontal") + 
       ggtitle("Ratio of regulatory interactions exerted by protein coding vs noncoding regulators") + ylab("Number of regulatory interactions") 
@@ -1093,18 +1090,18 @@ plotRegulationSystem = function(insilicosystem, regreactions = c("TC", "TL", "RD
     if(nrow(outdegreedf) == 0)   outdegreedf = data.frame("Regid" = numeric(0), "RegCoding" = character(0), "Outdegree" = numeric(0))
     
     gODT = ggplot(outdegreedf, aes(x = Outdegree)) + 
-      geom_histogram(binwidth = 10, center = 5, fill = mycolsCS["Tot"]) + 
+      geom_histogram(binwidth = 10, center = 5, fill = insilicosystem$sysargs$mycolsCS["Tot"]) + 
       theme( plot.title = element_text(hjust = 0.5, size = rel(1)), axis.title.x = element_text(size = rel(0.9)), axis.title.y = element_text(size = rel(0.9))) + 
       ggtitle(paste("Out-degree distribution of", reactionsnames[t], "regulators")) + xlab("Number of targets") + ylab("Frequency")
     
     gODPC = ggplot(outdegreedf[outdegreedf$RegCoding == "PC", ], aes(x = Outdegree)) + 
-      geom_histogram(binwidth = 5, center = 2.5, fill = mycolsCS["PC"]) + 
+      geom_histogram(binwidth = 5, center = 2.5, fill = insilicosystem$sysargs$mycolsCS["PC"]) + 
       theme(plot.title = element_text(hjust = 0.5, size = rel(1)), axis.title.x = element_text(size = rel(0.9)), axis.title.y = element_text(size = rel(0.9))) + 
       scale_fill_discrete(guide=FALSE) +
       ggtitle(paste("Out-degree distribution of protein-coding", reactionsnames[t], "regulators")) + xlab("Number of targets") + ylab("Frequency")
     
     gODNC = ggplot(outdegreedf[outdegreedf$RegCoding == "NC", ], aes(x = Outdegree)) + 
-      geom_histogram(binwidth = 5, center = 2.5, fill = mycolsCS["NC"]) + 
+      geom_histogram(binwidth = 5, center = 2.5, fill = insilicosystem$sysargs$mycolsCS["NC"]) + 
       theme(plot.title = element_text(hjust = 0.5, size = rel(1)), axis.title.x = element_text(size = rel(0.9)), axis.title.y = element_text(size = rel(0.9))) + 
       scale_fill_discrete(guide=FALSE) +
       ggtitle(paste("Out-degree distribution of noncoding", reactionsnames[t], "regulators")) + xlab("Number of targets") + ylab("Frequency")
@@ -1122,18 +1119,18 @@ plotRegulationSystem = function(insilicosystem, regreactions = c("TC", "TL", "RD
     
     
     gIDT = ggplot(indegreedf, aes(x = IndegreeTot)) + 
-      geom_histogram(binwidth = 1, center = 0.5, fill = mycolsCS["Tot"]) + 
+      geom_histogram(binwidth = 1, center = 0.5, fill = insilicosystem$sysargs$mycolsCS["Tot"]) + 
       theme( plot.title = element_text(hjust = 0.5, size = rel(1)), axis.title.x = element_text(size = rel(0.9)), axis.title.y = element_text(size = rel(0.9))) + 
       ggtitle(paste("In-degree distribution of genes -\n", reactionsnames[t], "regulation")) + xlab("Number of regulators") + ylab("Frequency")
     
     gIDPC = ggplot(indegreedf, aes(x = IndegreePC)) + 
-      geom_histogram(binwidth = 1, center = 0.5, fill = mycolsCS["PC"]) + 
+      geom_histogram(binwidth = 1, center = 0.5, fill = insilicosystem$sysargs$mycolsCS["PC"]) + 
       theme(plot.title = element_text(hjust = 0.5, size = rel(1)), axis.title.x = element_text(size = rel(0.9)), axis.title.y = element_text(size = rel(0.9))) + 
       scale_fill_discrete(guide=FALSE) +
       ggtitle(paste("In-degree distribution of genes -\n only protein coding", reactionsnames[t], "regulators")) + xlab("Number of protein coding regulators") + ylab("Frequency")
     
     gIDNC = ggplot(indegreedf, aes(x = IndegreeNC)) + 
-      geom_histogram(binwidth = 1, center = 0.5, fill = mycolsCS["NC"]) + 
+      geom_histogram(binwidth = 1, center = 0.5, fill = insilicosystem$sysargs$mycolsCS["NC"]) + 
       theme(plot.title = element_text(hjust = 0.5, size = rel(1)), axis.title.x = element_text(size = rel(0.9)), axis.title.y = element_text(size = rel(0.9))) + 
       scale_fill_discrete(guide=FALSE) +
       ggtitle(paste("In-degree distribution of genes -\n only noncoding", reactionsnames[t], "regulators")) + xlab("Number of noncoding regulators") + ylab("Frequency")
@@ -1147,7 +1144,7 @@ plotRegulationSystem = function(insilicosystem, regreactions = c("TC", "TL", "RD
     kineticplotList = list()
     for(k in grep(paste0("^", t), names(edgcomp), value = T)){
       myplot = ggplot(edgcomp, aes_string(x = k)) +
-        geom_histogram(fill = mycolsCS["Tot"]) + 
+        geom_histogram(fill = insilicosystem$sysargs$mycolsCS["Tot"]) + 
         theme(plot.title = element_text(hjust = 0.5, size = rel(1)), axis.title.x = element_text(size = rel(0.9)), axis.title.y = element_text(size = rel(0.9))) + 
         ggtitle(sub(paste0("^",t), "", k)) + xlab(sub(paste0("^",t), "", k)) + ylab("Frequency")
       
@@ -1158,7 +1155,48 @@ plotRegulationSystem = function(insilicosystem, regreactions = c("TC", "TL", "RD
     if(length(kineticplotList) > 0) mg = ggarrange(plots = kineticplotList, ncol = length(kineticplotList), draw = show); res[[paste0(t, "Panel3")]] = mg
   }
   
-  return(res)
+  if(returnplots) return(res)
+}
+
+plotExpressionProfiles = function(insilicosystem, insilicopopulation, resTable){
+  mycolsvariants = viridis(insilicopopulation$indargs$ngenevariants)
+  names(mycolsvariants) = as.character(1:insilicopopulation$indargs$ngenevariants)
+  
+  for(ind in names(insilicopopulation$individualsList)){
+    
+    profiles = resTable[[ind]]
+    for(g in insilicosystem$genes$id){
+      RNAspecies = grep(paste0("^R",g,"GCN"), names(profiles), value = T)
+      alleleVariants = sapply(RNAspecies, function(x){
+        id = rev(strsplit(as.character(x), "GCN")[[1]])[1]
+        allelevar = insilicopopulation$individualsList[[ind]]$haplotype[g, paste0("GCN", id)]
+        return(as.character(allelevar))
+      })
+      
+      colsAllelevariants = mycolsvariants[alleleVariants]
+      names(colsAllelevariants) = names(alleleVariants)
+      RNAprofile = melt(profiles, id.vars = c("time", "trial"), measure.vars = RNAspecies)
+      
+      plotRNA = ggplot(RNAprofile, aes(x = time, y = value, color = variable)) +
+        geom_line() + 
+        scale_color_manual(values = colsAllelevariants, breaks = names(colsAllelevariants), drop = F, name = "Allele variant") + 
+        ggtitle(paste(c("Expression profile of gene", as.character(g), "- RNA"), collapse = " "))
+      
+      if(insilicosystem$genes[g, "coding"] == "PC"){
+        colsAllelevariantsP = colsAllelevariants
+        names(colsAllelevariantsP) = sub("^R", "P", names(colsAllelevariants))
+        protspecies = grep(paste0("^P",g,"GCN"), names(profiles), value = T)
+        protprofile = melt(profiles, id.vars = c("time", "trial"), measure.vars = protspecies)
+        plotprot = ggplot(protprofile, aes(x = time, y = value, color = variable)) +
+          geom_line() + 
+          scale_color_manual(values = colsAllelevariantsP, breaks = names(colsAllelevariantsP), drop = F, name = "Allele variant") + 
+          ggtitle(paste(c("Expression profile of gene", as.character(g), "- Protein"), collapse = " "))
+        
+        ggarrange(plotRNA, plotprot, ncol = 2, draw = T)
+      }else{ggarrange(plotRNA, draw = T)}
+    }
+  }  
+  
 }
 
 # ------------------------------------------------------------------------------------------------------------ #

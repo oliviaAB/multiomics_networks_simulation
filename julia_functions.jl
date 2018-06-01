@@ -766,7 +766,6 @@ function res2df(output :: BioSimulator.SimData)
     return df
 end
 
-
 function smallmodel()
 
 
@@ -820,8 +819,11 @@ function stochasticsimulation(stochmodel, QTLeffectslocal, InitVarlocal, nod, si
         model <= BioSimulator.Reaction(stochmodel["reactionsnames"][i], eval(stochmodel["propensities"][i]), stochmodel["reactions"][i])
     end
 
-    println("Running simulation ...")
-    tic();result = simulate(model, algorithm = simalgorithm, time = convert(Float64, simtime), epochs = round(Int64, nepochs), trials = convert(Int64, ntrials));toc()
+    #println("JULIA> Running simulation ...")
+    #tic()
+    result = simulate(model, algorithm = simalgorithm, time = convert(Float64, simtime), epochs = round(Int64, nepochs), trials = convert(Int64, ntrials))
+    #toc()
+    #println("JULIA> Done.")
 
     resultdf = res2df(result)
 
