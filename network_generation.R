@@ -18,6 +18,11 @@ if(!suppressWarnings(require("RColorBrewer", quietly = T))){install.packages("RC
 library(RColorBrewer)
 if(!suppressWarnings(require("tictoc", quietly = T))){install.packages("tictoc")}
 library(tictoc)
+if(!suppressWarnings(require("viridis", quietly = T))){install.packages("viridis")}
+library(viridis)
+if(!suppressWarnings(require("reshape2", quietly = T))){install.packages("reshape2")}
+library(reshape2)
+
 
 ## Test if Julia is installed on the computer
 if(!findJulia(test = T)) stop("Julia is not installed on the computer or not accessible by R. Check that Julia is correcly installed and/or in the PATH variable\n")
@@ -38,6 +43,8 @@ if(!findJulia(test = T)) stop("Julia is not installed on the computer or not acc
 ##########################################################################################################################
 
 ## Get Julia functions from source code
+
+#RJulia(.makeNew = T) ## creates a new evaluator when the file is sourced
 
 juliaCommand("
 if !haskey(Pkg.installed(), \"ClobberingReload\") 
@@ -149,7 +156,7 @@ insilicosystemargs = function( ## ----
                        PC.PD.p = 0.1, ## PC.PD.p : ratio of regulators of protein decay among the protein-coding genes
                        PC.PTM.p = 0.05, ## PC.PTM.p : ratio of regulators of protein post-translational modification among the protein-coding genes
                        PC.MR.p = 0.05, ## PC.MR.p : ratio of metabolic enzymes among the protein-coding genes
-                       PC.PTM.form.p = 0.6, ## PC.PTM.form.p: for protein coding genes, ratio of protein having a PTM form
+                       # PC.PTM.form.p = 0.6, ## PC.PTM.form.p: for protein coding genes, ratio of protein having a PTM form
                        ## noncoding ratios
                        NC.TC.p = 0.3, ## NC.TC.p : ratio of regulators of transcription among the noncoding genes
                        NC.TL.p = 0.35, ## NC.TL.p : ratio of regulators of translation among the noncoding genes
@@ -161,8 +168,8 @@ insilicosystemargs = function( ## ----
                        TC.NC.pos.p = 0.5, ## TC.NC.pos.p: probability that the transcription is positively regulated by noncoding regulators 
                        TL.PC.pos.p = 0.5, ## TL.PC.pos.p: probability that the translation is positively regulated by protein regulators 
                        TL.NC.pos.p = 0.05, ## TL.NC.pos.p: probability that the translation is positively regulated by noncoding regulators 
-                       # PTM.PC.pos.p = 0.5, ## PTM.PC.pos.p: probability that the protein decay is is activated by the post-translational modification by protein regulators
-                       # PTM.NC.pos.p = 0.5, ## PTM.NC.pos.p: probability that the protein decay is is activated by the post-translational modification by noncoding regulators
+                       PTM.PC.pos.p = 0.5, ## PTM.PC.pos.p: probability that the protein regulators transform the original protein into its modified form (as opposed to back transforming the modified protein into its original form)
+                       PTM.NC.pos.p = 0.5, ## PTM.NC.pos.p: probability that the noncoding regulators transform the original protein into its modified form (as opposed to back transforming the modified protein into its original form)
                        #### Distribution of the different kinetic parameters of genes 
                        basal_transcription_rate_samplingfct = function(x){ runif(x, 0.01, 0.1) }, ## Function from which the transcription rates of genes are sampled (input x is the required sample size)
                        basal_translation_rate_samplingfct = function(x){ runif(x, 0.5, 5) }, ## Function from which the translation rates of genes are sampled (input x is the required sample size)
@@ -274,7 +281,7 @@ insilicosystemargs = function( ## ----
                  "PC.PD.p" = PC.PD.p,
                  "PC.PTM.p" = PC.PTM.p,
                  "PC.MR.p" = PC.MR.p,
-                 "PC.PTM.form.p" = PC.PTM.form.p,
+                 # "PC.PTM.form.p" = PC.PTM.form.p,
                  "NC.p" = NC.p,
                  "NC.TC.p" = NC.TC.p,
                  "NC.TL.p" = NC.TL.p,
@@ -289,8 +296,8 @@ insilicosystemargs = function( ## ----
                  "RD.NC.pos.p" = RD.NC.pos.p,
                  "PD.PC.pos.p" = PD.PC.pos.p,
                  "PD.NC.pos.p" = PD.NC.pos.p,
-                 # "PTM.PC.pos.p" = PTM.PC.pos.p,
-                 # "PTM.NC.pos.p" = PTM.NC.pos.p,
+                 "PTM.PC.pos.p" = PTM.PC.pos.p,
+                 "PTM.NC.pos.p" = PTM.NC.pos.p,
                  "basal_transcription_rate_samplingfct" = basal_transcription_rate_samplingfct,
                  "basal_translation_rate_samplingfct" = basal_translation_rate_samplingfct,
                  "basal_RNAlifetime_samplingfct" = basal_RNAlifetime_samplingfct,
@@ -518,7 +525,7 @@ createGenes = function(sysargs){
   
   ## nod is the vertices data frame (1st column "id" = an integer value (faster for computation), 2nd column "name", 3rd column "coding" (values "NC" or "PC"),  
   ##  4rd column "TargetReaction" (values "TC", "TL", "RD", "PTM", "PD", "MR"), next columns: kinetic parameters (transcription rate, translation rate, RNA decay rate, protein decay rate))
-  nod = data.frame("id" = 1:sysargs[["G"]], "coding" = rep("", sysargs[["G"]]), "TargetReaction" = rep("", sysargs[["G"]]),  "PTMform" = rep("", sysargs[["G"]]), "ActiveForm" = rep("", sysargs[["G"]]),
+  nod = data.frame("id" = 1:sysargs[["G"]], "coding" = rep("", sysargs[["G"]]), "TargetReaction" = rep("", sysargs[["G"]]),  "PTMform" = rep("0", sysargs[["G"]]), "ActiveForm" = rep("", sysargs[["G"]]),
                    "TCrate" = rep(0,sysargs[["G"]]), "TLrate" = rep(0,sysargs[["G"]]), "RDrate" = rep(0,sysargs[["G"]]), "PDrate" = rep(0,sysargs[["G"]]), stringsAsFactors = F)
   rownames(nod) = nod$id
   
@@ -529,14 +536,15 @@ createGenes = function(sysargs){
   nod$TargetReaction[nod$coding == "PC"] = sample(c("TC", "TL", "RD", "PD", "PTM", "RD"), sum(nod$coding == "PC"), prob = c(sysargs[["PC.TC.p"]], sysargs[["PC.TL.p"]], sysargs[["PC.RD.p"]], sysargs[["PC.PD.p"]], sysargs[["PC.PTM.p"]], sysargs[["PC.MR.p"]]), replace = T)
   nod$TargetReaction[nod$coding == "NC"] = sample(c("TC", "TL", "RD", "PD", "PTM"), sum(nod$coding == "NC"), prob = c(sysargs[["NC.TC.p"]], sysargs[["NC.TL.p"]], sysargs[["NC.RD.p"]], sysargs[["NC.PD.p"]], sysargs[["NC.PTM.p"]]), replace = T)
   
-  ## Choose which proteins (from protein-coding genes) have a PTM form
-  nod$PTMform[nod$coding == "PC"] = sample(c("1","0"), sum(nod$coding == "PC"), prob = c(sysargs[["PC.PTM.form.p"]], 1-sysargs[["PC.PTM.form.p"]]), replace = T)
-  nod$PTMform[nod$coding == "NC"] = "0"
+  # ## Choose which proteins (from protein-coding genes) have a PTM form
+  # nod$PTMform[nod$coding == "PC"] = sample(c("1","0"), sum(nod$coding == "PC"), prob = c(sysargs[["PC.PTM.form.p"]], 1-sysargs[["PC.PTM.form.p"]]), replace = T)
+  # nod$PTMform[nod$coding == "NC"] = "0"
   
   ## In nod, state what is the active form of each gene, i.e. which form (i.e. RNA, protein, activated protein) is performing the regulation
   nod$ActiveForm[nod$coding == "NC"] = "R" ## noncoding genes act through their RNA
-  nod$ActiveForm[nod$coding == "PC" & nod$PTMform == "0"] = "P" ## protein-coding genes act through their protein
-  nod$ActiveForm[nod$coding == "PC" & nod$PTMform == "1"] = "Pm" ## For proteins undergoing a post-translational modification, only the PTM form is active
+  nod$ActiveForm[nod$coding == "PC"] = "P" ## protein-coding genes act through their protein
+  # nod$ActiveForm[nod$coding == "PC" & nod$PTMform == "0"] = "P" ## protein-coding genes act through their protein
+  # nod$ActiveForm[nod$coding == "PC" & nod$PTMform == "1"] = "Pm" ## For proteins undergoing a post-translational modification, only the PTM form is active
   nod$ActiveForm = sapply(1:nrow(nod), function(x){paste0(nod$ActiveForm[x], nod$id[x])})
   
   ## Sample the kinetic parameters of the genes
@@ -592,13 +600,25 @@ createRegulatoryNetwork = function(regsList, tarsList, reaction, nod, sysargs){
   if(nrow(edgPC)+nrow(edgNC) == 0) nwedg = data.frame("from" = integer(), "to" = integer(), "TargetReaction" = character(), "RegSign" = character(), "RegBy" = character(), stringsAsFactors = F)
   
 
-  
-  ## Choose the sign (activation or repression) of each regulation (=edge)
-  ## First for the regulatory interactions exerted by protein regulators
-  if(nrow(edgPC) > 0) nwedg$RegSign[1:nrow(edgPC)] = sample(c("1","-1"), nrow(edgPC), prob = c(sysargs[[paste(reaction, "PC", "pos.p", sep = ".")]], 1 - sysargs[[paste(reaction, "PC", "pos.p", sep = ".")]]), replace = T)
-  ## Then for the regulatory interactions exerted by noncoding regulators
-  if(nrow(edgNC) > 0) nwedg$RegSign[(nrow(edgPC)+1):(nrow(edgPC) + nrow(edgNC))] = sample(c("1","-1"), nrow(edgNC), prob = c(sysargs[[paste(reaction, "NC", "pos.p", sep = ".")]], 1 - sysargs[[paste(reaction, "NC", "pos.p", sep = ".")]]), replace = T) 
-  
+  if(reaction == "PTM"){
+    
+    realtars = unique(nwedg$to) ## gives the id of target genes in the constructed network
+    tarsedg = lapply(realtars, function(x){which(nwedg$to == x)}) ## for each target gene returns the rows id of nwedg corresponding to regulatory edges targeting the gene
+    tarsedgpos = sapply(tarsedg, function(x){x[1]}) ## for each target gene returns the row id corresponding to its 1st regulatory edge
+    tarsedgother = unlist(sapply(tarsedg, function(x){x[-1]})) ## for each target gene returns the row ids of the next (if existing) regulatory edges
+    
+    if(length(tarsedgpos) != 0) nwedg$RegSign[tarsedgpos] = "1" ## for each target gene, the first regulatory edge is positive, meaning that the regulator turns the protein into its modified form
+    if(nrow(edgPC) > 0) nwedg$RegSign[tarsedgother][nwedg[tarsedgother, "RegBy"] == "PC"] = sample(c("1","-1"), sum(nwedg[tarsedgother, "RegBy"] == "PC"), prob = c(sysargs[["PTM.PC.pos.p"]], 1 - sysargs[["PTM.PC.pos.p"]]), replace = T)
+    if(nrow(edgNC) > 0) nwedg$RegSign[tarsedgother][nwedg[tarsedgother, "RegBy"] == "NC"] = sample(c("1","-1"), sum(nwedg[tarsedgother, "RegBy"] == "NC"), prob = c(sysargs[["PTM.NC.pos.p"]], 1 - sysargs[["PTM.NC.pos.p"]]), replace = T)
+    
+    
+  }else{
+    ## Choose the sign (activation or repression) of each regulation (=edge)
+    ## First for the regulatory interactions exerted by protein regulators
+    if(nrow(edgPC) > 0) nwedg$RegSign[1:nrow(edgPC)] = sample(c("1","-1"), nrow(edgPC), prob = c(sysargs[[paste(reaction, "PC", "pos.p", sep = ".")]], 1 - sysargs[[paste(reaction, "PC", "pos.p", sep = ".")]]), replace = T)
+    ## Then for the regulatory interactions exerted by noncoding regulators
+    if(nrow(edgNC) > 0) nwedg$RegSign[(nrow(edgPC)+1):(nrow(edgPC) + nrow(edgNC))] = sample(c("1","-1"), nrow(edgNC), prob = c(sysargs[[paste(reaction, "NC", "pos.p", sep = ".")]], 1 - sysargs[[paste(reaction, "NC", "pos.p", sep = ".")]]), replace = T) 
+  }
   ## Create corresponding igraph object (to save the regulatory interactions as is, before the creation of the combinatorial regulation)
   nw = igraph::graph_from_data_frame(d = nwedg, directed = T, vertices = nwnod)
   
@@ -733,9 +753,9 @@ createMultiOmicNetwork = function(nod, sysargs){
   
   #### Define protein decay regulatory network (PDRN)
 
-  ## Identify proteins regulating RNA decay in the system
+  ## Identify proteins regulating protein decay in the system
   PCreg.id = nod$id[nod$coding == "PC" & nod$TargetReaction == "PD"]
-  ## Identify noncoding RNAs regulating RNA decay (miRNAs or siRNAs for ex)
+  ## Identify noncoding RNAs regulating protein decay
   NCreg.id = nod$id[nod$coding == "NC" & nod$TargetReaction == "PD"]
   
   ## which genes are targeted by coding regulators? here any gene (temporary)
@@ -756,9 +776,31 @@ createMultiOmicNetwork = function(nod, sysargs){
   
   #### Define protein post-translational modification regulatory network (PTMRN) ----
 
-  PTMRN.edg = data.frame("from" = character(), "to" = integer(), "TargetReaction" = character(), "RegSign" = character(), "PTMbindingrate" = numeric(), stringsAsFactors = F)
-  PTMRN.nw = NULL
-  PTMRN = list("edg" = data.frame("from" = character(), "to" = integer(), "TargetReaction" = character(), "RegSign" = character(), "PTMbindingrate" = numeric(), "RegBy" = character(), stringsAsFactors = F))
+  ## Identify proteins regulating protein post-translational modifications in the system
+  PCreg.id = nod$id[nod$coding == "PC" & nod$TargetReaction == "PTM"]
+  ## Identify noncoding RNAs regulating protein post-translational modifications
+  NCreg.id = nod$id[nod$coding == "NC" & nod$TargetReaction == "PTM"]
+  
+  ## which genes are targeted by coding regulators? here any gene (temporary)
+  PCtarget.id = nod$id[nod$coding == "PC"]
+  ## which genes are targeted by noncoding regulators? here any gene (temporary)
+  NCtarget.id = nod$id[nod$coding == "PC"]
+  
+  ## Construct the regulatory network
+  PTMRN = createRegulatoryNetwork(regsList = list("PC" = PCreg.id, "NC" = NCreg.id), tarsList = list("PC" = PCtarget.id, "NC" = NCtarget.id), reaction = "PTM", nod = nod, sysargs = sysargs)
+  PTMRN.edg = PTMRN[["edgcomp"]]
+  
+  complexes = c(complexes, PTMRN[["complexes"]])  
+  
+  ## Sample the kinetic parameters of each regulatory interaction
+  ##    Kinetic parameters for protein decay includes the binding (and unbinding for repressors of decay) rate of the regulator on the protein 
+  PTMRN.edg = data.frame(PTMRN.edg, "PTMbindingrate" = sysargs[["PTMbindingrate_samplingfct"]](nrow(PTMRN.edg)), stringsAsFactors = F)
+  
+  ## Uptade the PTM status of genes
+  PTMtargets = unique(PTMRN.edg$to)
+  nod[PTMtargets, "PTMform"] = "1"
+  nod[PTMtargets, "ActiveForm"] = sapply(PTMtargets, function(x){paste0("Pm", x)})
+  
   
   
   #### Define regulatory complexes kinetic parameters
@@ -810,7 +852,7 @@ createMultiOmicNetwork = function(nod, sysargs){
              "PDRN.nw" = PDRN[["nw"]],
              "PTMRN.nw" = PTMRN[["nw"]])
   
-  return(res)
+  return(list("mosystem" = res, "genes" = nod))
 }
 
 createEmptyMultiOmicNetwork = function(nod, sysargs){
@@ -831,7 +873,7 @@ createEmptyMultiOmicNetwork = function(nod, sysargs){
              "PDRN.nw" = NULL,
              "PTMRN.nw" = NULL)
   
-  return(res)
+  return(list("mosystem" = res, "genes" = nod))
 }
 
 createInSilicoSystem = function(sysargs, empty = F){
@@ -839,9 +881,13 @@ createInSilicoSystem = function(sysargs, empty = F){
   genes = createGenes(sysargs)
   
   if(empty){
-    mosystem  = createEmptyMultiOmicNetwork(genes, sysargs)
+    temp  = createEmptyMultiOmicNetwork(genes, sysargs)
+    mosystem = temp$mosystem
+    genes = temp$genes
   }else{
-    mosystem = createMultiOmicNetwork(genes, sysargs)
+    temp = createMultiOmicNetwork(genes, sysargs)
+    mosystem = temp$mosystem
+    genes = temp$genes
   }
   
   value = list("sysargs" = sysargs, "genes" = genes, "mosystem" = mosystem)

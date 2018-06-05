@@ -4,7 +4,7 @@ setwd("~/winData/multiomics_networks_simulation")
 source("network_generation.R")
 
 
-mysystemargs = insilicosystemargs(G = 10, RD.NC.outdeg.exp = 3)
+mysystemargs = insilicosystemargs(G = 10, RD.NC.outdeg.exp = 3, PC.PTM.p = 0.5)
 insilicosystem = createInSilicoSystem(mysystemargs)
 
 
@@ -17,7 +17,9 @@ insilicopopulation = createPopulation(2, insilicosystem, myindivargs)
 
 resTable = simulateSystemStochastic(insilicosystem, insilicopopulation, simtime = 1000, nepochs = 2000, ntrialsPerInd = 1, simalgorithm = "ODM", returnStochModel = F)
 
+resTable = res$resTable
 
+plotExpressionProfiles(insilicosystem, insilicopopulation, resTable)
 
 
 # ------------

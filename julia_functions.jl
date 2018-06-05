@@ -399,27 +399,32 @@ function createbindingpromreactions(edg, exprstep, promPrefix, nod, functform, c
     ## The initial abundance of free promoter set to 1 if it is a binding site on the DNA (exprstep = "TC")
     ## If we are working on translation (exprstep = "TL"), each free binding site has an initial abundance of TCrate*qtlTCrate/(RDrate*qtlRDrate) (RNA initial abundance)
     if exprstep == "TC"
-      push!(inicond, :(1))
+      #push!(inicond, :(1))
+      push!(inicond, "1")
     else
-      push!(inicond, :(($(nod["TCrate"][tarid]/nod["RDrate"][tarid])*QTLeffects[$(gcn)]["qtlTCrate"][$(tarid)]/QTLeffects[$(gcn)]["qtlRDrate"][$(tarid)])*InitVar[$(gcn)]["R"][$(tarid)]))
+      #push!(inicond, :(($(nod["TCrate"][tarid]/nod["RDrate"][tarid])*QTLeffects[$(gcn)]["qtlTCrate"][$(tarid)]/QTLeffects[$(gcn)]["qtlRDrate"][$(tarid)])*InitVar[$(gcn)]["R"][$(tarid)]))
+        push!(inicond, """($(nod["TCrate"][tarid]/nod["RDrate"][tarid])*QTLeffects["$(gcn)"]["qtlTCrate"][$(tarid)]/QTLeffects["$(gcn)"]["qtlRDrate"][$(tarid)])*InitVar["$(gcn)"]["R"][$(tarid)]""")
     end    
 
     for gcnreg in gcnList
       prombound = prom*gcnreg*"B"
       ## add the binding reaction to the list
       push!(spec, prombound) ## add the bound promoter to the list of species
-      push!(inicond, :(0)) ## add its initial abundance to the list of initial conditions. Initial abundance of bound promoter set to 0
+      #push!(inicond, :(0)) ## add its initial abundance to the list of initial conditions. Initial abundance of bound promoter set to 0
+      push!(inicond, "0") ## add its initial abundance to the list of initial conditions. Initial abundance of bound promoter set to 0
       if boundactive
         tempactivestates = vcat(tempactivestates, [prombound edg[exprstep*"foldchange"][r]])
       end
       push!(tempallstates, prombound)
       push!(react, reactBioSim([prom*"F", functform[reg]*gcnreg], [prombound])) ## promF + reg -> promregB
       push!(reactnames, "binding"*prom*gcnreg)
-      push!(propens, :($(edg[exprstep*"bindingrate"][r])*QTLeffects[$(gcn)][$("qtl"*exprstep*"regbind")][$(tarid)]*QTLeffects[$(gcnreg)]["qtlactivity"][$(parse(Int64, reg))]))
+      #push!(propens, :($(edg[exprstep*"bindingrate"][r])*QTLeffects[$(gcn)][$("qtl"*exprstep*"regbind")][$(tarid)]*QTLeffects[$(gcnreg)]["qtlactivity"][$(parse(Int64, reg))]))
+      push!(propens, """$(edg[exprstep*"bindingrate"][r])*QTLeffects["$(gcn)"]["$("qtl"*exprstep*"regbind")"][$(tarid)]*QTLeffects["$(gcnreg)"]["qtlactivity"][$(parse(Int64, reg))]""")
       ## add the unbinding reaction to the list 
       push!(react, reactBioSim([prombound], [prom*"F", functform[reg]*gcnreg])) ## promregB -> promF + reg
       push!(reactnames, "unbinding"*prom*gcnreg)
-      push!(propens, :($(edg[exprstep*"unbindingrate"][r])))
+      #push!(propens, :($(edg[exprstep*"unbindingrate"][r])))
+      push!(propens, """$(edg[exprstep*"unbindingrate"][r])""")
     end
 
     push!(promActiveStates[tar], tempactivestates)
@@ -448,29 +453,34 @@ function createbindingpromreactions(edg, exprstep, promPrefix, nod, functform, c
     ## The initial abundance of free promoter set to 1 if it is a binding site on the DNA (exprstep = "TC")
     ## If we are working on translation (exprstep = "TL"), each free binding site has an initial abundance of TCrate*qtlTCrate/(RDrate*qtlRDrate) (RNA initial abundance)
     if exprstep == "TC"
-      push!(inicond, :(1))
+      #push!(inicond, :(1))
+      push!(inicond, "1")
     else
-      push!(inicond, :(($(nod["TCrate"][tarid]/nod["RDrate"][tarid])*QTLeffects[$(gcn)]["qtlTCrate"][$(tarid)]/QTLeffects[$(gcn)]["qtlRDrate"][$(tarid)])*InitVar[$(gcn)]["R"][$(tarid)]))
+      #push!(inicond, :(($(nod["TCrate"][tarid]/nod["RDrate"][tarid])*QTLeffects[$(gcn)]["qtlTCrate"][$(tarid)]/QTLeffects[$(gcn)]["qtlRDrate"][$(tarid)])*InitVar[$(gcn)]["R"][$(tarid)]))
+      push!(inicond, """($(nod["TCrate"][tarid]/nod["RDrate"][tarid])*QTLeffects["$(gcn)"]["qtlTCrate"][$(tarid)]/QTLeffects["$(gcn)"]["qtlRDrate"][$(tarid)])*InitVar["$(gcn)"]["R"][$(tarid)]""")
     end 
 
     for t in 1:size(complexvariants)[1]
-      complvar = compl*"comp"*join([string(complexes[compl][i])*complexvariants[t, i] for i in 1:complexsize])
-      ## Create the binding of the complex on the binding site
-      prombound = prom*join(complexvariants[t, :])*"B"
-      push!(spec, prombound)
-      push!(inicond, :(0)) ## add its initial abundance to the list of initial conditions. Initial abundance of bound promoter set to 0
-      if boundactive
-        tempactivestates = vcat(tempactivestates, [prombound edg[exprstep*"foldchange"][r]])
-      end
-      push!(tempallstates, prombound)
-      push!(react, reactBioSim([prom*"F", complvar], [prombound])) ## promF + complvar -> promB
-      push!(reactnames, "binding"*prom*complvar)
-      prop = """$(edg[exprstep*"bindingrate"][r])*QTLeffects["$(gcn)"]["$("qtl"*exprstep*"regbind")"][$(tarid)]"""*join(["""*QTLeffects["$(complexvariants[t, i])"]["qtlactivity"][$(complexes[compl][i])]""" for i in 1:complexsize])
-      push!(propens, parse(prop))
-      ## add the unbinding of the complex from the binding site
-      push!(react, reactBioSim([prombound], [prom*"F", complvar])) ## promB -> promF + complvar
-      push!(reactnames, "unbinding"*prom*complvar)
-      push!(propens, :($(edg[exprstep*"unbindingrate"][r])))
+        complvar = compl*"comp"*join([string(complexes[compl][i])*complexvariants[t, i] for i in 1:complexsize])
+        ## Create the binding of the complex on the binding site
+        prombound = prom*join(complexvariants[t, :])*"B"
+        push!(spec, prombound)
+        #push!(inicond, :(0)) ## add its initial abundance to the list of initial conditions. Initial abundance of bound promoter set to 0
+        push!(inicond, "0") ## add its initial abundance to the list of initial conditions. Initial abundance of bound promoter set to 0
+        if boundactive
+            tempactivestates = vcat(tempactivestates, [prombound edg[exprstep*"foldchange"][r]])
+        end
+        push!(tempallstates, prombound)
+        push!(react, reactBioSim([prom*"F", complvar], [prombound])) ## promF + complvar -> promB
+        push!(reactnames, "binding"*prom*complvar)
+        prop = """$(edg[exprstep*"bindingrate"][r])*QTLeffects["$(gcn)"]["$("qtl"*exprstep*"regbind")"][$(tarid)]"""*join(["""*QTLeffects["$(complexvariants[t, i])"]["qtlactivity"][$(complexes[compl][i])]""" for i in 1:complexsize])
+        #push!(propens, parse(prop))
+        push!(propens, prop)
+        ## add the unbinding of the complex from the binding site
+        push!(react, reactBioSim([prombound], [prom*"F", complvar])) ## promB -> promF + complvar
+        push!(reactnames, "unbinding"*prom*complvar)
+        #push!(propens, :($(edg[exprstep*"unbindingrate"][r])))
+        push!(propens, """$(edg[exprstep*"unbindingrate"][r])""")
     end
 
     push!(promActiveStates[tar], tempactivestates)
@@ -504,15 +514,18 @@ function generateReactionList(nod, edgTCRN, edgTLRN, edgRDRN, edgPDRN, edgPTMRN,
     for compl in keys(complexes), t in 1:size(complexvariants)[1]
         complvar = compl*"comp"*join([string(complexes[compl][i])*complexvariants[t, i] for i in 1:complexsize])
         push!(species, complvar) ## add the complex form to the list of species
-        push!(initialconditions, :(0)) ## add the initial abundance of the complex form to the list of initial conditions. For complexes, initial abundance set to 0
+        #push!(initialconditions, :(0)) ## add the initial abundance of the complex form to the list of initial conditions. For complexes, initial abundance set to 0
+        push!(initialconditions, "0") ## add the initial abundance of the complex form to the list of initial conditions. For complexes, initial abundance set to 0
         ## Create the reaction of complex formation
         push!(reactions, reactBioSim([functform[string(complexes[compl][i])]*complexvariants[t, i] for i in 1:complexsize], [complvar])) ## sum of complex components -> compl
         push!(reactionsnames, "formation"*complvar) 
-        push!(propensities, :($(complexeskinetics[compl]["formationrate"])))
+        #push!(propensities, :($(complexeskinetics[compl]["formationrate"])))
+        push!(propensities, """$(complexeskinetics[compl]["formationrate"])""")
         ## Create the reaction of complex dissociation
         push!(reactions, reactBioSim([complvar], [functform[string(complexes[compl][i])]*complexvariants[t, i] for i in 1:complexsize])) ## compl -> sum of complex components
         push!(reactionsnames, "dissociation"*complvar) 
-        push!(propensities, :($(complexeskinetics[compl]["dissociationrate"])))
+        #push!(propensities, :($(complexeskinetics[compl]["dissociationrate"])))
+        push!(propensities, """$(complexeskinetics[compl]["dissociationrate"])""")
     end
 
 
@@ -545,7 +558,9 @@ function generateReactionList(nod, edgTCRN, edgTLRN, edgRDRN, edgPDRN, edgPTMRN,
         if length(TLreg) == 0
             RNAform = ["R"*gname]
             push!(species, "R"*gname)
-            push!(initialconditions, :(($(nod["TCrate"][g]/nod["RDrate"][g])*QTLeffects[$(gcn)]["qtlTCrate"][$(g)]/QTLeffects[$(gcn)]["qtlRDrate"][$(g)])*InitVar[$(gcn)]["R"][$(g)]))
+            #push!(initialconditions, :(($(nod["TCrate"][g]/nod["RDrate"][g])*QTLeffects[$(gcn)]["qtlTCrate"][$(g)]/QTLeffects[$(gcn)]["qtlRDrate"][$(g)])*InitVar[$(gcn)]["R"][$(g)]))
+            push!(initialconditions, """($(nod["TCrate"][g]/nod["RDrate"][g])*QTLeffects["$(gcn)"]["qtlTCrate"][$(g)]/QTLeffects["$(gcn)"]["qtlRDrate"][$(g)])*InitVar["$(gcn)"]["R"][$(g)]""")
+
             transcriptforms = ["R"*gname] ## for RNA decay
         else
             RNAform = [t[1] for t in TLreg] ## The TLreg dictionary is constructed such that each free binding site name is at the position 1
@@ -556,13 +571,15 @@ function generateReactionList(nod, edgTCRN, edgTLRN, edgRDRN, edgPDRN, edgPTMRN,
             ## Create transcription of the gene 
             push!(reactions, reactBioSim([0], RNAform))
             push!(reactionsnames, "transcription"*gname)
-            push!(propensities, :($(nod["TCrate"][g])*QTLeffects[$(gcn)]["qtlTCrate"][$(g)]))
+            #push!(propensities, :($(nod["TCrate"][g])*QTLeffects[$(gcn)]["qtlTCrate"][$(g)]))
+            push!(propensities, """$(nod["TCrate"][g])*QTLeffects["$(gcn)"]["qtlTCrate"][$(g)]""")
         else
             promcomb = combinactivepromstates(TCreg) ## gives all possible active combinations of the different binding site states
             for t in 1:size(promcomb["proms"])[1]
                 push!(reactions, reactBioSim(promcomb["proms"][t,:], vcat(promcomb["proms"][t,:], RNAform)))
                 push!(reactionsnames, "transcription"*join(promcomb["proms"][t,:]))
-                push!(propensities, :($(nod["TCrate"][g])*QTLeffects[$(gcn)]["qtlTCrate"][$(g)]*$(prod(promcomb["fcs"][t,:]))))
+                #push!(propensities, :($(nod["TCrate"][g])*QTLeffects[$(gcn)]["qtlTCrate"][$(g)]*$(prod(promcomb["fcs"][t,:]))))
+                push!(propensities, """$(nod["TCrate"][g])*QTLeffects["$(gcn)"]["qtlTCrate"][$(g)]*$(prod(promcomb["fcs"][t,:]))""")
             end
         end
 
@@ -576,13 +593,15 @@ function generateReactionList(nod, edgTCRN, edgTLRN, edgRDRN, edgPDRN, edgPTMRN,
             ## Basal decay rate
             push!(reactions, reactBioSim(transcriptforms[t,:], [0]))
             push!(reactionsnames, "RNAdecay"*join(transcriptforms[t,:]))
-            push!(propensities, :($(nod["RDrate"][g])*QTLeffects[$(gcn)]["qtlRDrate"][$(g)]))
+            #push!(propensities, :($(nod["RDrate"][g])*QTLeffects[$(gcn)]["qtlRDrate"][$(g)]))
+            push!(propensities, """$(nod["RDrate"][g])*QTLeffects["$(gcn)"]["qtlRDrate"][$(g)]""")
 
             for r in edgsingl, gcnreg in gcnList
                 reg = edgRDRN["from"][r]
                 push!(reactions, reactBioSim(vcat(transcriptforms[t,:], functform[reg]*gcnreg), [functform[reg]*gcnreg]))
                 push!(reactionsnames, "RNAdecay"*join(transcriptforms[t,:])*"reg"*reg*gcnreg)
-                push!(propensities, :($(edgRDRN["RDbindingrate"][r])*QTLeffects[$(gcnreg)]["qtlactivity"][$(parse(Int64, reg))]))
+                #push!(propensities, :($(edgRDRN["RDbindingrate"][r])*QTLeffects[$(gcnreg)]["qtlactivity"][$(parse(Int64, reg))]))
+                push!(propensities, """$(edgRDRN["RDbindingrate"][r])*QTLeffects["$(gcnreg)"]["qtlactivity"][$(parse(Int64, reg))]""")
             end
 
             for r in edgcompl, j in 1:size(complexvariants)[1]
@@ -591,7 +610,8 @@ function generateReactionList(nod, edgTCRN, edgTLRN, edgRDRN, edgPDRN, edgPTMRN,
                 push!(reactions, reactBioSim(vcat(transcriptforms[t,:], complvar), [complvar]))
                 push!(reactionsnames, "RNAdecay"*join(transcriptforms[t,:])*"reg"*complvar)
                 propens = """$(edgRDRN["RDbindingrate"][r])"""*join(["*"*"""QTLeffects["$(complexvariants[j, i])"]["qtlactivity"][$(complexes[compl][i])]""" for i in 1:complexsize])
-                push!(propensities, parse(propens))
+                #push!(propensities, parse(propens))
+                push!(propensities, propens)
             end
         end
     end
@@ -604,37 +624,43 @@ function generateReactionList(nod, edgTCRN, edgTLRN, edgRDRN, edgPDRN, edgPTMRN,
 
         push!(species, "P"*gname)
         ## Initial abundance of a protein = TCrate/RDrate * TLrate/PDrate (given the QTL effects as well)
-        push!(initialconditions, :(($(nod["TCrate"][g]*nod["TLrate"][g]/(nod["RDrate"][g]*nod["PDrate"][g]))*QTLeffects[$(gcn)]["qtlTCrate"][$(g)]*QTLeffects[$(gcn)]["qtlTLrate"][$(g)]/(QTLeffects[$(gcn)]["qtlRDrate"][$(g)]*QTLeffects[$(gcn)]["qtlPDrate"][$(g)]))*InitVar[$(gcn)]["P"][$(g)]))
+        #push!(initialconditions, :(($(nod["TCrate"][g]*nod["TLrate"][g]/(nod["RDrate"][g]*nod["PDrate"][g]))*QTLeffects[$(gcn)]["qtlTCrate"][$(g)]*QTLeffects[$(gcn)]["qtlTLrate"][$(g)]/(QTLeffects[$(gcn)]["qtlRDrate"][$(g)]*QTLeffects[$(gcn)]["qtlPDrate"][$(g)]))*InitVar[$(gcn)]["P"][$(g)]))
+        push!(initialconditions, """($(nod["TCrate"][g]*nod["TLrate"][g]/(nod["RDrate"][g]*nod["PDrate"][g]))*QTLeffects["$(gcn)"]["qtlTCrate"][$(g)]*QTLeffects["$(gcn)"]["qtlTLrate"][$(g)]/(QTLeffects["$(gcn)"]["qtlRDrate"][$(g)]*QTLeffects["$(gcn)"]["qtlPDrate"][$(g)]))*InitVar["$(gcn)"]["P"][$(g)]""")
 
 
         if length(TLreg) == 0
             ## Create transltion of the gene
             push!(reactions, reactBioSim(["R"*gname], ["R"*gname, "P"*gname]))
             push!(reactionsnames, "translation"*gname)
-            push!(propensities, :($(nod["TLrate"][g])*QTLeffects[$(gcn)]["qtlTLrate"][$(g)]))
+            #push!(propensities, :($(nod["TLrate"][g])*QTLeffects[$(gcn)]["qtlTLrate"][$(g)]))
+            push!(propensities, """$(nod["TLrate"][g])*QTLeffects["$(gcn)"]["qtlTLrate"][$(g)]""")
 
         else
             promcomb = combinactivepromstates(TLreg) ## gives all possible active combinations of the different binding site states
             for t in 1:size(promcomb["proms"])[1]
                 push!(reactions, reactBioSim(promcomb["proms"][t,:], vcat(promcomb["proms"][t,:], "P"*gname)))
                 push!(reactionsnames, "translation"*join(promcomb["proms"][t,:]))
-                push!(propensities, :($(nod["TLrate"][g])*QTLeffects[$(gcn)]["qtlTLrate"][$(g)]*$(prod(promcomb["fcs"][t,:]))))
+                #push!(propensities, :($(nod["TLrate"][g])*QTLeffects[$(gcn)]["qtlTLrate"][$(g)]*$(prod(promcomb["fcs"][t,:]))))
+                push!(propensities, """$(nod["TLrate"][g])*QTLeffects["$(gcn)"]["qtlTLrate"][$(g)]*$(prod(promcomb["fcs"][t,:]))""")
             end
         end
 
         ## Create basal protein decay rate
         push!(reactions, reactBioSim(["P"*gname], [0]))
         push!(reactionsnames, "proteindecay"*"P"*gname)
-        push!(propensities, :($(nod["PDrate"][g])*QTLeffects[$(gcn)]["qtlPDrate"][$(g)]))
+        #push!(propensities, :($(nod["PDrate"][g])*QTLeffects[$(gcn)]["qtlPDrate"][$(g)]))
+        push!(propensities, """$(nod["PDrate"][g])*QTLeffects["$(gcn)"]["qtlPDrate"][$(g)]""")
         if nod["PTMform"][g] =="1"
 
             ## Add to the list of species the PTM form of the protein
             push!(species, "Pm"*string(g)*gcn)
-            push!(initialconditions, :(0)) ## initial abundance of modified proteins set to 0
+            #push!(initialconditions, :(0)) ## initial abundance of modified proteins set to 0
+            push!(initialconditions, "0") ## initial abundance of modified proteins set to 0
 
             push!(reactions, reactBioSim(["Pm"*gname], [0]))
             push!(reactionsnames, "proteindecay"*"Pm"*gname)
-            push!(propensities, :($(nod["PDrate"][g])*QTLeffects[$(gcn)]["qtlPDrate"][$(g)]))
+            #push!(propensities, :($(nod["PDrate"][g])*QTLeffects[$(gcn)]["qtlPDrate"][$(g)]))
+            push!(propensities, """$(nod["PDrate"][g])*QTLeffects["$(gcn)"]["qtlPDrate"][$(g)]""")
         end
     end
 
@@ -656,7 +682,8 @@ function generateReactionList(nod, edgTCRN, edgTLRN, edgRDRN, edgPDRN, edgPTMRN,
         for p in pform, gcnreg in gcnList
             push!(reactions, reactBioSim([p, functform[reg]*gcnreg], [functform[reg]*gcnreg]))
             push!(reactionsnames, "proteindecay"*p*"reg"*reg*gcnreg)
-            push!(propensities, :($(edgPDRN["PDbindingrate"][r])*QTLeffects[$(gcnreg)]["qtlactivity"][$(parse(Int64, reg))]))
+            #push!(propensities, :($(edgPDRN["PDbindingrate"][r])*QTLeffects[$(gcnreg)]["qtlactivity"][$(parse(Int64, reg))]))
+            push!(propensities, """$(edgPDRN["PDbindingrate"][r])*QTLeffects["$(gcnreg)"]["qtlactivity"][$(reg)]""")
         end
     end
 
@@ -675,7 +702,8 @@ function generateReactionList(nod, edgTCRN, edgTLRN, edgRDRN, edgPDRN, edgPTMRN,
             push!(reactions, reactBioSim([p, complvariant], [complvariant]))
             push!(reactionsnames, "proteindecay"*p*"reg"*complvariant)
             propens = """$(edgPDRN["PDbindingrate"][r])"""*join(["*"*"""QTLeffects["$(complexvariants[t, i])"]["qtlactivity"][$(complexes[compl][i])]""" for i in 1:complexsize])
-            push!(propensities, parse(propens))
+            #push!(propensities, parse(propens))
+            push!(propensities, propens)
         end
     end
 
@@ -696,11 +724,13 @@ function generateReactionList(nod, edgTCRN, edgTLRN, edgRDRN, edgPDRN, edgPTMRN,
             if ispos
                 push!(reactions, reactBioSim([ "P"*tar, functform[reg]*gcnreg], ["Pm"*tar, functform[reg]*gcnreg]))
                 push!(reactionsnames, "PTM"*tar*"reg"*reg*gcnreg)
-                push!(propensities, :($(edgPTM["PTMbindingrate"][r])*QTLeffects[$(gcnreg)]["qtlactivity"][$(parse(Int64, reg))]))
+                #push!(propensities, :($(edgPTMRN["PTMbindingrate"][r])*QTLeffects[$(gcnreg)]["qtlactivity"][$(parse(Int64, reg))]))
+                push!(propensities, """$(edgPTMRN["PTMbindingrate"][r])*QTLeffects["$(gcnreg)"]["qtlactivity"][$(reg)]""")
             else
                 push!(reactions, reactBioSim([ "Pm"*tar, functform[reg]*gcnreg], ["P"*tar, functform[reg]*gcnreg]))
                 push!(reactionsnames, "de-PTM"*tar*"reg"*reg*gcnreg)
-                push!(propensities, :($(edgPTM["PTMbindingrate"][r])*QTLeffects[$(gcnreg)]["qtlactivity"][$(parse(Int64, reg))])) 
+                #push!(propensities, :($(edgPTMRN["PTMbindingrate"][r])*QTLeffects[$(gcnreg)]["qtlactivity"][$(parse(Int64, reg))])) 
+                push!(propensities, """$(edgPTMRN["PTMbindingrate"][r])*QTLeffects["$(gcnreg)"]["qtlactivity"][$(reg)]""") 
             end
         end
     end
@@ -718,13 +748,15 @@ function generateReactionList(nod, edgTCRN, edgTLRN, edgRDRN, edgPDRN, edgPTMRN,
             if ispos
                 push!(reactions, reactBioSim([ "P"*tar, complvariant], ["Pm"*tar, complvariant]))
                 push!(reactionsnames, "PTM"*tar*"reg"*reg*complvariant)
-                propens = """$(edgPTM["PTMbindingrate"][r])"""*join(["*"*"""QTLeffects["$(complexvariants[t, i])"]["qtlactivity"][$(complexes[compl][i])]""" for i in 1:complexsize])
-                push!(propensities, parse(propens))
+                propens = """$(edgPTMRN["PTMbindingrate"][r])"""*join(["*"*"""QTLeffects["$(complexvariants[t, i])"]["qtlactivity"][$(complexes[compl][i])]""" for i in 1:complexsize])
+                #push!(propensities, parse(propens))
+                push!(propensities, propens)
             else
                 push!(reactions, reactBioSim([ "Pm"*tar, complvariant], ["P"*tar, complvariant]))
                 push!(reactionsnames, "de-PTM"*tar*"reg"*reg*complvariant)
-                propens = """$(edgPTM["PTMbindingrate"][r])"""*join(["*"*"""QTLeffects["$(complexvariants[t, i])"]["qtlactivity"][$(complexes[compl][i])]""" for i in 1:complexsize])
-                push!(propensities, parse(propens))
+                propens = """$(edgPTMRN["PTMbindingrate"][r])"""*join(["*"*"""QTLeffects["$(complexvariants[t, i])"]["qtlactivity"][$(complexes[compl][i])]""" for i in 1:complexsize])
+                #push!(propensities, parse(propens))
+                push!(propensities,propens)
             end
         end
     end
@@ -785,11 +817,8 @@ function allequal(x)
     all(y->y==x[1], x)
 end
 
-function stochasticsimulation(stochmodel, QTLeffectslocal, InitVarlocal, nod, simtime; modelname = "MySimulation", ntrials = 1, nepochs = -1, simalgorithm = "SSA")
+function stochasticsimulation(stochmodel, QTLeffects, InitVar, nod, simtime; modelname = "MySimulation", ntrials = 1, nepochs = -1, simalgorithm = "SSA")
 
-    ## Only way to use eval inside the function
-    global QTLeffects = QTLeffectslocal
-    global InitVar = InitVarlocal
 
     ## If no nepochs provided, record abundance at each time units of the simulation
     if nepochs == -1
@@ -808,18 +837,46 @@ function stochasticsimulation(stochmodel, QTLeffectslocal, InitVarlocal, nod, si
 
     ## Add the species in the model, with their initial abundance
     for i in 1:length(stochmodel["species"])
-        i0 = round(Int, eval(stochmodel["initialconditions"][i]))
+        i0 = replace(stochmodel["initialconditions"][i], "QTLeffects", "$QTLeffects")
+        i0 = replace(i0, "InitVar", "$InitVar")
+        i0 = eval(parse(i0))
         #println(stochmodel["species"][i]* "\t"*string(i0))
-        model <= BioSimulator.Species(stochmodel["species"][i], i0)
+        model <= BioSimulator.Species(stochmodel["species"][i], round(Int, i0))
+
+        if !isa(i0, Number)
+            println(stochmodel["initialconditions"][i])
+            error("Pb i0")
+        end
+        if typeof(stochmodel["species"][i]) != String
+            println(stochmodel["species"][i])
+            error("Pb species")
+        end
     end
 
 
     ## Add the reactions in the model, with their name and rate
     for i in eachindex(stochmodel["reactions"])
-        model <= BioSimulator.Reaction(stochmodel["reactionsnames"][i], eval(stochmodel["propensities"][i]), stochmodel["reactions"][i])
+        prop = replace(stochmodel["propensities"][i], "QTLeffects", "$QTLeffects")
+        #println(prop)
+        prop = eval(parse(prop))
+        model <= BioSimulator.Reaction(stochmodel["reactionsnames"][i], prop, stochmodel["reactions"][i])
+
+        if !isa(prop, Number)
+            println(stochmodel["propensities"][i])
+            error("Pb prop")
+        end
+        if typeof(stochmodel["reactionsnames"][i]) != String
+            println(stochmodel["reactionsnames"][i])
+            error("Pb reactionsnames")
+        end
+        if typeof(stochmodel["reactions"][i]) != String
+            println(stochmodel["reactions"][i])
+            error("Pb reactions")
+        end
+
     end
 
-    #println("JULIA> Running simulation ...")
+    println("JULIA> Running simulation ...")
     #tic()
     result = simulate(model, algorithm = simalgorithm, time = convert(Float64, simtime), epochs = round(Int64, nepochs), trials = convert(Int64, ntrials))
     #toc()
@@ -870,6 +927,32 @@ function stochasticsimulation(stochmodel, QTLeffectslocal, InitVarlocal, nod, si
     end
 
     return abundancedf
+end
+
+
+
+function justanothertest(stochmodel, QTLeffects, InitVar)
+    for i in 1:length(stochmodel["species"])
+        #println(i)
+        i0 = replace(stochmodel["initialconditions"][i], "QTLeffects", "$QTLeffects")
+        i0 = replace(i0, "InitVar", "$InitVar")
+        #println(i0)
+        i0 = eval(parse(i0))
+        if !isa(i0, Number)
+            println(stochmodel["initialconditions"][i])
+        end
+    end
+
+    for i in eachindex(stochmodel["propensities"])
+        #println(i)
+        println(stochmodel["propensities"][i])
+        i0 = replace(stochmodel["propensities"][i], "QTLeffects", "$QTLeffects")
+        #println(i0)
+        i0 = eval(parse(i0))
+        if !isa(i0, Number)
+           println(stochmodel["propensities"][i])
+        end
+    end
 end
 
 #=
