@@ -742,18 +742,18 @@ function generateReactionList(nod, edgTCRN, edgTLRN, edgRDRN, edgPDRN, edgPTMRN,
         ispos = edgPTMRN["RegSign"][r] == "1" ## is the regulator transforming the orginal protein into its modified form (RegSign = "1") or the opposite (RegSign = "-1")
 
 
-        for p in pform, t in 1:size(complexvariants)[1]
+        for t in 1:size(complexvariants)[1]
             complvariant = compl*"comp"*join([string(complexes[compl][i])*complexvariants[t, i] for i in 1:complexsize])
           
             if ispos
                 push!(reactions, reactBioSim([ "P"*tar, complvariant], ["Pm"*tar, complvariant]))
-                push!(reactionsnames, "PTM"*tar*"reg"*reg*complvariant)
+                push!(reactionsnames, "PTM"*tar*"reg"*complvariant)
                 propens = """$(edgPTMRN["PTMbindingrate"][r])"""*join(["*"*"""QTLeffects["$(complexvariants[t, i])"]["qtlactivity"][$(complexes[compl][i])]""" for i in 1:complexsize])
                 #push!(propensities, parse(propens))
                 push!(propensities, propens)
             else
                 push!(reactions, reactBioSim([ "Pm"*tar, complvariant], ["P"*tar, complvariant]))
-                push!(reactionsnames, "de-PTM"*tar*"reg"*reg*complvariant)
+                push!(reactionsnames, "de-PTM"*tar*"reg"*complvariant)
                 propens = """$(edgPTMRN["PTMbindingrate"][r])"""*join(["*"*"""QTLeffects["$(complexvariants[t, i])"]["qtlactivity"][$(complexes[compl][i])]""" for i in 1:complexsize])
                 #push!(propensities, parse(propens))
                 push!(propensities,propens)
@@ -876,7 +876,7 @@ function stochasticsimulation(stochmodel, QTLeffects, InitVar, nod, simtime; mod
 
     end
 
-    println("JULIA> Running simulation ...")
+    #println("JULIA> Running simulation ...")
     #tic()
     result = simulate(model, algorithm = simalgorithm, time = convert(Float64, simtime), epochs = round(Int64, nepochs), trials = convert(Int64, ntrials))
     #toc()

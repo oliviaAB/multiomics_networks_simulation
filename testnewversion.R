@@ -15,7 +15,7 @@ insilicosystem = createInSilicoSystem(mysystemargs)
 myindivargs = insilicoindividualargs()
 insilicopopulation = createPopulation(2, insilicosystem, myindivargs)
 
-resTable = simulateSystemStochastic(insilicosystem, insilicopopulation, simtime = 1000, nepochs = 2000, ntrialsPerInd = 1, simalgorithm = "ODM", returnStochModel = F)
+res = simulateSystemStochastic(insilicosystem, insilicopopulation, simtime = 1000, nepochs = 2000, ntrialsPerInd = 1, simalgorithm = "ODM", returnStochModel = F)
 
 resTable = res$resTable
 
