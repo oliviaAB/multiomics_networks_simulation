@@ -970,8 +970,7 @@ simulateSystemStochastic = function(insilicosystem, insilicopopulation, simtime,
   
   for(ind in names(insilicopopulation$individualsList)){
     tic()
-    simJuliaJ = juliaCall("stochasticsimulation", stochmodel$JuliaObject, insilicopopulation$individualsList[[ind]]$QTLeffects, insilicopopulation$individualsList[[ind]]$InitVar, df2list(insilicosystem$genes), simtime,
-                                  modelname = ind, ntrials = ntrialsPerInd, nepochs = nepochs, simalgorithm = simalgorithm)
+    simJuliaJ = juliaCall("stochasticsimulation", stochmodel$JuliaObject, insilicopopulation$individualsList[[ind]]$QTLeffects, insilicopopulation$individualsList[[ind]]$InitVar, df2list(insilicosystem$genes), simtime, modelname = ind, ntrials = ntrialsPerInd, nepochs = nepochs, simalgorithm = simalgorithm)
     temp = toc(quiet = T)
     runningtime[ri]  = temp$toc - temp$tic
     setTxtProgressBar(progress, ri)

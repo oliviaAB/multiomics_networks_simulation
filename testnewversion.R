@@ -15,9 +15,9 @@ insilicosystem = createInSilicoSystem(mysystemargs)
 myindivargs = insilicoindividualargs()
 insilicopopulation = createPopulation(2, insilicosystem, myindivargs)
 
-res = simulateSystemStochastic(insilicosystem, insilicopopulation, simtime = 1000, nepochs = 2000, ntrialsPerInd = 1, simalgorithm = "ODM", returnStochModel = F)
+res = simulateSystemStochastic(insilicosystem, insilicopopulation, simtime = 1, nepochs = 20, ntrialsPerInd = 1, simalgorithm = "ODM", returnStochModel = F)
 
-resTable = res$resTable
+# resTable = res$resTable
 
 plotExpressionProfiles(insilicosystem, insilicopopulation, resTable)
 

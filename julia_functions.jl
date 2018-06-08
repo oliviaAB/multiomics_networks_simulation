@@ -859,7 +859,9 @@ function stochasticsimulation(stochmodel, QTLeffects, InitVar, nod, simtime; mod
         prop = replace(stochmodel["propensities"][i], "QTLeffects", "$QTLeffects")
         #println(prop)
         prop = eval(parse(prop))
-        model <= BioSimulator.Reaction(stochmodel["reactionsnames"][i], prop, stochmodel["reactions"][i])
+        reacname = replace(stochmodel["reactionsnames"][i], "de-", "de")
+        #model <= BioSimulator.Reaction(stochmodel["reactionsnames"][i], prop, stochmodel["reactions"][i])
+        model <= BioSimulator.Reaction(reacname, prop, stochmodel["reactions"][i])
 
         if !isa(prop, Number)
             println(stochmodel["propensities"][i])
@@ -932,28 +934,81 @@ end
 
 
 function justanothertest(stochmodel, QTLeffects, InitVar)
+
+
+
+    model = BioSimulator.Network("zut")
+
+
+    ## Add the species in the model, with their initial abundance
     for i in 1:length(stochmodel["species"])
-        #println(i)
         i0 = replace(stochmodel["initialconditions"][i], "QTLeffects", "$QTLeffects")
         i0 = replace(i0, "InitVar", "$InitVar")
-        #println(i0)
         i0 = eval(parse(i0))
+        #println(stochmodel["species"][i]* "\t"*string(i0))
+        model <= BioSimulator.Species(stochmodel["species"][i], round(Int, i0))
+
         if !isa(i0, Number)
             println(stochmodel["initialconditions"][i])
+            error("Pb i0")
+        end
+        if typeof(stochmodel["species"][i]) != String
+            println(stochmodel["species"][i])
+            error("Pb species")
         end
     end
 
-    for i in eachindex(stochmodel["propensities"])
-        #println(i)
-        println(stochmodel["propensities"][i])
-        i0 = replace(stochmodel["propensities"][i], "QTLeffects", "$QTLeffects")
-        #println(i0)
-        i0 = eval(parse(i0))
-        if !isa(i0, Number)
-           println(stochmodel["propensities"][i])
+
+    ## Add the reactions in the model, with their name and rate
+    for i in eachindex(stochmodel["reactions"])
+        prop = replace(stochmodel["propensities"][i], "QTLeffects", "$QTLeffects")
+        #println(prop)
+        prop = eval(parse(prop))
+        model <= BioSimulator.Reaction(stochmodel["reactionsnames"][i], prop, stochmodel["reactions"][i])
+
+        if !isa(prop, Number)
+            println(stochmodel["propensities"][i])
+            error("Pb prop")
+        end
+        if typeof(stochmodel["reactionsnames"][i]) != String
+            println(stochmodel["reactionsnames"][i])
+            error("Pb reactionsnames")
+        end
+        if typeof(stochmodel["reactions"][i]) != String
+            println(stochmodel["reactions"][i])
+            error("Pb reactions")
+        end
+
+    end
+
+
+    open("/home/oangelin/Documents/species.txt", "w") do f
+        for i in collect(keys(model.species_list))
+            write(f, string(i)*"\t"*string(model.species_list[i])*"\n")
         end
     end
+
+        open("/home/oangelin/Documents/reactions.txt", "w") do f
+        for i in collect(keys(model.reaction_list))
+            write(f, string(i)*"\t"*string(model.reaction_list[i])*"\t"*string(model.reaction_list[i].rate)*"\n")
+        end
+    end
+
 end
+
+
+function jat()
+    model = BioSimulator.Network("coucou")
+
+    model <= BioSimulator.Species("X", 25)
+    model <= BioSimulator.Reaction("transcription", 0.02, "0 --> X")
+    model <= BioSimulator.Reaction("decay", 0.00069, "X --> 0")
+    model <= BioSimulator.Reaction("decay", -1, "X + X --> X")
+
+    result = BioSimulator.simulate(model, algorithm = SSA, time = 10.0, epochs = 10)
+
+end
+
 
 #=
 
