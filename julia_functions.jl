@@ -2,10 +2,10 @@
 ###                                JULIA FUNCTIONS FOR NETWORK GENERATION                                              ###
 ##########################################################################################################################
 
-## If not already installed, instsall required packages
-if !haskey(Pkg.installed(), "StatsBase") 
-	Pkg.add("StatsBase")
-end
+## If not already installed, install required packages
+#if !haskey(Pkg.installed(), "StatsBase") 
+#	Pkg.add("StatsBase")
+#end
 
 #= if !haskey(Pkg.installed(), "Combinatorics") 
   Pkg.add("Combinatorics")
@@ -13,6 +13,12 @@ end
 =#
 
 using StatsBase
+
+using Combinatorics
+
+using BioSimulator
+
+
 # using Combinatorics
 
 # --------------------------------------------------- #
@@ -114,7 +120,7 @@ end
 ## MAIN FUNCTION - GENERATE A GRAPH WITH SPECIFIED IN- AND OUT- DEGREE DISTRIBUTION
 
 
-function nwgeneration(reg, target, indeg, outdeg, outdegexp, autoregproba, twonodesloop, edg = Array{Int64}(0,2), targetweight = []) 
+function nwgeneration(reg, target, indeg, outdeg, outdegexp, autoregproba, twonodesloop, edg = Array{Int64}(0,2)) #, targetweight = []) 
 ## Input:
 ##    - reg: list of regulator nodes
 ##    - target: list of target nodes
@@ -137,6 +143,7 @@ function nwgeneration(reg, target, indeg, outdeg, outdegexp, autoregproba, twono
     target = [target]
   end
 
+#=
   ## If a target weight vector is provided check that its length matches the number of target
   if length(targetweight)>0 & length(targetweight)!=length(target)
   	error("targetweight must match the length of target")
@@ -145,7 +152,7 @@ function nwgeneration(reg, target, indeg, outdeg, outdegexp, autoregproba, twono
   if length(targetweight) == 0
   	targetweight = fill(1.0, length(target))
   end
-
+=#
 
   ## Get the function for sampling from the desired out- degree distribution
   if outdeg == "exponential"
@@ -180,7 +187,7 @@ function nwgeneration(reg, target, indeg, outdeg, outdegexp, autoregproba, twono
     probTar = findeg(target, edg) # compute for each target the probability of being regulated by r
     # probTar = targetweight .* findeg(target, edg) # compute for each target the probability of being regulated by r, weighted by the weight of each target
 
-    ## we exclude the regulator r from the list of potential targets (autoregulation is treated later)
+    ## we exclude the regulator r from the list of potential targets (autoregulation is addressed later)
     if reg[r] in target
       probTar[findfirst(y -> y == reg[r], target)] = 0
     end
@@ -241,7 +248,7 @@ function combreg(edgfrom, edgto, edgsign, p, complexsize, reac)
     for i in 1:ntrypos
       if rand()<= p ## with probability p form a complex
         compo = sample(edgpos, complexsize, replace=false) ## sample the components of the complex (in fact sample rows in the edg matrix)
-        edgpos = setdiff(edgpos, compo) ## remove the selected rows (regulators) for possible components (future sampling)
+        edgpos = setdiff(edgpos, compo) ## remove the selected rows (regulators) from the list of possible components (future sampling)
         append!(rowstoremove, compo) ## the edges correpsponding to the selected components of the complex will be removed
         compid = string("C", reac, complexesid) ## create the new complex ID
         complexesid +=1
@@ -254,7 +261,7 @@ function combreg(edgfrom, edgto, edgsign, p, complexsize, reac)
     for i in 1:ntryneg
       if rand()<= p ## with probability p form a complex
         compo = sample(edgneg, complexsize, replace=false) ## sample the components of the complex (in fact sample rows in the edg matrix)
-        edgneg = setdiff(edgneg, compo) ## remove the selected rows (regulators) for possible components (future sampling)
+        edgneg = setdiff(edgneg, compo) ## remove the selected rows (regulators) from the list of possible components (future sampling)
         append!(rowstoremove, compo) ## the edges correpsponding to the selected components of the complex will be removed
         compid = string("C", reac, complexesid) ## create the new complex ID
         complexesid +=1
@@ -271,7 +278,7 @@ function combreg(edgfrom, edgto, edgsign, p, complexsize, reac)
   ## add the new edges corresponding to regulation by complexes
   edg = vcat(edg, edgtoadd)
 
-  edg[:,1] = [string(i) for i in edg[:,1]] ## Transform the integer ID into String ID 
+  edg[:,1] = [string(i) for i in edg[:,1]] ## Transform the integer ID of regulators into String ID 
 
   return Dict("newedg" => edg, "Complexes" => complexes)
 
@@ -776,10 +783,6 @@ end
 # ------------------------------------------------------------------------------------------------ #
 
 
-using BioSimulator
-
-
-
 
 function res2df(output :: BioSimulator.SimData)
     t, data = get_data(output)
@@ -798,8 +801,9 @@ function res2df(output :: BioSimulator.SimData)
     return df
 end
 
-function smallmodel()
 
+#=
+function smallmodel()
 
     model = BioSimulator.Network("coucou")
 
@@ -812,6 +816,8 @@ function smallmodel()
 
     return resdf
 end
+=#
+
 
 function allequal(x)
     all(y->y==x[1], x)
@@ -819,284 +825,135 @@ end
 
 function stochasticsimulation(stochmodel, QTLeffects, InitVar, nod, simtime; modelname = "MySimulation", ntrials = 1, nepochs = -1, simalgorithm = "SSA")
 
-
-    ## If no nepochs provided, record abundance at each time units of the simulation
-    if nepochs == -1
-        nepochs = simtime
-    end
-
-    ## Convert the String name of the simulator to use into a BioSimulator object of type inheriting from Algorithm
-    if in(simalgorithm, ["SSA", "FRM", "NRM", "ODM", "SAL"])
-        simalgorithm = eval(parse("BioSimulator."*simalgorithm))
-    else
-        error("Specified algorithm is not implemented in module BioSimulator")
-    end
-
-    model = BioSimulator.Network(modelname)
-
-
-    ## Add the species in the model, with their initial abundance
-    for i in 1:length(stochmodel["species"])
-        i0 = replace(stochmodel["initialconditions"][i], "QTLeffects", "$QTLeffects")
-        i0 = replace(i0, "InitVar", "$InitVar")
-        i0 = eval(parse(i0))
-        #println(stochmodel["species"][i]* "\t"*string(i0))
-        model <= BioSimulator.Species(stochmodel["species"][i], round(Int, i0))
-
-        if !isa(i0, Number)
-            println(stochmodel["initialconditions"][i])
-            error("Pb i0")
-        end
-        if typeof(stochmodel["species"][i]) != String
-            println(stochmodel["species"][i])
-            error("Pb species")
-        end
-    end
-
-
-    ## Add the reactions in the model, with their name and rate
-    for i in eachindex(stochmodel["reactions"])
-        prop = replace(stochmodel["propensities"][i], "QTLeffects", "$QTLeffects")
-        #println(prop)
-        prop = eval(parse(prop))
-        reacname = replace(stochmodel["reactionsnames"][i], "de-", "de")
-        #model <= BioSimulator.Reaction(stochmodel["reactionsnames"][i], prop, stochmodel["reactions"][i])
-        model <= BioSimulator.Reaction(reacname, prop, stochmodel["reactions"][i])
-
-        if !isa(prop, Number)
-            println(stochmodel["propensities"][i])
-            error("Pb prop")
-        end
-        if typeof(stochmodel["reactionsnames"][i]) != String
-            println(stochmodel["reactionsnames"][i])
-            error("Pb reactionsnames")
-        end
-        if typeof(stochmodel["reactions"][i]) != String
-            println(stochmodel["reactions"][i])
-            error("Pb reactions")
+    try
+        ## If no nepochs provided, record abundance at each time units of the simulation
+        if nepochs == -1
+            nepochs = simtime
         end
 
-    end
-
-    #println("JULIA> Running simulation ...")
-    #tic()
-    result = simulate(model, algorithm = simalgorithm, time = convert(Float64, simtime), epochs = round(Int64, nepochs), trials = convert(Int64, ntrials))
-    #toc()
-    #println("JULIA> Done.")
-
-    resultdf = res2df(result)
-
-    abundancedf = resultdf[:, [:time, :trial]]
-
-    for g in collect(keys(stochmodel["TCproms"]))
-
-        gid = parse(Int64, replace(g, r"GCN.+$","")) ## gives the gene id
-        
-        ## Check that for each binding site on the promoter of each gene, at each time the sum of the abundance of all species corresponding to all possible binding site states equals 1 (bc only 1 binding site per gene)
-        for i in eachindex(stochmodel["TCproms"][g])
-            prabundance = resultdf[:, map(Symbol, stochmodel["TCproms"][g][i])]
-            sumprom = [sum(convert(Array, row)) for row in eachrow(prabundance)]
-            if any(sumprom .!=1)
-                error("The sum of promoter states for "*stochmodel["TCproms"][g][i][1]*"not equal to 1.")
-            end
-        end
-
-        if length(stochmodel["TLproms"][g]) > 0
-            
-            ## Check for each RNA that the different binding sites on the RNA are in equal abundance at each time of the simulation
-            rbsabundance = [sum(convert(Array, resultdf[t, map(Symbol, x)]))for t in 1:size(resultdf)[1], x in stochmodel["TLproms"][g]]
-            
-            if !all(mapslices(allequal, rbsabundance, 2))
-                error("The abundance of the different binding sites on the RNA "*g*"are not equal.")
-            end
-
-            ## Add to abundancedf a column corresponding to the abundance of the RNA associated with g
-            abundancedf[Symbol("R"*g)] = rbsabundance[:,1]
+        ## Convert the String name of the simulator to use into a BioSimulator object of type inheriting from Algorithm
+        if in(simalgorithm, ["SSA", "FRM", "NRM", "ODM", "SAL"])
+            simalgorithm = eval(parse("BioSimulator."*simalgorithm))
         else
-            abundancedf[Symbol("R"*g)] = resultdf[:, Symbol("R"*g)]
+            error("Specified algorithm is not implemented in module BioSimulator")
+        end
+
+        model = BioSimulator.Network(modelname)
+
+
+        ## Add the species in the model, with their initial abundance
+        for i in 1:length(stochmodel["species"])
+            i0 = replace(stochmodel["initialconditions"][i], "QTLeffects", "$QTLeffects")
+            i0 = replace(i0, "InitVar", "$InitVar")
+            i0 = eval(parse(i0))
+            #println(stochmodel["species"][i]* "\t"*string(i0))
+            model <= BioSimulator.Species(stochmodel["species"][i], round(Int, i0))
+
+            if !isa(i0, Number)
+                println(stochmodel["initialconditions"][i])
+                error("Pb i0")
+            end
+            if typeof(stochmodel["species"][i]) != String
+                println(stochmodel["species"][i])
+                error("Pb species")
+            end
         end
 
 
-        ## MAYBE to change if we don't make the disctinction between original and modified protein
-        if nod["coding"][gid] == "PC"
-            abundancedf[Symbol("P"*g)] = resultdf[:, Symbol("P"*g)]
+        ## Add the reactions in the model, with their name and rate
+        for i in eachindex(stochmodel["reactions"])
+            prop = replace(stochmodel["propensities"][i], "QTLeffects", "$QTLeffects")
+            #println(prop)
+            prop = eval(parse(prop))
+            model <= BioSimulator.Reaction(stochmodel["reactionsnames"][i], prop, stochmodel["reactions"][i])
 
-            if nod["PTMform"][gid] == "1"
-                abundancedf[Symbol("Pm"*g)] = resultdf[:, Symbol("Pm"*g)]
+            if !isa(prop, Number)
+                println(stochmodel["propensities"][i])
+                error("Pb prop")
+            end
+            if typeof(stochmodel["reactionsnames"][i]) != String
+                println(stochmodel["reactionsnames"][i])
+                error("Pb reactionsnames")
+            end
+            if typeof(stochmodel["reactions"][i]) != String
+                println(stochmodel["reactions"][i])
+                error("Pb reactions")
             end
 
         end
-    end
 
-    return abundancedf
-end
+        #println("JULIA> Running simulation ...")
+        #tic()
+        #JSON.print(getfield(Main, :RJuliaSocket), toR("please wait"))    
+        result = simulate(model, algorithm = simalgorithm, time = convert(Float64, simtime), epochs = round(Int64, nepochs), trials = convert(Int64, ntrials))
+        #toc()
+        #println("JULIA> Done.")
+
+        resultdf = res2df(result)
+
+        abundancedf = resultdf[:, [:time, :trial]]
+
+        for g in collect(keys(stochmodel["TCproms"]))
+
+            gid = parse(Int64, replace(g, r"GCN.+$","")) ## gives the gene id
+            
+            ## Check that for each binding site on the promoter of each gene, at each time the sum of the abundance of all species corresponding to all possible binding site states equals 1 (bc only 1 binding site per gene)
+            for i in eachindex(stochmodel["TCproms"][g])
+                prabundance = resultdf[:, map(Symbol, stochmodel["TCproms"][g][i])]
+                sumprom = [sum(convert(Array, row)) for row in eachrow(prabundance)]
+                if any(sumprom .!=1)
+                    error("The sum of promoter states for "*stochmodel["TCproms"][g][i][1]*"not equal to 1.")
+                end
+            end
+
+            if length(stochmodel["TLproms"][g]) > 0
+                
+                ## Check for each RNA that the different binding sites on the RNA are in equal abundance at each time of the simulation
+                rbsabundance = [sum(convert(Array, resultdf[t, map(Symbol, x)]))for t in 1:size(resultdf)[1], x in stochmodel["TLproms"][g]]
+                
+                if !all(mapslices(allequal, rbsabundance, 2))
+                    error("The abundance of the different binding sites on the RNA "*g*"are not equal.")
+                end
+
+                ## Add to abundancedf a column corresponding to the abundance of the RNA associated with g
+                abundancedf[Symbol("R"*g)] = rbsabundance[:,1]
+            else
+                abundancedf[Symbol("R"*g)] = resultdf[:, Symbol("R"*g)]
+            end
 
 
+            ## MAYBE to change if we don't make the disctinction between original and modified protein
+            if nod["coding"][gid] == "PC"
+                abundancedf[Symbol("P"*g)] = resultdf[:, Symbol("P"*g)]
 
-function justanothertest(stochmodel, QTLeffects, InitVar)
+                if nod["PTMform"][gid] == "1"
+                    abundancedf[Symbol("Pm"*g)] = resultdf[:, Symbol("Pm"*g)]
+                end
 
-
-
-    model = BioSimulator.Network("zut")
-
-
-    ## Add the species in the model, with their initial abundance
-    for i in 1:length(stochmodel["species"])
-        i0 = replace(stochmodel["initialconditions"][i], "QTLeffects", "$QTLeffects")
-        i0 = replace(i0, "InitVar", "$InitVar")
-        i0 = eval(parse(i0))
-        #println(stochmodel["species"][i]* "\t"*string(i0))
-        model <= BioSimulator.Species(stochmodel["species"][i], round(Int, i0))
-
-        if !isa(i0, Number)
-            println(stochmodel["initialconditions"][i])
-            error("Pb i0")
+            end
         end
-        if typeof(stochmodel["species"][i]) != String
-            println(stochmodel["species"][i])
-            error("Pb species")
-        end
-    end
+
+        return abundancedf
 
 
-    ## Add the reactions in the model, with their name and rate
-    for i in eachindex(stochmodel["reactions"])
-        prop = replace(stochmodel["propensities"][i], "QTLeffects", "$QTLeffects")
-        #println(prop)
-        prop = eval(parse(prop))
-        model <= BioSimulator.Reaction(stochmodel["reactionsnames"][i], prop, stochmodel["reactions"][i])
-
-        if !isa(prop, Number)
-            println(stochmodel["propensities"][i])
-            error("Pb prop")
-        end
-        if typeof(stochmodel["reactionsnames"][i]) != String
-            println(stochmodel["reactionsnames"][i])
-            error("Pb reactionsnames")
-        end
-        if typeof(stochmodel["reactions"][i]) != String
-            println(stochmodel["reactions"][i])
-            error("Pb reactions")
-        end
-
-    end
-
-
-    open("/home/oangelin/Documents/species.txt", "w") do f
-        for i in collect(keys(model.species_list))
-            write(f, string(i)*"\t"*string(model.species_list[i])*"\n")
-        end
-    end
-
-        open("/home/oangelin/Documents/reactions.txt", "w") do f
-        for i in collect(keys(model.reaction_list))
-            write(f, string(i)*"\t"*string(model.reaction_list[i])*"\t"*string(model.reaction_list[i].rate)*"\n")
-        end
+    catch err
+        isa(err, InterruptException) || rethrow(err)
+        return nothing
     end
 
 end
-
-
-function jat()
-    model = BioSimulator.Network("coucou")
-
-    model <= BioSimulator.Species("X", 25)
-    model <= BioSimulator.Reaction("transcription", 0.02, "0 --> X")
-    model <= BioSimulator.Reaction("decay", 0.00069, "X --> 0")
-    model <= BioSimulator.Reaction("decay", -1, "X + X --> X")
-
-    result = BioSimulator.simulate(model, algorithm = SSA, time = 10.0, epochs = 10)
-
-end
-
 
 #=
-
-## system of 20 nodes
-workspace()
-include("julia_functions.jl")
-nod = Dict{String,Any}(Pair{String,Any}("TargetReaction", String["TL", "TL", "TL", "TC", "TC", "RD", "TC", "TL", "TC", "TC", "TL", "TC", "TC", "TC", "TL", "RD", "RD", "MR", "TL", "TL", "RD", "RD", "RD", "TC", "TL", "TL", "TC", "TC", "TL", "TC", "TL", "TL", "TC", "TL", "TC", "TL", "TC", "TC", "RD", "TL", "TL", "TC", "PTM", "RD", "TC", "TL", "TL", "PD", "RD", "RD"]),Pair{String,Any}("TCrate", [0.0383058, 0.0354193, 0.069086, 0.0617387, 0.0369238, 0.0624596, 0.0773182, 0.0833146, 0.0502687, 0.0313804, 0.0527055, 0.0432903, 0.0856088, 0.0585721, 0.0452048, 0.0356704, 0.0208695, 0.0670213, 0.0835078, 0.0779509, 0.0776592, 0.0541112, 0.0537629, 0.050601, 0.0935788, 0.0785906, 0.0299127, 0.0495242, 0.0799262, 0.0830136, 0.0184689, 0.0875529, 0.024178, 0.0702895, 0.0728294, 0.0295397, 0.0367362, 0.0986029, 0.011211, 0.0592016, 0.0767439, 0.0478291, 0.04266, 0.0607304, 0.0426131, 0.0921907, 0.0305072, 0.0778754, 0.0362273, 0.0529586]),Pair{String,Any}("RDrate", [0.000413907, 0.000396511, 0.000516262, 0.000287356, 0.000577367, 0.000364166, 0.000644745, 0.000420521, 0.000540833, 0.00100604, 0.00361011, 0.000694444, 0.000315856, 0.000350877, 0.00041425, 0.003663, 0.000322789, 0.000588582, 0.01, 0.00040016, 0.000402576, 0.000288517, 0.00215517, 0.000422654, 0.000745156, 0.0108696, 0.000290951, 0.00157729, 0.00030003, 0.000286287, 0.000786782, 0.000357782, 0.000281611, 0.00038432, 0.000336587, 0.000567215, 0.000361141, 0.000417188, 0.000470367, 0.000331675, 0.000787402, 0.00102354, 0.000865801, 0.000551268, 0.000450248, 0.000684463, 0.00077821, 0.00137174, 0.0025974, 0.000648508]),Pair{String,Any}("id", [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50]),Pair{String,Any}("ActiveForm", String["Pm1", "R2", "R3", "Pm4", "Pm5", "P6", "Pm7", "P8", "R9", "P10", "Pm11", "P12", "Pm13", "Pm14", "Pm15", "P16", "Pm17", "P18", "P19", "R20", "R21", "R22", "Pm23", "P24", "R25", "P26", "R27", "Pm28", "Pm29", "R30", "Pm31", "P32", "Pm33", "R34", "R35", "R36", "Pm37", "R38", "R39", "Pm40", "R41", "Pm42", "Pm43", "Pm44", "P45", "Pm46", "Pm47", "P48", "P49", "R50"]),Pair{String,Any}("coding", String["PC", "NC", "NC", "PC", "PC", "PC", "PC", "PC", "NC", "PC", "PC", "PC", "PC", "PC", "PC", "PC", "PC", "PC", "PC", "NC", "NC", "NC", "PC", "PC", "NC", "PC", "NC", "PC", "PC", "NC", "PC", "PC", "PC", "NC", "NC", "NC", "PC", "NC", "NC", "PC", "NC", "PC", "PC", "PC", "PC", "PC", "PC", "PC", "PC", "NC"]),Pair{String,Any}("TLrate", [4.26806, 0.0, 0.0, 0.620594, 2.80055, 4.59256, 1.04708, 2.53738, 0.0, 1.42765, 0.910486, 0.591064, 4.53948, 2.94196, 1.39797, 3.28256, 0.998617, 4.0215, 2.9922, 0.0, 0.0, 0.0, 1.75604, 4.17647, 0.0, 4.12805, 0.0, 2.73211, 3.54725, 0.0, 4.38978, 3.06126, 4.33202, 0.0, 0.0, 0.0, 3.14571, 0.0, 0.0, 4.79517, 0.0, 0.658, 2.52966, 2.13485, 1.68262, 3.07637, 3.53223, 3.55141, 3.73643, 0.0]),Pair{String,Any}("nameid", String["G_1", "G_2", "G_3", "G_4", "G_5", "G_6", "G_7", "G_8", "G_9", "G_10", "G_11", "G_12", "G_13", "G_14", "G_15", "G_16", "G_17", "G_18", "G_19", "G_20", "G_21", "G_22", "G_23", "G_24", "G_25", "G_26", "G_27", "G_28", "G_29", "G_30", "G_31", "G_32", "G_33", "G_34", "G_35", "G_36", "G_37", "G_38", "G_39", "G_40", "G_41", "G_42", "G_43", "G_44", "G_45", "G_46", "G_47", "G_48", "G_49", "G_50"]),Pair{String,Any}("PTMform", String["1", "0", "0", "1", "1", "0", "1", "0", "0", "0", "1", "0", "1", "1", "1", "0", "1", "0", "0", "0", "0", "0", "1", "0", "0", "0", "0", "1", "1", "0", "1", "0", "1", "0", "0", "0", "1", "0", "0", "1", "0", "1", "1", "1", "0", "1", "1", "0", "0", "0"]),Pair{String,Any}("PDrate", [8.76424e-5, 0.0, 0.0, 0.000133529, 0.000127551, 7.11136e-5, 9.59049e-5, 8.21085e-5, 0.0, 0.000140568, 0.000113109, 9.72479e-5, 8.62069e-5, 0.000105809, 9.37207e-5, 8.05737e-5, 0.00017304, 8.85426e-5, 7.62195e-5, 0.0, 0.0, 0.0, 0.000134517, 0.000146327, 0.0, 8.09323e-5, 0.0, 0.000121197, 0.00014453, 0.0, 7.36485e-5, 0.000121374, 8.54555e-5, 0.0, 0.0, 0.0, 7.60572e-5, 0.0, 0.0, 0.000140115, 0.0, 8.66551e-5, 0.000111532, 0.000106849, 7.32172e-5, 0.000160179, 0.000104232, 0.000107504, 7.64117e-5, 0.0]))
-
-edgTCRN = Dict{String,Any}(Pair{String,Any}("TCbindingrate", [0.00321405, 0.00473435, 0.00298111, 0.00997359, 0.00291898, 0.00353278, 0.00401311, 0.00918377, 0.00882659, 0.00991747, 0.00986185, 0.00773114, 0.00469209, 0.00833767, 0.00769984, 0.00308694, 0.0092009, 0.00546315, 0.00678325, 0.00528333, 0.00498977, 0.00628615, 0.00391206, 0.00753273, 0.00601903, 0.0036557, 0.0084864, 0.00780943, 0.00222953, 0.00341767, 0.00862045, 0.00686601, 0.00132944, 0.00947477, 0.0052604, 0.00279102, 0.00649986, 0.00375578, 0.00460729, 0.00232223, 0.00508685, 0.00581595, 0.00475835]),Pair{String,Any}("TCunbindingrate", [0.00953332, 0.00153581, 0.00438116, 0.00426973, 0.00776465, 0.00440608, 0.00537871, 0.00877117, 0.00303946, 0.00433087, 0.00435096, 0.00107793, 0.00760973, 0.00725071, 0.00517657, 0.00694052, 0.00655797, 0.00328065, 0.00940147, 0.0037251, 0.00747392, 0.00848613, 0.00760885, 0.0058852, 0.00403472, 0.00363345, 0.00683965, 0.00949643, 0.00515598, 0.00686772, 0.00853534, 0.00479064, 0.0057276, 0.00617271, 0.0040537, 0.0011888, 0.00258087, 0.00234804, 0.00195996, 0.00905108, 0.00372552, 0.00246426, 0.00836741]),Pair{String,Any}("TargetReaction", String["TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC", "TC"]),Pair{String,Any}("RegSign", String["1", "1", "1", "1", "1", "1", "1", "-1", "-1", "-1", "1", "1", "1", "-1", "1", "1", "-1", "-1", "-1", "-1", "1", "1", "1", "-1", "1", "1", "1", "1", "-1", "1", "-1", "-1", "-1", "-1", "1", "-1", "-1", "-1", "1", "1", "-1", "-1", "1"]),Pair{String,Any}("to", [46, 33, 4, 31, 26, 37, 44, 14, 1, 23, 45, 28, 32, 18, 17, 8, 6, 24, 16, 26, 47, 8, 19, 24, 43, 46, 14, 7, 7, 9, 22, 23, 27, 31, 33, 36, 40, 43, 44, 48, 49, 24, 40]),Pair{String,Any}("from", String["9", "9", "9", "9", "9", "9", "9", "9", "9", "27", "27", "27", "27", "27", "27", "27", "27", "30", "30", "30", "30", "30", "30", "35", "35", "35", "38", "5", "42", "10", "33", "5", "14", "12", "4", "4", "37", "13", "4", "28", "7", "CTC1", "CTC2"]),Pair{String,Any}("TCfoldchange", [20.0, 2.0, 29.0, 10.0, 24.0, 20.0, 13.0, 0.0, 0.0, 0.0, 5.0, 13.0, 12.0, 0.0, 21.0, 9.0, 0.0, 0.0, 0.0, 0.0, 23.0, 8.0, 2.0, 0.0, 3.0, 11.0, 6.0, 24.0, 0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 14.0, 0.0, 0.0, 0.0, 23.0, 19.0, 0.0, 0.0, 4.0]))
-edgTLRN = Dict{String,Any}(Pair{String,Any}("TLbindingrate", [0.0075634, 0.00899251, 0.00914503, 0.00456027, 0.00866226, 0.00804967, 0.00706122, 0.00706322, 0.00907255, 0.00944675, 0.00577241, 0.00354473, 0.00517906, 0.00873183, 0.00656527, 0.00351437, 0.00115263, 0.00213262, 0.00395243, 0.00406976, 0.0048827, 0.00555369, 0.00323992, 0.00846262, 0.00549503, 0.00416131, 0.00727439, 0.00981221, 0.00233314, 0.00859894, 0.00359648, 0.00142693, 0.00249592, 0.00712456, 0.00172458, 0.00782158, 0.00392808]),Pair{String,Any}("TargetReaction", String["TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL", "TL"]),Pair{String,Any}("TLunbindingrate", [0.00487906, 0.00538211, 0.00634111, 0.00801036, 0.00602788, 0.00736443, 0.00988095, 0.0019663, 0.00963572, 0.00709988, 0.00963074, 0.00309585, 0.00739528, 0.00336303, 0.00119043, 0.008372, 0.00958686, 0.00171852, 0.00974889, 0.00771954, 0.00842176, 0.00285371, 0.00383953, 0.00978057, 0.00262683, 0.00275653, 0.00125189, 0.00166714, 0.00178441, 0.00221861, 0.00592483, 0.00340203, 0.00730519, 0.00985448, 0.00845491, 0.0023016, 0.00690244]),Pair{String,Any}("TLfoldchange", [0.0, 0.0, 3.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 5.0, 0.0, 29.0, 0.0, 28.0, 0.0, 20.0, 16.0, 11.0, 25.0, 0.0, 25.0, 0.0, 0.0, 0.0, 19.0]),Pair{String,Any}("RegSign", String["-1", "-1", "1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "-1", "1", "-1", "1", "-1", "1", "-1", "1", "1", "1", "1", "-1", "1", "-1", "-1", "-1", "1"]),Pair{String,Any}("to", [49, 45, 26, 23, 33, 19, 6, 16, 23, 49, 33, 18, 16, 32, 17, 29, 31, 17, 12, 28, 40, 7, 7, 10, 11, 12, 15, 15, 17, 28, 29, 29, 37, 40, 44, 47, 10]),Pair{String,Any}("from", String["2", "2", "2", "2", "2", "2", "3", "3", "3", "3", "3", "3", "20", "20", "20", "25", "25", "25", "34", "36", "41", "1", "19", "32", "26", "31", "11", "46", "40", "15", "1", "29", "29", "8", "1", "47", "CTL1"]))
-edgRDRN = Dict{String,Any}(Pair{String,Any}("TargetReaction", String["RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD", "RD"]),Pair{String,Any}("RDbindingrate", [0.00697804, 0.00774964, 0.00449371, 0.00691126, 0.00959166, 0.00921492, 0.00198896, 0.00931222, 0.00596598, 0.00868057, 0.00212075, 0.00382286, 0.00546214, 0.00956411, 0.00476764, 0.00695973, 0.00762754, 0.00366035, 0.00382369, 0.00257641, 0.0045423, 0.00148735, 0.00206899, 0.00265115, 0.00646582, 0.00915574, 0.00710227]),Pair{String,Any}("RDunbindingrate", [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.00255529, 0.0, 0.0, 0.0, 0.0, 0.00489535, 0.00824349, 0.0, 0.0, 0.00915262, 0.00921839, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.00705485, 0.0]),Pair{String,Any}("RegSign", String["1", "1", "1", "1", "1", "1", "1", "1", "-1", "1", "1", "1", "1", "-1", "-1", "1", "1", "-1", "-1", "1", "1", "1", "1", "1", "1", "-1", "1"]),Pair{String,Any}("to", [4, 28, 22, 10, 46, 11, 29, 5, 7, 16, 17, 18, 19, 21, 25, 26, 27, 29, 30, 30, 33, 39, 46, 49, 50, 24, 42]),Pair{String,Any}("from", String["21", "21", "21", "22", "22", "39", "50", "16", "6", "16", "6", "16", "6", "17", "6", "6", "6", "44", "6", "49", "17", "23", "17", "49", "23", "CRD1", "CRD2"]))
-edgPDRN = Dict{String,Any}(Pair{String,Any}("TargetReaction", String["PD", "PD", "PD"]),Pair{String,Any}("RegBy", String["PCreg", "PCreg", "PCreg"]),Pair{String,Any}("RegSign", String["-1", "1", "1"]),Pair{String,Any}("to", [31, 14, 48]),Pair{String,Any}("from", String["48", "48", "48"]),Pair{String,Any}("PDunbindingrate", [0.00570818, 0.0, 0.0]),Pair{String,Any}("PDbindingrate", [0.00289001, 0.00727593, 0.00850916]))
-edgPTMRN = Dict("from" => [], "to" => [], "TargetReaction" => [], "RegSign" => [], "PTMbindingrate" => [])
-
-complexes = Dict("CRD2"=>[6, 23],"CRD1"=>[6, 16],"CTC1"=>[24, 5],"CTC2"=>[24, 45],"CTL1"=>[8, 47])
-complexeskinetics = Dict("CRD2"=>Dict("formationrate"=>0.00604369,"dissociationrate"=>0.00756089),"CRD1"=>Dict("formationrate"=>0.00493894,"dissociationrate"=>0.00610697),"CTC1"=>Dict("formationrate"=>0.00410344,"dissociationrate"=>0.00283723),"CTC2"=>Dict("formationrate"=>0.00346069,"dissociationrate"=>0.00521991),"CTL1"=>Dict("formationrate"=>0.00449745,"dissociationrate"=>0.00485848))
-complexsize = 2
-
-xploidy = 4
-gcnList = ["GCN"*string(i) for i in 1:xploidy]
-
-tic(); test = generateReactionList(nod, edgTCRN, edgTLRN, edgRDRN, edgPDRN, edgPTMRN, complexes, complexeskinetics, complexsize, gcnList); toc()
-=#
-
-
-
-#=
-workspace()
-using StatsBase
-N= 20
-nod = Dict("id" => collect(1:N), "coding" => sample(["PC" "NC"], N), "PTMform" => sample(["0" "1"], N), "ActiveForm" => fill("P", N) .*map(string, collect(1:N)),
- "TCrate" => rand(N), "TLrate" => rand(N), "RDrate" => rand(N), "PDrate" => rand(N))
-functform = Dict(zip(map(string, nod["id"]), nod["ActiveForm"]))
-
-E = 60
-tempCr = sample(collect(1:N), E)
-edgTCRN = Dict("from" => map(string, sample(collect(1:N), E)), "to" => sort(tempCr), "TargetReaction" => fill("TC", E), "RegSign" => sample(["1", "-1"], E), "TCbindingrate" => rand(E), "TCunbindingrate" => rand(E), "TCfoldchange" => sample(1:10, E))
-
-E = 40
-tempCr = sample(collect(1:N), E)
-edgTLRN = Dict("from" => map(string, sample(collect(1:N), E)), "to" => sort(tempCr), "TargetReaction" => fill("TL", E), "RegSign" => sample(["1", "-1"], E), "TLbindingrate" => rand(E), "TLunbindingrate" => rand(E), "TLfoldchange" => sample(1:10, E))
-
-E = 20
-tempCr = sample(collect(1:N), E)
-edgPTMRN = Dict("from" => map(string, sample(collect(1:N), E)), "to" => sort(tempCr), "TargetReaction" => fill("TL", E), "RegSign" => sample(["1", "-1"], E), "PTMbindingrate" => rand(E))
-
-
-#----
-edgTCRN = Dict("from" => [], "to" => [], "TargetReaction" => [], "RegSign" => [], "TCbindingrate" => [], "TCunbindingrate" => [], "TCfoldchange" => [])
-edgTLRN = Dict("from" => [], "to" => [], "TargetReaction" => [], "RegSign" => [], "TLbindingrate" => [], "TLunbindingrate" => [], "TLfoldchange" => [])
-#----
-
-complexes = Dict()
-
-xploidy = 4
-gcnList = ["GCN"*string(i) for i in 1:xploidy]
-
-
-
-# --------------------------------------------
-
-using BioSimulator
-include("winData/multiomics_networks_simulation/julia_functions.jl")
-
-stochmodel = Dict("reactionsnames"=>Any["transcription1GCN1", "RNAdecayR1GCN1", "transcription1GCN2", "RNAdecayR1GCN2", "transcription1GCN3", "RNAdecayR1GCN3", "transcription1GCN4", "RNAdecayR1GCN4", "transcription2GCN1", "RNAdecayR2GCN1", "transcription2GCN2", "RNAdecayR2GCN2", "transcription2GCN3", "RNAdecayR2GCN3", "transcription2GCN4", "RNAdecayR2GCN4", "transcription3GCN1", "RNAdecayR3GCN1", "transcription3GCN2", "RNAdecayR3GCN2", "transcription3GCN3", "RNAdecayR3GCN3", "transcription3GCN4", "RNAdecayR3GCN4", "transcription4GCN1", "RNAdecayR4GCN1", "transcription4GCN2", "RNAdecayR4GCN2", "transcription4GCN3", "RNAdecayR4GCN3", "transcription4GCN4", "RNAdecayR4GCN4", "transcription5GCN1", "RNAdecayR5GCN1", "transcription5GCN2", "RNAdecayR5GCN2", "transcription5GCN3", "RNAdecayR5GCN3", "transcription5GCN4", "RNAdecayR5GCN4", "transcription6GCN1", "RNAdecayR6GCN1", "transcription6GCN2", "RNAdecayR6GCN2", "transcription6GCN3", "RNAdecayR6GCN3", "transcription6GCN4", "RNAdecayR6GCN4", "transcription7GCN1", "RNAdecayR7GCN1", "transcription7GCN2", "RNAdecayR7GCN2", "transcription7GCN3", "RNAdecayR7GCN3", "transcription7GCN4", "RNAdecayR7GCN4", "transcription8GCN1", "RNAdecayR8GCN1", "transcription8GCN2", "RNAdecayR8GCN2", "transcription8GCN3", "RNAdecayR8GCN3", "transcription8GCN4", "RNAdecayR8GCN4", "transcription9GCN1", "RNAdecayR9GCN1", "transcription9GCN2", "RNAdecayR9GCN2", "transcription9GCN3", "RNAdecayR9GCN3", "transcription9GCN4", "RNAdecayR9GCN4", "transcription10GCN1", "RNAdecayR10GCN1", "transcription10GCN2", "RNAdecayR10GCN2", "transcription10GCN3", "RNAdecayR10GCN3", "transcription10GCN4", "RNAdecayR10GCN4", "translation1GCN1", "proteindecayP1GCN1", "translation1GCN2", "proteindecayP1GCN2", "translation1GCN3", "proteindecayP1GCN3", "translation1GCN4", "proteindecayP1GCN4", "translation2GCN1", "proteindecayP2GCN1", "translation2GCN2", "proteindecayP2GCN2", "translation2GCN3", "proteindecayP2GCN3", "translation2GCN4", "proteindecayP2GCN4", "translation3GCN1", "proteindecayP3GCN1", "translation3GCN2", "proteindecayP3GCN2", "translation3GCN3", "proteindecayP3GCN3", "translation3GCN4", "proteindecayP3GCN4", "translation4GCN1", "proteindecayP4GCN1", "translation4GCN2", "proteindecayP4GCN2", "translation4GCN3", "proteindecayP4GCN3", "translation4GCN4", "proteindecayP4GCN4", "translation5GCN1", "proteindecayP5GCN1", "translation5GCN2", "proteindecayP5GCN2", "translation5GCN3", "proteindecayP5GCN3", "translation5GCN4", "proteindecayP5GCN4", "translation7GCN1", "proteindecayP7GCN1", "translation7GCN2", "proteindecayP7GCN2", "translation7GCN3", "proteindecayP7GCN3", "translation7GCN4", "proteindecayP7GCN4"],"propensities"=>Any[:(0.020032 * ((QTLeffects["GCN1"])["qtlTCrate"])[1]), :(0.000694444 * ((QTLeffects["GCN1"])["qtlRDrate"])[1]), :(0.020032 * ((QTLeffects["GCN2"])["qtlTCrate"])[1]), :(0.000694444 * ((QTLeffects["GCN2"])["qtlRDrate"])[1]), :(0.020032 * ((QTLeffects["GCN3"])["qtlTCrate"])[1]), :(0.000694444 * ((QTLeffects["GCN3"])["qtlRDrate"])[1]), :(0.020032 * ((QTLeffects["GCN4"])["qtlTCrate"])[1]), :(0.000694444 * ((QTLeffects["GCN4"])["qtlRDrate"])[1]), :(0.0435213 * ((QTLeffects["GCN1"])["qtlTCrate"])[2]), :(0.000534759 * ((QTLeffects["GCN1"])["qtlRDrate"])[2]), :(0.0435213 * ((QTLeffects["GCN2"])["qtlTCrate"])[2]), :(0.000534759 * ((QTLeffects["GCN2"])["qtlRDrate"])[2]), :(0.0435213 * ((QTLeffects["GCN3"])["qtlTCrate"])[2]), :(0.000534759 * ((QTLeffects["GCN3"])["qtlRDrate"])[2]), :(0.0435213 * ((QTLeffects["GCN4"])["qtlTCrate"])[2]), :(0.000534759 * ((QTLeffects["GCN4"])["qtlRDrate"])[2]), :(0.0766692 * ((QTLeffects["GCN1"])["qtlTCrate"])[3]), :(0.00310559 * ((QTLeffects["GCN1"])["qtlRDrate"])[3]), :(0.0766692 * ((QTLeffects["GCN2"])["qtlTCrate"])[3]), :(0.00310559 * ((QTLeffects["GCN2"])["qtlRDrate"])[3]), :(0.0766692 * ((QTLeffects["GCN3"])["qtlTCrate"])[3]), :(0.00310559 * ((QTLeffects["GCN3"])["qtlRDrate"])[3]), :(0.0766692 * ((QTLeffects["GCN4"])["qtlTCrate"])[3]), :(0.00310559 * ((QTLeffects["GCN4"])["qtlRDrate"])[3]), :(0.0897525 * ((QTLeffects["GCN1"])["qtlTCrate"])[4]), :(0.000286451 * ((QTLeffects["GCN1"])["qtlRDrate"])[4]), :(0.0897525 * ((QTLeffects["GCN2"])["qtlTCrate"])[4]), :(0.000286451 * ((QTLeffects["GCN2"])["qtlRDrate"])[4]), :(0.0897525 * ((QTLeffects["GCN3"])["qtlTCrate"])[4]), :(0.000286451 * ((QTLeffects["GCN3"])["qtlRDrate"])[4]), :(0.0897525 * ((QTLeffects["GCN4"])["qtlTCrate"])[4]), :(0.000286451 * ((QTLeffects["GCN4"])["qtlRDrate"])[4]), :(0.071785 * ((QTLeffects["GCN1"])["qtlTCrate"])[5]), :(0.00247525 * ((QTLeffects["GCN1"])["qtlRDrate"])[5]), :(0.071785 * ((QTLeffects["GCN2"])["qtlTCrate"])[5]), :(0.00247525 * ((QTLeffects["GCN2"])["qtlRDrate"])[5]), :(0.071785 * ((QTLeffects["GCN3"])["qtlTCrate"])[5]), :(0.00247525 * ((QTLeffects["GCN3"])["qtlRDrate"])[5]), :(0.071785 * ((QTLeffects["GCN4"])["qtlTCrate"])[5]), :(0.00247525 * ((QTLeffects["GCN4"])["qtlRDrate"])[5]), :(0.0514678 * ((QTLeffects["GCN1"])["qtlTCrate"])[6]), :(0.000312891 * ((QTLeffects["GCN1"])["qtlRDrate"])[6]), :(0.0514678 * ((QTLeffects["GCN2"])["qtlTCrate"])[6]), :(0.000312891 * ((QTLeffects["GCN2"])["qtlRDrate"])[6]), :(0.0514678 * ((QTLeffects["GCN3"])["qtlTCrate"])[6]), :(0.000312891 * ((QTLeffects["GCN3"])["qtlRDrate"])[6]), :(0.0514678 * ((QTLeffects["GCN4"])["qtlTCrate"])[6]), :(0.000312891 * ((QTLeffects["GCN4"])["qtlRDrate"])[6]), :(0.0220153 * ((QTLeffects["GCN1"])["qtlTCrate"])[7]), :(0.000307692 * ((QTLeffects["GCN1"])["qtlRDrate"])[7]), :(0.0220153 * ((QTLeffects["GCN2"])["qtlTCrate"])[7]), :(0.000307692 * ((QTLeffects["GCN2"])["qtlRDrate"])[7]), :(0.0220153 * ((QTLeffects["GCN3"])["qtlTCrate"])[7]), :(0.000307692 * ((QTLeffects["GCN3"])["qtlRDrate"])[7]), :(0.0220153 * ((QTLeffects["GCN4"])["qtlTCrate"])[7]), :(0.000307692 * ((QTLeffects["GCN4"])["qtlRDrate"])[7]), :(0.0721572 * ((QTLeffects["GCN1"])["qtlTCrate"])[8]), :(0.000376506 * ((QTLeffects["GCN1"])["qtlRDrate"])[8]), :(0.0721572 * ((QTLeffects["GCN2"])["qtlTCrate"])[8]), :(0.000376506 * ((QTLeffects["GCN2"])["qtlRDrate"])[8]), :(0.0721572 * ((QTLeffects["GCN3"])["qtlTCrate"])[8]), :(0.000376506 * ((QTLeffects["GCN3"])["qtlRDrate"])[8]), :(0.0721572 * ((QTLeffects["GCN4"])["qtlTCrate"])[8]), :(0.000376506 * ((QTLeffects["GCN4"])["qtlRDrate"])[8]), :(0.0658958 * ((QTLeffects["GCN1"])["qtlTCrate"])[9]), :(0.000824402 * ((QTLeffects["GCN1"])["qtlRDrate"])[9]), :(0.0658958 * ((QTLeffects["GCN2"])["qtlTCrate"])[9]), :(0.000824402 * ((QTLeffects["GCN2"])["qtlRDrate"])[9]), :(0.0658958 * ((QTLeffects["GCN3"])["qtlTCrate"])[9]), :(0.000824402 * ((QTLeffects["GCN3"])["qtlRDrate"])[9]), :(0.0658958 * ((QTLeffects["GCN4"])["qtlTCrate"])[9]), :(0.000824402 * ((QTLeffects["GCN4"])["qtlRDrate"])[9]), :(0.0930883 * ((QTLeffects["GCN1"])["qtlTCrate"])[10]), :(0.000316957 * ((QTLeffects["GCN1"])["qtlRDrate"])[10]), :(0.0930883 * ((QTLeffects["GCN2"])["qtlTCrate"])[10]), :(0.000316957 * ((QTLeffects["GCN2"])["qtlRDrate"])[10]), :(0.0930883 * ((QTLeffects["GCN3"])["qtlTCrate"])[10]), :(0.000316957 * ((QTLeffects["GCN3"])["qtlRDrate"])[10]), :(0.0930883 * ((QTLeffects["GCN4"])["qtlTCrate"])[10]), :(0.000316957 * ((QTLeffects["GCN4"])["qtlRDrate"])[10]), :(3.34576 * ((QTLeffects["GCN1"])["qtlTLrate"])[1]), :(7.62369e-5 * ((QTLeffects["GCN1"])["qtlPDrate"])[1]), :(3.34576 * ((QTLeffects["GCN2"])["qtlTLrate"])[1]), :(7.62369e-5 * ((QTLeffects["GCN2"])["qtlPDrate"])[1]), :(3.34576 * ((QTLeffects["GCN3"])["qtlTLrate"])[1]), :(7.62369e-5 * ((QTLeffects["GCN3"])["qtlPDrate"])[1]), :(3.34576 * ((QTLeffects["GCN4"])["qtlTLrate"])[1]), :(7.62369e-5 * ((QTLeffects["GCN4"])["qtlPDrate"])[1]), :(3.00529 * ((QTLeffects["GCN1"])["qtlTLrate"])[2]), :(0.00012364 * ((QTLeffects["GCN1"])["qtlPDrate"])[2]), :(3.00529 * ((QTLeffects["GCN2"])["qtlTLrate"])[2]), :(0.00012364 * ((QTLeffects["GCN2"])["qtlPDrate"])[2]), :(3.00529 * ((QTLeffects["GCN3"])["qtlTLrate"])[2]), :(0.00012364 * ((QTLeffects["GCN3"])["qtlPDrate"])[2]), :(3.00529 * ((QTLeffects["GCN4"])["qtlTLrate"])[2]), :(0.00012364 * ((QTLeffects["GCN4"])["qtlPDrate"])[2]), :(1.15585 * ((QTLeffects["GCN1"])["qtlTLrate"])[3]), :(0.00010269 * ((QTLeffects["GCN1"])["qtlPDrate"])[3]), :(1.15585 * ((QTLeffects["GCN2"])["qtlTLrate"])[3]), :(0.00010269 * ((QTLeffects["GCN2"])["qtlPDrate"])[3]), :(1.15585 * ((QTLeffects["GCN3"])["qtlTLrate"])[3]), :(0.00010269 * ((QTLeffects["GCN3"])["qtlPDrate"])[3]), :(1.15585 * ((QTLeffects["GCN4"])["qtlTLrate"])[3]), :(0.00010269 * ((QTLeffects["GCN4"])["qtlPDrate"])[3]), :(3.5602 * ((QTLeffects["GCN1"])["qtlTLrate"])[4]), :(0.000100725 * ((QTLeffects["GCN1"])["qtlPDrate"])[4]), :(3.5602 * ((QTLeffects["GCN2"])["qtlTLrate"])[4]), :(0.000100725 * ((QTLeffects["GCN2"])["qtlPDrate"])[4]), :(3.5602 * ((QTLeffects["GCN3"])["qtlTLrate"])[4]), :(0.000100725 * ((QTLeffects["GCN3"])["qtlPDrate"])[4]), :(3.5602 * ((QTLeffects["GCN4"])["qtlTLrate"])[4]), :(0.000100725 * ((QTLeffects["GCN4"])["qtlPDrate"])[4]), :(0.567232 * ((QTLeffects["GCN1"])["qtlTLrate"])[5]), :(9.17936e-5 * ((QTLeffects["GCN1"])["qtlPDrate"])[5]), :(0.567232 * ((QTLeffects["GCN2"])["qtlTLrate"])[5]), :(9.17936e-5 * ((QTLeffects["GCN2"])["qtlPDrate"])[5]), :(0.567232 * ((QTLeffects["GCN3"])["qtlTLrate"])[5]), :(9.17936e-5 * ((QTLeffects["GCN3"])["qtlPDrate"])[5]), :(0.567232 * ((QTLeffects["GCN4"])["qtlTLrate"])[5]), :(9.17936e-5 * ((QTLeffects["GCN4"])["qtlPDrate"])[5]), :(4.44623 * ((QTLeffects["GCN1"])["qtlTLrate"])[7]), :(0.00010015 * ((QTLeffects["GCN1"])["qtlPDrate"])[7]), :(4.44623 * ((QTLeffects["GCN2"])["qtlTLrate"])[7]), :(0.00010015 * ((QTLeffects["GCN2"])["qtlPDrate"])[7]), :(4.44623 * ((QTLeffects["GCN3"])["qtlTLrate"])[7]), :(0.00010015 * ((QTLeffects["GCN3"])["qtlPDrate"])[7]), :(4.44623 * ((QTLeffects["GCN4"])["qtlTLrate"])[7]), :(0.00010015 * ((QTLeffects["GCN4"])["qtlPDrate"])[7])],"reactions"=>Any["0 --> R1GCN1", "R1GCN1 --> 0", "0 --> R1GCN2", "R1GCN2 --> 0", "0 --> R1GCN3", "R1GCN3 --> 0", "0 --> R1GCN4", "R1GCN4 --> 0", "0 --> R2GCN1", "R2GCN1 --> 0", "0 --> R2GCN2", "R2GCN2 --> 0", "0 --> R2GCN3", "R2GCN3 --> 0", "0 --> R2GCN4", "R2GCN4 --> 0", "0 --> R3GCN1", "R3GCN1 --> 0", "0 --> R3GCN2", "R3GCN2 --> 0", "0 --> R3GCN3", "R3GCN3 --> 0", "0 --> R3GCN4", "R3GCN4 --> 0", "0 --> R4GCN1", "R4GCN1 --> 0", "0 --> R4GCN2", "R4GCN2 --> 0", "0 --> R4GCN3", "R4GCN3 --> 0", "0 --> R4GCN4", "R4GCN4 --> 0", "0 --> R5GCN1", "R5GCN1 --> 0", "0 --> R5GCN2", "R5GCN2 --> 0", "0 --> R5GCN3", "R5GCN3 --> 0", "0 --> R5GCN4", "R5GCN4 --> 0", "0 --> R6GCN1", "R6GCN1 --> 0", "0 --> R6GCN2", "R6GCN2 --> 0", "0 --> R6GCN3", "R6GCN3 --> 0", "0 --> R6GCN4", "R6GCN4 --> 0", "0 --> R7GCN1", "R7GCN1 --> 0", "0 --> R7GCN2", "R7GCN2 --> 0", "0 --> R7GCN3", "R7GCN3 --> 0", "0 --> R7GCN4", "R7GCN4 --> 0", "0 --> R8GCN1", "R8GCN1 --> 0", "0 --> R8GCN2", "R8GCN2 --> 0", "0 --> R8GCN3", "R8GCN3 --> 0", "0 --> R8GCN4", "R8GCN4 --> 0", "0 --> R9GCN1", "R9GCN1 --> 0", "0 --> R9GCN2", "R9GCN2 --> 0", "0 --> R9GCN3", "R9GCN3 --> 0", "0 --> R9GCN4", "R9GCN4 --> 0", "0 --> R10GCN1", "R10GCN1 --> 0", "0 --> R10GCN2", "R10GCN2 --> 0", "0 --> R10GCN3", "R10GCN3 --> 0", "0 --> R10GCN4", "R10GCN4 --> 0", "R1GCN1 --> P1GCN1", "P1GCN1 --> 0", "R1GCN2 --> P1GCN2", "P1GCN2 --> 0", "R1GCN3 --> P1GCN3", "P1GCN3 --> 0", "R1GCN4 --> P1GCN4", "P1GCN4 --> 0", "R2GCN1 --> P2GCN1", "P2GCN1 --> 0", "R2GCN2 --> P2GCN2", "P2GCN2 --> 0", "R2GCN3 --> P2GCN3", "P2GCN3 --> 0", "R2GCN4 --> P2GCN4", "P2GCN4 --> 0", "R3GCN1 --> P3GCN1", "P3GCN1 --> 0", "R3GCN2 --> P3GCN2", "P3GCN2 --> 0", "R3GCN3 --> P3GCN3", "P3GCN3 --> 0", "R3GCN4 --> P3GCN4", "P3GCN4 --> 0", "R4GCN1 --> P4GCN1", "P4GCN1 --> 0", "R4GCN2 --> P4GCN2", "P4GCN2 --> 0", "R4GCN3 --> P4GCN3", "P4GCN3 --> 0", "R4GCN4 --> P4GCN4", "P4GCN4 --> 0", "R5GCN1 --> P5GCN1", "P5GCN1 --> 0", "R5GCN2 --> P5GCN2", "P5GCN2 --> 0", "R5GCN3 --> P5GCN3", "P5GCN3 --> 0", "R5GCN4 --> P5GCN4", "P5GCN4 --> 0", "R7GCN1 --> P7GCN1", "P7GCN1 --> 0", "R7GCN2 --> P7GCN2", "P7GCN2 --> 0", "R7GCN3 --> P7GCN3", "P7GCN3 --> 0", "R7GCN4 --> P7GCN4", "P7GCN4 --> 0"],"initialconditions"=>Any[:(((28.8461 * ((QTLeffects["GCN1"])["qtlTCrate"])[1]) / ((QTLeffects["GCN1"])["qtlRDrate"])[1]) * ((InitVar["GCN1"])["R"])[1]), :(((28.8461 * ((QTLeffects["GCN2"])["qtlTCrate"])[1]) / ((QTLeffects["GCN2"])["qtlRDrate"])[1]) * ((InitVar["GCN2"])["R"])[1]), :(((28.8461 * ((QTLeffects["GCN3"])["qtlTCrate"])[1]) / ((QTLeffects["GCN3"])["qtlRDrate"])[1]) * ((InitVar["GCN3"])["R"])[1]), :(((28.8461 * ((QTLeffects["GCN4"])["qtlTCrate"])[1]) / ((QTLeffects["GCN4"])["qtlRDrate"])[1]) * ((InitVar["GCN4"])["R"])[1]), :(((81.3848 * ((QTLeffects["GCN1"])["qtlTCrate"])[2]) / ((QTLeffects["GCN1"])["qtlRDrate"])[2]) * ((InitVar["GCN1"])["R"])[2]), :(((81.3848 * ((QTLeffects["GCN2"])["qtlTCrate"])[2]) / ((QTLeffects["GCN2"])["qtlRDrate"])[2]) * ((InitVar["GCN2"])["R"])[2]), :(((81.3848 * ((QTLeffects["GCN3"])["qtlTCrate"])[2]) / ((QTLeffects["GCN3"])["qtlRDrate"])[2]) * ((InitVar["GCN3"])["R"])[2]), :(((81.3848 * ((QTLeffects["GCN4"])["qtlTCrate"])[2]) / ((QTLeffects["GCN4"])["qtlRDrate"])[2]) * ((InitVar["GCN4"])["R"])[2]), :(((24.6875 * ((QTLeffects["GCN1"])["qtlTCrate"])[3]) / ((QTLeffects["GCN1"])["qtlRDrate"])[3]) * ((InitVar["GCN1"])["R"])[3]), :(((24.6875 * ((QTLeffects["GCN2"])["qtlTCrate"])[3]) / ((QTLeffects["GCN2"])["qtlRDrate"])[3]) * ((InitVar["GCN2"])["R"])[3]), :(((24.6875 * ((QTLeffects["GCN3"])["qtlTCrate"])[3]) / ((QTLeffects["GCN3"])["qtlRDrate"])[3]) * ((InitVar["GCN3"])["R"])[3]), :(((24.6875 * ((QTLeffects["GCN4"])["qtlTCrate"])[3]) / ((QTLeffects["GCN4"])["qtlRDrate"])[3]) * ((InitVar["GCN4"])["R"])[3]), :(((313.326 * ((QTLeffects["GCN1"])["qtlTCrate"])[4]) / ((QTLeffects["GCN1"])["qtlRDrate"])[4]) * ((InitVar["GCN1"])["R"])[4]), :(((313.326 * ((QTLeffects["GCN2"])["qtlTCrate"])[4]) / ((QTLeffects["GCN2"])["qtlRDrate"])[4]) * ((InitVar["GCN2"])["R"])[4]), :(((313.326 * ((QTLeffects["GCN3"])["qtlTCrate"])[4]) / ((QTLeffects["GCN3"])["qtlRDrate"])[4]) * ((InitVar["GCN3"])["R"])[4]), :(((313.326 * ((QTLeffects["GCN4"])["qtlTCrate"])[4]) / ((QTLeffects["GCN4"])["qtlRDrate"])[4]) * ((InitVar["GCN4"])["R"])[4]), :(((29.0011 * ((QTLeffects["GCN1"])["qtlTCrate"])[5]) / ((QTLeffects["GCN1"])["qtlRDrate"])[5]) * ((InitVar["GCN1"])["R"])[5]), :(((29.0011 * ((QTLeffects["GCN2"])["qtlTCrate"])[5]) / ((QTLeffects["GCN2"])["qtlRDrate"])[5]) * ((InitVar["GCN2"])["R"])[5]), :(((29.0011 * ((QTLeffects["GCN3"])["qtlTCrate"])[5]) / ((QTLeffects["GCN3"])["qtlRDrate"])[5]) * ((InitVar["GCN3"])["R"])[5]), :(((29.0011 * ((QTLeffects["GCN4"])["qtlTCrate"])[5]) / ((QTLeffects["GCN4"])["qtlRDrate"])[5]) * ((InitVar["GCN4"])["R"])[5]), :(((164.491 * ((QTLeffects["GCN1"])["qtlTCrate"])[6]) / ((QTLeffects["GCN1"])["qtlRDrate"])[6]) * ((InitVar["GCN1"])["R"])[6]), :(((164.491 * ((QTLeffects["GCN2"])["qtlTCrate"])[6]) / ((QTLeffects["GCN2"])["qtlRDrate"])[6]) * ((InitVar["GCN2"])["R"])[6]), :(((164.491 * ((QTLeffects["GCN3"])["qtlTCrate"])[6]) / ((QTLeffects["GCN3"])["qtlRDrate"])[6]) * ((InitVar["GCN3"])["R"])[6]), :(((164.491 * ((QTLeffects["GCN4"])["qtlTCrate"])[6]) / ((QTLeffects["GCN4"])["qtlRDrate"])[6]) * ((InitVar["GCN4"])["R"])[6]), :(((71.5497 * ((QTLeffects["GCN1"])["qtlTCrate"])[7]) / ((QTLeffects["GCN1"])["qtlRDrate"])[7]) * ((InitVar["GCN1"])["R"])[7]), :(((71.5497 * ((QTLeffects["GCN2"])["qtlTCrate"])[7]) / ((QTLeffects["GCN2"])["qtlRDrate"])[7]) * ((InitVar["GCN2"])["R"])[7]), :(((71.5497 * ((QTLeffects["GCN3"])["qtlTCrate"])[7]) / ((QTLeffects["GCN3"])["qtlRDrate"])[7]) * ((InitVar["GCN3"])["R"])[7]), :(((71.5497 * ((QTLeffects["GCN4"])["qtlTCrate"])[7]) / ((QTLeffects["GCN4"])["qtlRDrate"])[7]) * ((InitVar["GCN4"])["R"])[7]), :(((191.649 * ((QTLeffects["GCN1"])["qtlTCrate"])[8]) / ((QTLeffects["GCN1"])["qtlRDrate"])[8]) * ((InitVar["GCN1"])["R"])[8]), :(((191.649 * ((QTLeffects["GCN2"])["qtlTCrate"])[8]) / ((QTLeffects["GCN2"])["qtlRDrate"])[8]) * ((InitVar["GCN2"])["R"])[8]), :(((191.649 * ((QTLeffects["GCN3"])["qtlTCrate"])[8]) / ((QTLeffects["GCN3"])["qtlRDrate"])[8]) * ((InitVar["GCN3"])["R"])[8]), :(((191.649 * ((QTLeffects["GCN4"])["qtlTCrate"])[8]) / ((QTLeffects["GCN4"])["qtlRDrate"])[8]) * ((InitVar["GCN4"])["R"])[8]), :(((79.9315 * ((QTLeffects["GCN1"])["qtlTCrate"])[9]) / ((QTLeffects["GCN1"])["qtlRDrate"])[9]) * ((InitVar["GCN1"])["R"])[9]), :(((79.9315 * ((QTLeffects["GCN2"])["qtlTCrate"])[9]) / ((QTLeffects["GCN2"])["qtlRDrate"])[9]) * ((InitVar["GCN2"])["R"])[9]), :(((79.9315 * ((QTLeffects["GCN3"])["qtlTCrate"])[9]) / ((QTLeffects["GCN3"])["qtlRDrate"])[9]) * ((InitVar["GCN3"])["R"])[9]), :(((79.9315 * ((QTLeffects["GCN4"])["qtlTCrate"])[9]) / ((QTLeffects["GCN4"])["qtlRDrate"])[9]) * ((InitVar["GCN4"])["R"])[9]), :(((293.694 * ((QTLeffects["GCN1"])["qtlTCrate"])[10]) / ((QTLeffects["GCN1"])["qtlRDrate"])[10]) * ((InitVar["GCN1"])["R"])[10]), :(((293.694 * ((QTLeffects["GCN2"])["qtlTCrate"])[10]) / ((QTLeffects["GCN2"])["qtlRDrate"])[10]) * ((InitVar["GCN2"])["R"])[10]), :(((293.694 * ((QTLeffects["GCN3"])["qtlTCrate"])[10]) / ((QTLeffects["GCN3"])["qtlRDrate"])[10]) * ((InitVar["GCN3"])["R"])[10]), :(((293.694 * ((QTLeffects["GCN4"])["qtlTCrate"])[10]) / ((QTLeffects["GCN4"])["qtlRDrate"])[10]) * ((InitVar["GCN4"])["R"])[10]), :(((1.26595e6 * ((QTLeffects["GCN1"])["qtlTCrate"])[1] * ((QTLeffects["GCN1"])["qtlTLrate"])[1]) / (((QTLeffects["GCN1"])["qtlRDrate"])[1] * ((QTLeffects["GCN1"])["qtlPDrate"])[1])) * ((InitVar["GCN1"])["P"])[1]), :(((1.26595e6 * ((QTLeffects["GCN2"])["qtlTCrate"])[1] * ((QTLeffects["GCN2"])["qtlTLrate"])[1]) / (((QTLeffects["GCN2"])["qtlRDrate"])[1] * ((QTLeffects["GCN2"])["qtlPDrate"])[1])) * ((InitVar["GCN2"])["P"])[1]), :(((1.26595e6 * ((QTLeffects["GCN3"])["qtlTCrate"])[1] * ((QTLeffects["GCN3"])["qtlTLrate"])[1]) / (((QTLeffects["GCN3"])["qtlRDrate"])[1] * ((QTLeffects["GCN3"])["qtlPDrate"])[1])) * ((InitVar["GCN3"])["P"])[1]), :(((1.26595e6 * ((QTLeffects["GCN4"])["qtlTCrate"])[1] * ((QTLeffects["GCN4"])["qtlTLrate"])[1]) / (((QTLeffects["GCN4"])["qtlRDrate"])[1] * ((QTLeffects["GCN4"])["qtlPDrate"])[1])) * ((InitVar["GCN4"])["P"])[1]), :(((1.97821e6 * ((QTLeffects["GCN1"])["qtlTCrate"])[2] * ((QTLeffects["GCN1"])["qtlTLrate"])[2]) / (((QTLeffects["GCN1"])["qtlRDrate"])[2] * ((QTLeffects["GCN1"])["qtlPDrate"])[2])) * ((InitVar["GCN1"])["P"])[2]), :(((1.97821e6 * ((QTLeffects["GCN2"])["qtlTCrate"])[2] * ((QTLeffects["GCN2"])["qtlTLrate"])[2]) / (((QTLeffects["GCN2"])["qtlRDrate"])[2] * ((QTLeffects["GCN2"])["qtlPDrate"])[2])) * ((InitVar["GCN2"])["P"])[2]), :(((1.97821e6 * ((QTLeffects["GCN3"])["qtlTCrate"])[2] * ((QTLeffects["GCN3"])["qtlTLrate"])[2]) / (((QTLeffects["GCN3"])["qtlRDrate"])[2] * ((QTLeffects["GCN3"])["qtlPDrate"])[2])) * ((InitVar["GCN3"])["P"])[2]), :(((1.97821e6 * ((QTLeffects["GCN4"])["qtlTCrate"])[2] * ((QTLeffects["GCN4"])["qtlTLrate"])[2]) / (((QTLeffects["GCN4"])["qtlRDrate"])[2] * ((QTLeffects["GCN4"])["qtlPDrate"])[2])) * ((InitVar["GCN4"])["P"])[2]), :(((2.77873e5 * ((QTLeffects["GCN1"])["qtlTCrate"])[3] * ((QTLeffects["GCN1"])["qtlTLrate"])[3]) / (((QTLeffects["GCN1"])["qtlRDrate"])[3] * ((QTLeffects["GCN1"])["qtlPDrate"])[3])) * ((InitVar["GCN1"])["P"])[3]), :(((2.77873e5 * ((QTLeffects["GCN2"])["qtlTCrate"])[3] * ((QTLeffects["GCN2"])["qtlTLrate"])[3]) / (((QTLeffects["GCN2"])["qtlRDrate"])[3] * ((QTLeffects["GCN2"])["qtlPDrate"])[3])) * ((InitVar["GCN2"])["P"])[3]), :(((2.77873e5 * ((QTLeffects["GCN3"])["qtlTCrate"])[3] * ((QTLeffects["GCN3"])["qtlTLrate"])[3]) / (((QTLeffects["GCN3"])["qtlRDrate"])[3] * ((QTLeffects["GCN3"])["qtlPDrate"])[3])) * ((InitVar["GCN3"])["P"])[3]), :(((2.77873e5 * ((QTLeffects["GCN4"])["qtlTCrate"])[3] * ((QTLeffects["GCN4"])["qtlTLrate"])[3]) / (((QTLeffects["GCN4"])["qtlRDrate"])[3] * ((QTLeffects["GCN4"])["qtlPDrate"])[3])) * ((InitVar["GCN4"])["P"])[3]), :(((1.10747e7 * ((QTLeffects["GCN1"])["qtlTCrate"])[4] * ((QTLeffects["GCN1"])["qtlTLrate"])[4]) / (((QTLeffects["GCN1"])["qtlRDrate"])[4] * ((QTLeffects["GCN1"])["qtlPDrate"])[4])) * ((InitVar["GCN1"])["P"])[4]), :(((1.10747e7 * ((QTLeffects["GCN2"])["qtlTCrate"])[4] * ((QTLeffects["GCN2"])["qtlTLrate"])[4]) / (((QTLeffects["GCN2"])["qtlRDrate"])[4] * ((QTLeffects["GCN2"])["qtlPDrate"])[4])) * ((InitVar["GCN2"])["P"])[4]), :(((1.10747e7 * ((QTLeffects["GCN3"])["qtlTCrate"])[4] * ((QTLeffects["GCN3"])["qtlTLrate"])[4]) / (((QTLeffects["GCN3"])["qtlRDrate"])[4] * ((QTLeffects["GCN3"])["qtlPDrate"])[4])) * ((InitVar["GCN3"])["P"])[4]), :(((1.10747e7 * ((QTLeffects["GCN4"])["qtlTCrate"])[4] * ((QTLeffects["GCN4"])["qtlTLrate"])[4]) / (((QTLeffects["GCN4"])["qtlRDrate"])[4] * ((QTLeffects["GCN4"])["qtlPDrate"])[4])) * ((InitVar["GCN4"])["P"])[4]), :(((1.7921e5 * ((QTLeffects["GCN1"])["qtlTCrate"])[5] * ((QTLeffects["GCN1"])["qtlTLrate"])[5]) / (((QTLeffects["GCN1"])["qtlRDrate"])[5] * ((QTLeffects["GCN1"])["qtlPDrate"])[5])) * ((InitVar["GCN1"])["P"])[5]), :(((1.7921e5 * ((QTLeffects["GCN2"])["qtlTCrate"])[5] * ((QTLeffects["GCN2"])["qtlTLrate"])[5]) / (((QTLeffects["GCN2"])["qtlRDrate"])[5] * ((QTLeffects["GCN2"])["qtlPDrate"])[5])) * ((InitVar["GCN2"])["P"])[5]), :(((1.7921e5 * ((QTLeffects["GCN3"])["qtlTCrate"])[5] * ((QTLeffects["GCN3"])["qtlTLrate"])[5]) / (((QTLeffects["GCN3"])["qtlRDrate"])[5] * ((QTLeffects["GCN3"])["qtlPDrate"])[5])) * ((InitVar["GCN3"])["P"])[5]), :(((1.7921e5 * ((QTLeffects["GCN4"])["qtlTCrate"])[5] * ((QTLeffects["GCN4"])["qtlTLrate"])[5]) / (((QTLeffects["GCN4"])["qtlRDrate"])[5] * ((QTLeffects["GCN4"])["qtlPDrate"])[5])) * ((InitVar["GCN4"])["P"])[5]), :(((3.17649e6 * ((QTLeffects["GCN1"])["qtlTCrate"])[7] * ((QTLeffects["GCN1"])["qtlTLrate"])[7]) / (((QTLeffects["GCN1"])["qtlRDrate"])[7] * ((QTLeffects["GCN1"])["qtlPDrate"])[7])) * ((InitVar["GCN1"])["P"])[7]), :(((3.17649e6 * ((QTLeffects["GCN2"])["qtlTCrate"])[7] * ((QTLeffects["GCN2"])["qtlTLrate"])[7]) / (((QTLeffects["GCN2"])["qtlRDrate"])[7] * ((QTLeffects["GCN2"])["qtlPDrate"])[7])) * ((InitVar["GCN2"])["P"])[7]), :(((3.17649e6 * ((QTLeffects["GCN3"])["qtlTCrate"])[7] * ((QTLeffects["GCN3"])["qtlTLrate"])[7]) / (((QTLeffects["GCN3"])["qtlRDrate"])[7] * ((QTLeffects["GCN3"])["qtlPDrate"])[7])) * ((InitVar["GCN3"])["P"])[7]), :(((3.17649e6 * ((QTLeffects["GCN4"])["qtlTCrate"])[7] * ((QTLeffects["GCN4"])["qtlTLrate"])[7]) / (((QTLeffects["GCN4"])["qtlRDrate"])[7] * ((QTLeffects["GCN4"])["qtlPDrate"])[7])) * ((InitVar["GCN4"])["P"])[7])],"species"=>Any["R1GCN1", "R1GCN2", "R1GCN3", "R1GCN4", "R2GCN1", "R2GCN2", "R2GCN3", "R2GCN4", "R3GCN1", "R3GCN2", "R3GCN3", "R3GCN4", "R4GCN1", "R4GCN2", "R4GCN3", "R4GCN4", "R5GCN1", "R5GCN2", "R5GCN3", "R5GCN4", "R6GCN1", "R6GCN2", "R6GCN3", "R6GCN4", "R7GCN1", "R7GCN2", "R7GCN3", "R7GCN4", "R8GCN1", "R8GCN2", "R8GCN3", "R8GCN4", "R9GCN1", "R9GCN2", "R9GCN3", "R9GCN4", "R10GCN1", "R10GCN2", "R10GCN3", "R10GCN4", "P1GCN1", "P1GCN2", "P1GCN3", "P1GCN4", "P2GCN1", "P2GCN2", "P2GCN3", "P2GCN4", "P3GCN1", "P3GCN2", "P3GCN3", "P3GCN4", "P4GCN1", "P4GCN2", "P4GCN3", "P4GCN4", "P5GCN1", "P5GCN2", "P5GCN3", "P5GCN4", "P7GCN1", "P7GCN2", "P7GCN3", "P7GCN4"])
-
-QTLeffects = Dict("GCN3"=>Dict("qtlPDregbind"=>[1.0, 0.903064, 1.0, 1.01958, 0.908109, 0.0, 0.985851, 0.0, 0.0, 0.0],"qtlTLrate"=>[1.0, 0.98387, 1.12259, 0.947592, 1.02447, 0.0, 0.897265, 0.0, 0.0, 0.0],"qtlTCrate"=>[1.0, 1.17192, 1.0, 0.973951, 1.07116, 1.11191, 1.0003, 1.04185, 0.96825, 1.0],"qtlRDbindreg"=>[1.0, 0.969047, 0.883935, 1.16487, 1.18382, 0.926073, 1.13709, 1.16358, 1.20015, 1.0],"qtlTCregbind"=>[1.0, 0.939463, 1.0, 0.996446, 1.11144, 1.0, 0.92738, 1.0, 1.11756, 1.0],"qtlactivity"=>[1.0, 1.07163, 1.0, 0.948701, 1.00975, 1.0, 1.00126, 0.875307, 1.03423, 1.0],"qtlRDrate"=>[1.0, 1.0, 1.0, 1.08387, 1.02613, 1.0, 1.20753, 1.06082, 1.0, 1.0],"qtlTLregbind"=>[1.0, 0.969293, 1.0, 0.9764, 0.932668, 0.0, 0.918416, 0.0, 0.0, 0.0],"qtlPDrate"=>[1.0, 1.14071, 1.0, 0.93931, 1.02331, 0.0, 1.05153, 0.0, 0.0, 0.0]),"GCN2"=>Dict("qtlPDregbind"=>[1.0, 0.903064, 1.0, 0.904002, 1.0, 0.0, 0.947351, 0.0, 0.0, 0.0],"qtlTLrate"=>[0.888289, 0.98387, 1.0, 0.633331, 0.927585, 0.0, 1.03055, 0.0, 0.0, 0.0],"qtlTCrate"=>[1.0, 1.17192, 1.0, 1.12524, 1.0, 1.0, 0.993596, 0.99752, 1.0, 1.0],"qtlRDbindreg"=>[1.0, 0.969047, 1.0, 1.04387, 1.0, 0.888253, 1.0, 0.843412, 1.0, 1.0],"qtlTCregbind"=>[1.0, 0.939463, 1.0, 1.15848, 1.0, 0.919143, 1.0, 0.813784, 0.975534, 1.0],"qtlactivity"=>[1.0, 1.07163, 1.0, 0.864578, 1.0, 1.13318, 0.918793, 1.08566, 1.0, 1.0],"qtlRDrate"=>[1.0, 1.0, 1.0, 1.01624, 1.0, 1.0, 1.0, 0.926551, 0.941337, 1.0],"qtlTLregbind"=>[1.0, 0.969293, 1.0, 1.05993, 1.0, 0.0, 0.992744, 0.0, 0.0, 0.0],"qtlPDrate"=>[1.0, 1.14071, 1.0, 1.00784, 1.0, 0.0, 0.990836, 0.0, 0.0, 0.0]),"GCN4"=>Dict("qtlPDregbind"=>[1.0, 0.903064, 1.0, 1.0, 1.0, 0.0, 0.985851, 0.0, 0.0, 0.0],"qtlTLrate"=>[0.888289, 0.98387, 1.04376, 1.0, 1.0, 0.0, 0.897265, 0.0, 0.0, 0.0],"qtlTCrate"=>[1.0, 1.17192, 1.0, 1.0, 1.0, 1.0, 1.0003, 1.0, 0.934712, 1.09404],"qtlRDbindreg"=>[1.0, 0.969047, 1.08212, 1.0, 1.0, 1.0, 1.13709, 1.0, 0.953415, 1.08835],"qtlTCregbind"=>[1.0, 0.939463, 1.0, 1.0, 1.0, 1.0, 0.92738, 1.0, 1.0, 0.874129],"qtlactivity"=>[1.0, 1.07163, 0.985766, 1.0, 1.0, 1.0, 1.00126, 1.0, 0.87951, 0.774213],"qtlRDrate"=>[1.0, 1.0, 0.923331, 1.0, 1.0, 1.0, 1.20753, 1.0, 1.0, 1.0],"qtlTLregbind"=>[1.0, 0.969293, 0.947754, 0.790886, 1.0, 0.0, 0.918416, 0.0, 0.0, 0.0],"qtlPDrate"=>[1.0, 1.14071, 1.0, 1.0, 1.0, 0.0, 1.05153, 0.0, 0.0, 0.0]),"GCN1"=>Dict("qtlPDregbind"=>[1.15029, 1.16139, 1.0, 1.0, 0.965733, 0.0, 1.0, 0.0, 0.0, 0.0],"qtlTLrate"=>[1.0, 0.961051, 1.12259, 1.0, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0],"qtlTCrate"=>[1.0, 1.24792, 1.0, 0.894408, 1.0, 1.0, 1.0, 0.99752, 0.96825, 1.0],"qtlRDbindreg"=>[1.0, 0.83549, 0.883935, 1.07553, 1.0, 0.870481, 1.0, 0.843412, 1.20015, 1.0],"qtlTCregbind"=>[1.0, 1.08633, 1.0, 1.06498, 1.03092, 1.0, 1.0, 0.813784, 1.11756, 1.0],"qtlactivity"=>[1.0, 0.791183, 1.0, 1.0, 0.948967, 1.0, 1.0, 1.08566, 1.03423, 1.0],"qtlRDrate"=>[1.0, 0.818898, 1.0, 1.16617, 1.09283, 1.0, 1.0, 0.926551, 1.0, 1.0],"qtlTLregbind"=>[1.0, 0.9524, 1.0, 0.970783, 1.0, 0.0, 1.0, 0.0, 0.0, 0.0],"qtlPDrate"=>[1.11645, 0.940561, 1.0, 0.949767, 0.837376, 0.0, 1.0, 0.0, 0.0, 0.0]))
-InitVar = Dict("GCN3"=>Dict("P"=>[0.922647, 0.827737, 0.962663, 1.07635, 0.848211, 1.01387, 1.15418, 0.997701, 0.989415, 1.06221],"R"=>[1.01076, 0.903517, 0.931234, 0.948392, 1.08051, 1.07374, 0.843925, 0.956626, 1.1761, 1.09528]),"GCN2"=>Dict("P"=>[0.853842, 0.93087, 1.12092, 0.964489, 1.08834, 1.05661, 0.833048, 1.06602, 1.16125, 1.10232],"R"=>[0.97554, 0.932472, 1.0511, 0.898645, 1.05261, 1.05966, 0.7716, 0.90272, 0.807083, 1.06358]),"GCN4"=>Dict("P"=>[0.990594, 1.09941, 1.0421, 0.930396, 0.81033, 0.90876, 0.86762, 1.13135, 0.93453, 1.04141],"R"=>[1.00492, 1.1564, 1.14431, 0.93374, 0.970863, 1.13996, 1.1174, 0.978497, 1.10544, 1.00269]),"GCN1"=>Dict("P"=>[1.07192, 1.15348, 1.06973, 0.926324, 1.04767, 0.955735, 1.08041, 0.796943, 0.988385, 0.919596],"R"=>[0.855099, 0.818183, 0.857508, 0.910632, 1.00853, 0.99178, 0.934635, 0.879292, 0.843702, 0.908478]))
-
-model = Network("coucou")
-
-for i in 1:length(stochmodel["species"])
-  i0 = round(Int, eval(stochmodel["initialconditions"][i]))
-  println(i0)
-  model <= BioSimulator.Species(stochmodel["species"][i], i0)
-  println(model.species_list)
+function runstochsim(stochmodel, QTLeffects, InitVar, nod, simtime; modelname = "MySimulation", ntrials = 1, nepochs = -1, simalgorithm = "SSA")
+    try
+        res = stochasticsimulation(stochmodel, QTLeffects, InitVar, nod, simtime, modelname = modelname, ntrials = ntrials, nepochs = nepochs, simalgorithm = simalgorithm)
+        return res
+    catch err
+        isa(err, InterruptException) || rethrow(err)
+        return nothing
+    end
 end
-
-for i in eachindex(stochmodel["reactions"])
-  model <= BioSimulator.Reaction(stochmodel["reactionsnames"][i], eval(stochmodel["propensities"][i]), stochmodel["reactions"][i])
-end
-
-result = simulate(model, algorithm=SSA, time = 4.0, trials = 1)
-
 =#
-
-
-
 
 
 function whatisit(x)
@@ -1105,13 +962,56 @@ function whatisit(x)
 end
 
 
-function superfunction(ar, ind)
-  println(size(ar))
-  println(size(ar[ind]))
-  println(typeof(ar[ind]))
-  return ar[ind]
+
+# ------------------------------------------------------------------------------------------------ #
+##              SOLUTION TO RUN A SIMULATION AND STOP IT IF RUNNING TIME IS                       ##
+##                         LARGER THAN A DEFINED TIME LIMIT                                       ##
+##                    CURRENTLY ONLY WORKS FROM THE JULIA TERMINAL                                ##
+# ------------------------------------------------------------------------------------------------ #
+
+##   !!!WARNING!!! DO NOT UNCOMMENT IN THE julia_functions.jl FILE OR IT WILL BUG
+
+#=
+p = addprocs(1)[1]
+@everywhere include("winData/multiomics_networks_simulation/julia_functions.jl")
+
+
+@everywhere function stochsimtimelimit(p, stochmodel, QTLeffects, InitVar, nod, simtime; modelname = "MySimulation", ntrials = 1, nepochs = -1, simalgorithm = "SSA", time_limit = Inf)
+
+    output = Channel(1) ## create a Channel, that will store the simulation results
+    @async put!(output, remotecall_fetch(stochasticsimulation, p, stochmodel, QTLeffects, InitVar, nod, 1)) ## start the simulation on the process 2 of the Julia evaluator
+
+    start=time() ## start the timer
+
+    while !isready(output) & (time() - start < time_limit) ## While the channel is not ready (i.e. computation not done) and the timer is < to the defined value (default no time limit)
+      sleep(0.1)
+    end
+
+    if !isready(output) ## As soon as the Channel is ready or the time is out, check if the computation is done
+      interrupt(2) ## if not interrupt the second process i.e. the computation
+      data = "timeout" ## return a timeout message
+      #close(output)
+    else
+      data = take!(output) ## if the computation is done take the result from the Channel
+    end
+
+    return data
 end
 
 
+## Loading an example
+using JLD
+gentil = load("/home/oangelin/Documents/goodmodel.jld")
+QTLeffects = gentil["QTLeffects"]
+InitVar = gentil["InitVar"]
+stochmodel = gentil["stochmodel"]
+nod = load("/home/oangelin/Documents/goodmodelnod.jld")["nod"]
+
+## Testing on the example
+
+@time stochsimtimelimit(p, stochmodel, QTLeffects, InitVar, nod, 1, time_limit = 10)
+@time stochsimtimelimit(p, stochmodel, QTLeffects, InitVar, nod, 1, time_limit = 70)
+@time stochsimtimelimit(p, stochmodel, QTLeffects, InitVar, nod, 1)
+=#
 
 

@@ -22,7 +22,8 @@ if(!suppressWarnings(require("viridis", quietly = T))){install.packages("viridis
 library(viridis)
 if(!suppressWarnings(require("reshape2", quietly = T))){install.packages("reshape2")}
 library(reshape2)
-
+if(!suppressWarnings(require("parallel", quietly = T))){install.packages("parallel")}
+library(parallel)
 
 ## Test if Julia is installed on the computer
 if(!findJulia(test = T)) stop("Julia is not installed on the computer or not accessible by R. Check that Julia is correcly installed and/or in the PATH variable\n")
@@ -46,16 +47,50 @@ if(!findJulia(test = T)) stop("Julia is not installed on the computer or not acc
 
 #RJulia(.makeNew = T) ## creates a new evaluator when the file is sourced
 
-juliaCommand("
-if !haskey(Pkg.installed(), \"ClobberingReload\") 
-	Pkg.clone(\"git://github.com/cstjean/ClobberingReload.jl.git\")
-end
-")
+# juliaCommand("
+#  if !haskey(Pkg.installed(), \"ClobberingReload\") 
+#  	Pkg.clone(\"git://github.com/cstjean/ClobberingReload.jl.git\")
+#  end
+#  ")
 
 juliaUsing("ClobberingReload") ## Use the Julia module ClobberingReload to suppress redefinition warnings
 juliaCommand(paste0("sinclude(\"", getwd(),"/julia_functions.jl\")")) ## include (i.e. Julia equivalent of source) the Julia file, using sinclude from module ClobberingReload
-#juliaSource(paste0(getwd(),"/julia_functions.jl"))
 
+# juliaCommand(paste0("sinclude(\"", getwd(),"/julia_functions.jl\")"))
+# juliaCommand("p = addprocs(1)[1]")
+# juliaCommand("@async remotecall_wait(Base.eval, p, \"using XRJulia\")")
+#juliaCommand("@async remotecall_wait(include, p, \"/media/sf_data/multiomics_networks_simulation/julia_functions.jl\")")
+#juliaCommand("@everywhere using ClobberingReload") ## Use the Julia module ClobberingReload to suppress redefinition warnings and load the module on all processes
+#juliaCommand(paste0("@everywhere include(\"", getwd(),"/julia_functions.jl\")"))
+
+#' juliaEval("
+#'     function stochsimtimelimit(p, stochmodel, QTLeffects, InitVar, nod, simtime; modelname = \"MySimulation\", ntrials = 1, nepochs = -1, simalgorithm = \"SSA\", time_limit = Inf)
+#' 
+#'       output = Channel(1) ## create a Channel, that will store the simulation results
+#'       @async put!(output, remotecall_fetch(stochasticsimulation, p, stochmodel, QTLeffects, InitVar, nod, 1)) ## start the simulation on the process 2 of the Julia evaluator
+#'   
+#'       start=time() ## start the timer
+#'   
+#'       while !isready(output) & (time() - start < time_limit) ## While the channel is not ready (i.e. computation not done) and the timer is < to the defined value (default no time limit)
+#'         sleep(0.1)
+#'       end
+#'   
+#'       if !isready(output) ## As soon as the Channel is ready or the time is out, check if the computation is done
+#'         interrupt(2) ## if not interrupt the second process i.e. the computation
+#'         data = \"timeout\" ## return a timeout message
+#'         #close(output)
+#'       else
+#'         data = take!(output) ## if the computation is done take the result from the Channel
+#'       end
+#'   
+#'       return data
+#' 
+#'     end
+#'           ")
+#' 
+#' juliaCommand("using JLD; gentil = load(\"/home/oangelin/Documents/goodmodel.jld\"); QTLeffects = gentil[\"QTLeffects\"]; InitVar = gentil[\"InitVar\"]; stochmodel = gentil[\"stochmodel\"]; nod = load(\"/home/oangelin/Documents/goodmodelnod.jld\")[\"nod\"]")
+#' 
+#' juliaEval("@time stochsimtimelimit(p, stochmodel, QTLeffects, InitVar, nod, 1, time_limit = 10)")
 
 # ------------------------------------------------------------------------------------------------------------ #
 #                                            TEMPORARY FUNCTIONS                                               #
@@ -136,6 +171,49 @@ systemvisualize = function(mysystem){
     hist(degree(mysystem[["RN.nw"]][[paste0(n,".nw")]], mode = "in"), main = paste("In-degree distribution of the", n, "network", sep = " "), xlab = "Number of regulators")
   }
   
+}
+
+
+
+
+# ------------------------------------------------------------------------------------------------------------ #
+#                                         START A NEW JULIA EVALUATOR                                          #
+# ------------------------------------------------------------------------------------------------------------ # 
+
+## Test if a Julia evaluator is valid
+testevaluator = function(ev){
+  isvalid = tryCatch({
+    juliaEval("2+3", evaluator = ev)
+    return(TRUE)
+  }, error = function(e){
+    return(FALSE)
+  }, warning = function(e){
+    return(FALSE)
+  }, finally = {
+  }
+  )
+  return(isvalid)
+}
+
+## Creates a new Julia evaluator (from package XRJulia) and loads the required functions on it
+## Returns the new evaluator
+newJuliaEvaluator = function(port = NULL){
+  #ev = RJulia(.makeNew = T) ## create a new julia evaluator
+  if(is.null(port)){
+    ev = RJulia(.makeNew = T) ## create a new julia evaluator
+  }else{
+    ev = RJulia(port = as.integer(port), startJulia = TRUE) ## create a new julia evaluator with a given port
+  }
+  
+  juliaCommand(paste0("sinclude(\"", getwd(),"/julia_functions.jl\")"), evaluator = ev) ## load the julia functions of the package in the new evaluator
+  return(ev)
+}
+
+## Close the process corresponding to the evaluator and remove the evaluator from the list of available evaluators
+removeJuliaEvaluator = function(ev){
+  ev$ServerQuit()
+  isdone = XR::rmInterface(ev)
+  cat(ev$show(), " ", isdone)
 }
 
 
@@ -577,10 +655,11 @@ createGenes = function(sysargs){
 ##  - which reaction is regulated? (used to retrieve automatically the variables)
 ##  - the data frame of nodes in the system
 ##  - sysargs: arguments of the system
+##  - ev: the Julia evaluator to be used for any Julia computations
 ## Outputs:
 ##  - nod: data frame of nodes (and ther attributes) in the network
 ##  - edg: data frame of edges (and their attributes)
-createRegulatoryNetwork = function(regsList, tarsList, reaction, nod, sysargs){
+createRegulatoryNetwork = function(regsList, tarsList, reaction, nod, sysargs, ev = RJulia()){
   
   ## Construct the regulatory network nodes and edges data.frame
   nwnod = nod[nod$id %in% c(unlist(regsList), unlist(tarsList)),]
@@ -589,10 +668,10 @@ createRegulatoryNetwork = function(regsList, tarsList, reaction, nod, sysargs){
   nwnod[nwnod$id %in% regsList[["NC"]], "nodetype"] = switch((nrow(nwnod)>0) +1 , NULL, "NCreg")
   
   ## Call the julia function nwgeneration to generate the regulatory network where the protein regulators are the regulatory nodes
-  edgPC = juliaGet(juliaCall("nwgeneration", regsList[["PC"]], tarsList[["PC"]], sysargs[[paste(reaction, "PC", "indeg.distr", sep = ".")]], sysargs[[paste(reaction, "PC", "outdeg.distr", sep = ".")]], sysargs[[paste(reaction, "PC", "outdeg.exp", sep = ".")]], sysargs[[paste(reaction, "PC", "autoregproba", sep = ".")]], sysargs[[paste(reaction, "PC", "twonodesloop", sep = ".")]]))
+  edgPC = juliaGet(juliaCall("nwgeneration", regsList[["PC"]], tarsList[["PC"]], sysargs[[paste(reaction, "PC", "indeg.distr", sep = ".")]], sysargs[[paste(reaction, "PC", "outdeg.distr", sep = ".")]], sysargs[[paste(reaction, "PC", "outdeg.exp", sep = ".")]], sysargs[[paste(reaction, "PC", "autoregproba", sep = ".")]], sysargs[[paste(reaction, "PC", "twonodesloop", sep = ".")]], evaluator = ev), evaluator = ev)
   
   ## Call the julia function nwgeneration to generate the regulatory network where the noncoding regulators are the regulatory nodes
-  edgNC = juliaGet(juliaCall("nwgeneration", regsList[["NC"]], tarsList[["NC"]], sysargs[[paste(reaction, "NC", "indeg.distr", sep = ".")]], sysargs[[paste(reaction, "NC", "outdeg.distr", sep = ".")]], sysargs[[paste(reaction, "NC", "outdeg.exp", sep = ".")]], sysargs[[paste(reaction, "NC", "autoregproba", sep = ".")]], sysargs[[paste(reaction, "NC", "twonodesloop", sep = ".")]]))
+  edgNC = juliaGet(juliaCall("nwgeneration", regsList[["NC"]], tarsList[["NC"]], sysargs[[paste(reaction, "NC", "indeg.distr", sep = ".")]], sysargs[[paste(reaction, "NC", "outdeg.distr", sep = ".")]], sysargs[[paste(reaction, "NC", "outdeg.exp", sep = ".")]], sysargs[[paste(reaction, "NC", "autoregproba", sep = ".")]], sysargs[[paste(reaction, "NC", "twonodesloop", sep = ".")]], evaluator = ev), evaluator = ev)
   
   ## create the edge dataframe
   nwedg = data.frame("from" = c(edgPC[,1], edgNC[,1]), "to" = c(edgPC[,2], edgNC[,2]), "TargetReaction" = rep(reaction,nrow(edgPC)+nrow(edgNC)), "RegSign" = rep("",nrow(edgPC)+nrow(edgNC)), "RegBy" = rep(c("PC", "NC"), c(nrow(edgPC), nrow(edgNC))), stringsAsFactors = F)
@@ -635,7 +714,7 @@ createRegulatoryNetwork = function(regsList, tarsList, reaction, nod, sysargs){
   }else if(sysargs[["regcomplexes"]] == "prot"){ ## If the regulatory complexes can only be protein complexes
     
     temp = nwedg[nwedg$RegBy =="PC", ]
-    tempregcom = juliaGet(juliaCall("combreg", temp$from, temp$to, temp$RegSign, sysargs[["regcomplexes.p"]], sysargs[["regcomplexes.size"]], reaction))
+    tempregcom = juliaGet(juliaCall("combreg", temp$from, temp$to, temp$RegSign, sysargs[["regcomplexes.p"]], sysargs[["regcomplexes.size"]], reaction, evaluator = ev), evaluator = ev)
     ## only keep the noncoding regulators (the regulation from protein-coding regulators is given by the Julia function combreg)
     nwedgcomp = nwedg[nwedg$RegBy =="NC", c("from", "to", "TargetReaction", "RegSign")]
     nwedgcomp = rbind(nwedgcomp, data.frame("from" = unlist(tempregcom$newedg[,1]), "to" = unlist(tempregcom$newedg[,2]), "TargetReaction" = rep(reaction, nrow(tempregcom$newedg)), "RegSign" = unlist(tempregcom$newedg[,3]), stringsAsFactors = F))
@@ -643,7 +722,7 @@ createRegulatoryNetwork = function(regsList, tarsList, reaction, nod, sysargs){
     
   }else if(sysargs[["regcomplexes"]] == "both"){ ## If the regulatory complexes can be protein/noncoding complexes
     
-    tempregcom = juliaGet(juliaCall("combreg", nwedg$from, nwedg$to, nwedg$RegSign, regcomplexes.p, regcomplexes.size, reaction))
+    tempregcom = juliaGet(juliaCall("combreg", nwedg$from, nwedg$to, nwedg$RegSign, regcomplexes.p, regcomplexes.size, reaction, evaluator = ev), evaluator = ev)
     nwedgcomp = data.frame("from" = unlist(tempregcom$newedg[,1]), "to" = unlist(tempregcom$newedg[,2]), "TargetReaction" = rep(reaction, nrow(tempregcom$newedg)), "RegSign" = unlist(tempregcom$newedg[,3]), stringsAsFactors = F)
     complexes = lapply(tempregcom$Complexes, unlist)
     
@@ -669,7 +748,7 @@ createRegulatoryNetwork = function(regsList, tarsList, reaction, nod, sysargs){
 ##  - sysargs: an object of class insiliosystemargs, i.e. list of all parameters for in silico network generation
 ## Outputs:
 ##    -
-createMultiOmicNetwork = function(nod, sysargs){
+createMultiOmicNetwork = function(nod, sysargs, ev = RJulia()){
   
 
   ##edg is the edges data frame (1st column "from", 2nd column "to", 3rd column "TargetReaction" (values "TC", "TL", "RD", "PTM", "PD", "MR"), 4th column "RegSign" (value +1 or -1))
@@ -692,7 +771,7 @@ createMultiOmicNetwork = function(nod, sysargs){
   NCtarget.id = nod$id[nod$coding == "PC"]
   
   ## Construct the regulatory network
-  TCRN = createRegulatoryNetwork(regsList = list("PC" = PCreg.id, "NC" = NCreg.id), tarsList = list("PC" = PCtarget.id, "NC" = NCtarget.id), reaction = "TC", nod = nod, sysargs)
+  TCRN = createRegulatoryNetwork(regsList = list("PC" = PCreg.id, "NC" = NCreg.id), tarsList = list("PC" = PCtarget.id, "NC" = NCtarget.id), reaction = "TC", nod = nod, sysargs, ev = ev)
   TCRN.edg = TCRN[["edgcomp"]]
 
   complexes = c(complexes, TCRN[["complexes"]])
@@ -716,7 +795,7 @@ createMultiOmicNetwork = function(nod, sysargs){
   NCtarget.id = nod$id[nod$coding == "PC"]
   
   ## Construct the regulatory network
-  TLRN = createRegulatoryNetwork(regsList = list("PC" = PCreg.id, "NC" = NCreg.id), tarsList = list("PC" = PCtarget.id, "NC" = NCtarget.id), reaction = "TL", nod = nod, sysargs = sysargs)
+  TLRN = createRegulatoryNetwork(regsList = list("PC" = PCreg.id, "NC" = NCreg.id), tarsList = list("PC" = PCtarget.id, "NC" = NCtarget.id), reaction = "TL", nod = nod, sysargs = sysargs, ev = ev)
   TLRN.edg = TLRN[["edgcomp"]]
 
   complexes = c(complexes, TLRN[["complexes"]])
@@ -741,7 +820,7 @@ createMultiOmicNetwork = function(nod, sysargs){
   NCtarget.id = nod$id
   
   ## Construct the regulatory network
-  RDRN = createRegulatoryNetwork(regsList = list("PC" = PCreg.id, "NC" = NCreg.id), tarsList = list("PC" = PCtarget.id, "NC" = NCtarget.id), reaction = "RD", nod = nod, sysargs = sysargs)
+  RDRN = createRegulatoryNetwork(regsList = list("PC" = PCreg.id, "NC" = NCreg.id), tarsList = list("PC" = PCtarget.id, "NC" = NCtarget.id), reaction = "RD", nod = nod, sysargs = sysargs, ev = ev)
   RDRN.edg = RDRN[["edgcomp"]]
 
   complexes = c(complexes, RDRN[["complexes"]])
@@ -764,7 +843,7 @@ createMultiOmicNetwork = function(nod, sysargs){
   NCtarget.id = nod$id[nod$coding == "PC"]
   
   ## Construct the regulatory network
-  PDRN = createRegulatoryNetwork(regsList = list("PC" = PCreg.id, "NC" = NCreg.id), tarsList = list("PC" = PCtarget.id, "NC" = NCtarget.id), reaction = "PD", nod = nod, sysargs = sysargs)
+  PDRN = createRegulatoryNetwork(regsList = list("PC" = PCreg.id, "NC" = NCreg.id), tarsList = list("PC" = PCtarget.id, "NC" = NCtarget.id), reaction = "PD", nod = nod, sysargs = sysargs, ev = ev)
   PDRN.edg = PDRN[["edgcomp"]]
 
   complexes = c(complexes, PDRN[["complexes"]])  
@@ -787,7 +866,7 @@ createMultiOmicNetwork = function(nod, sysargs){
   NCtarget.id = nod$id[nod$coding == "PC"]
   
   ## Construct the regulatory network
-  PTMRN = createRegulatoryNetwork(regsList = list("PC" = PCreg.id, "NC" = NCreg.id), tarsList = list("PC" = PCtarget.id, "NC" = NCtarget.id), reaction = "PTM", nod = nod, sysargs = sysargs)
+  PTMRN = createRegulatoryNetwork(regsList = list("PC" = PCreg.id, "NC" = NCreg.id), tarsList = list("PC" = PCtarget.id, "NC" = NCtarget.id), reaction = "PTM", nod = nod, sysargs = sysargs, ev = ev)
   PTMRN.edg = PTMRN[["edgcomp"]]
   
   complexes = c(complexes, PTMRN[["complexes"]])  
@@ -876,7 +955,7 @@ createEmptyMultiOmicNetwork = function(nod, sysargs){
   return(list("mosystem" = res, "genes" = nod))
 }
 
-createInSilicoSystem = function(sysargs, empty = F){
+createInSilicoSystem = function(sysargs, empty = F, ev = RJulia()){
   
   genes = createGenes(sysargs)
   
@@ -885,7 +964,7 @@ createInSilicoSystem = function(sysargs, empty = F){
     mosystem = temp$mosystem
     genes = temp$genes
   }else{
-    temp = createMultiOmicNetwork(genes, sysargs)
+    temp = createMultiOmicNetwork(genes, sysargs, ev = ev)
     mosystem = temp$mosystem
     genes = temp$genes
   }
@@ -916,7 +995,7 @@ df2list = function(mydf){
 }
 
 
-createStochSystem = function(insilicosystem, indargs, returnList = T){
+createStochSystem = function(insilicosystem, indargs, returnList = T, ev = RJulia()){
   
   ## Create the network and regulatory complexes lists to be sent to Julia (converted to dictionaries in Julia)
   temp = list("TCRN.edg", "TLRN.edg", "RDRN.edg", "PDRN.edg", "PTMRN.edg")
@@ -934,16 +1013,16 @@ createStochSystem = function(insilicosystem, indargs, returnList = T){
   
   cat("Generating the stochastic system\n")
   tic()
-  stochsystem = juliaCall("generateReactionList", nod, TCRN.edg, TLRN.edg, RDRN.edg, PDRN.edg, PTMRN.edg, complexes, complexeskinetics, as.integer(insilicosystem$sysargs$regcomplexes.size), indargs$gcnList)
+  stochsystem = juliaCall("generateReactionList", nod, TCRN.edg, TLRN.edg, RDRN.edg, PDRN.edg, PTMRN.edg, complexes, complexeskinetics, as.integer(insilicosystem$sysargs$regcomplexes.size), indargs$gcnList, evaluator = ev)
   toc()
   
   if(returnList){
     cat("Reading species list\n")
-    tic(); species = unlist(juliaGet(juliaCall("getDictfromKey", stochsystem, "species"))); toc()
+    tic(); species = unlist(juliaGet(juliaCall("getDictfromKey", stochsystem, "species", evaluator = ev), evaluator = ev)); toc()
     cat("Reading reactions list\n")
-    tic(); reactions = unlist(juliaGet(juliaCall("getDictfromKey", stochsystem, "reactions"))); toc()
+    tic(); reactions = unlist(juliaGet(juliaCall("getDictfromKey", stochsystem, "reactions", evaluator = ev), evaluator = ev)); toc()
     cat("Reading reactions names list\n")
-    tic(); reactionsnames = unlist(juliaGet(juliaCall("getDictfromKey", stochsystem, "reactionsnames"))); toc()
+    tic(); reactionsnames = unlist(juliaGet(juliaCall("getDictfromKey", stochsystem, "reactionsnames", evaluator = ev), evaluator = ev)); toc()
   }else{
     species = reactions = reactionsnames = list()
   }
@@ -952,10 +1031,33 @@ createStochSystem = function(insilicosystem, indargs, returnList = T){
   
 }
 
-simulateSystemStochastic = function(insilicosystem, insilicopopulation, simtime, nepochs = -1, ntrialsPerInd = 1, simalgorithm = "SSA", returnStochModel = F){
+callJuliastochasticsimulation = function(stochmodel, QTLeffects, InitVar, nod, simtime, modelname, ntrialsPerInd, nepochs, simalgorithm, evaluator = XR::getInterface(getClass("JuliaInterface"))){
+  
+  # simJuliaJ = juliaCall("stochasticsimulation", stochmodel$JuliaObject, insilicopopulation$individualsList[[ind]]$QTLeffects, insilicopopulation$individualsList[[ind]]$InitVar, df2list(insilicosystem$genes), simtime, modelname = ind, ntrials = ntrialsPerInd, nepochs = nepochs, simalgorithm = simalgorithm, evaluator = ev)
+  
+  expr = gettextf("%s(%s)","stochasticsimulation", evaluator$ServerArglist(stochmodel, QTLeffects, InitVar, nod, simtime, modelname = modelname, ntrials = ntrialsPerInd, nepochs = nepochs, simalgorithm = simalgorithm))
+  key = evaluator$ProxyName()
+  cmd = jsonlite::toJSON(c("eval", expr, key, T))
+  writeLines(cmd, evaluator$connection)
+
+    while(TRUE){
+    value <- readLines(evaluator$connection, 1)
+    #print(value)
+    if(length(value) == 0) 
+      Sys.sleep(1)
+    else
+      break
+    }
+  
+  res = XR::valueFromServer(value, key, T, evaluator)
+  
+  return(res)
+}
+
+simulateSystemStochastic = function(insilicosystem, insilicopopulation, simtime, nepochs = -1, ntrialsPerInd = 1, simalgorithm = "SSA", returnStochModel = F, ev = RJulia()){
   
   cat("\n")
-  stochmodel = createStochSystem(insilicosystem, insilicopopulation$indargs, returnList = returnStochModel)
+  stochmodel = createStochSystem(insilicosystem, insilicopopulation$indargs, returnList = returnStochModel, ev = ev)
   cat("\n")
   
   ## Store the running time of each simulation
@@ -970,18 +1072,55 @@ simulateSystemStochastic = function(insilicosystem, insilicopopulation, simtime,
   
   for(ind in names(insilicopopulation$individualsList)){
     tic()
-    simJuliaJ = juliaCall("stochasticsimulation", stochmodel$JuliaObject, insilicopopulation$individualsList[[ind]]$QTLeffects, insilicopopulation$individualsList[[ind]]$InitVar, df2list(insilicosystem$genes), simtime, modelname = ind, ntrials = ntrialsPerInd, nepochs = nepochs, simalgorithm = simalgorithm)
+    #simJuliaJ = juliaCall("stochasticsimulation", stochmodel$JuliaObject, insilicopopulation$individualsList[[ind]]$QTLeffects, insilicopopulation$individualsList[[ind]]$InitVar, df2list(insilicosystem$genes), simtime, modelname = ind, ntrials = ntrialsPerInd, nepochs = nepochs, simalgorithm = simalgorithm, evaluator = ev)
+    simJulia = callJuliastochasticsimulation(stochmodel$JuliaObject, insilicopopulation$individualsList[[ind]]$QTLeffects, insilicopopulation$individualsList[[ind]]$InitVar, df2list(insilicosystem$genes), simtime, modelname = ind, ntrials = ntrialsPerInd, nepochs = nepochs, simalgorithm = simalgorithm, evaluator = ev)
     temp = toc(quiet = T)
     runningtime[ri]  = temp$toc - temp$tic
     setTxtProgressBar(progress, ri)
     ri = ri + 1
-    simJulia = juliaGet(simJuliaJ)
+    #simJulia = juliaGet(simJuliaJ, evaluator = ev)
     mycolnames = names(sort(unlist(simJulia@fields$colindex@fields$lookup)))
     resTable[[ind]] = data.frame(matrix(unlist(simJulia@fields$columns), ncol = length(simJulia@fields$columns), dimnames = list(c(), mycolnames)))
   }
   
   cat("\nMean running time per simulation: ", mean(runningtime),"seconds. \n")
-  return(list("resTable" = resTable, "runningtime" = runningtime))
+  return(list("resTable" = resTable, "runningtime" = runningtime, "stochmodel" = stochmodel$JuliaObject))
+}
+
+##  !!! WARNING !!!    NOT WORKING FOR HIGH NUMBER OF INDIVIDUALS
+simulateSystemStochasticParallel = function(insilicosystem, insilicopopulation, simtime, nepochs = -1, ntrialsPerInd = 1, simalgorithm = "SSA", returnStochModel = F, ev = RJulia()){
+  
+  cat("\n")
+  stochmodel = createStochSystem(insilicosystem, insilicopopulation$indargs, returnList = returnStochModel, ev = ev)
+  stochmodel_string = juliaEval("string(%s)", stochmodel$JuliaObject, evaluator = ev)
+  cat("\n")
+  
+  
+  myinds = 1:length(insilicopopulation$individualsList)
+  names(myinds) = names(insilicopopulation$individualsList)
+  
+  mybaseport = ev$port
+  
+  cat("Starting simulations at", format(Sys.time(), usetz = T), "\n")
+  
+  resTable = mclapply(myinds, function(i){
+
+    myev = newJuliaEvaluator(port = mybaseport + i) ## create a new Julia evaluator with a port number equal to mybaseport + i (id of the simulation)
+    ind = names(myinds)[i] 
+    mystochmodel = juliaEval("eval(parse(%s))", stochmodel_string, .get = F, evaluator = myev)
+    #tic()
+    simJuliaJ = juliaCall("stochasticsimulation", mystochmodel, insilicopopulation$individualsList[[ind]]$QTLeffects, insilicopopulation$individualsList[[ind]]$InitVar, df2list(insilicosystem$genes), simtime, modelname = ind, ntrials = ntrialsPerInd, nepochs = nepochs, simalgorithm = simalgorithm, evaluator = myev)
+
+    simJulia = juliaGet(simJuliaJ, evaluator = myev)
+    mycolnames = names(sort(unlist(simJulia@fields$colindex@fields$lookup)))
+    res = data.frame(matrix(unlist(simJulia@fields$columns), ncol = length(simJulia@fields$columns), dimnames = list(c(), mycolnames)))
+    removeJuliaEvaluator(myev)
+    return(res)
+  }, mc.cores = detectCores()-1)
+  #names(resTable) = names(insilicopopulation$individualsList)
+  
+  #cat("\nMean running time per simulation: ", mean(runningtime),"seconds. \n")
+  return(list("resTable" = resTable, "stochmodel" = stochmodel$JuliaObject))
 }
 
 

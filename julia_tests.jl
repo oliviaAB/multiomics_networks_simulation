@@ -123,6 +123,9 @@ end
 
 using JLD
 using BioSimulator
+include("winData/multiomics_networks_simulation/julia_functions.jl")
+
+
 mechant = load("/home/oangelin/Documents/errmodel.jld")
 QTLeffects = mechant["QTLeffects"]
 InitVar = mechant["InitVar"]
@@ -133,6 +136,7 @@ gentil = load("/home/oangelin/Documents/goodmodel.jld")
 QTLeffects = gentil["QTLeffects"]
 InitVar = gentil["InitVar"]
 stochmodel = gentil["stochmodel"]
+nod = load("/home/oangelin/Documents/goodmodelnod.jld")["nod"]
 
 
 model = BioSimulator.Network("coucouBad")
