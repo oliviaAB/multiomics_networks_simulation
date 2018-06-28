@@ -202,18 +202,18 @@ newJuliaEvaluator = function(port = NULL){
   if(is.null(port)){
     ev = RJulia(.makeNew = T) ## create a new julia evaluator
   }else{
-    ev = RJulia(port = as.integer(port), startJulia = TRUE) ## create a new julia evaluator with a given port
+    ev = RJulia(port = as.integer(port), .makeNew = T) ## create a new julia evaluator with a given port
   }
-  
+  juliaUsing("ClobberingReload")
   juliaCommand(paste0("sinclude(\"", getwd(),"/julia_functions.jl\")"), evaluator = ev) ## load the julia functions of the package in the new evaluator
   return(ev)
 }
 
 ## Close the process corresponding to the evaluator and remove the evaluator from the list of available evaluators
-removeJuliaEvaluator = function(ev){
+removeJuliaEvaluator = function(ev, verbose = T){
   ev$ServerQuit()
   isdone = XR::rmInterface(ev)
-  cat(ev$show(), " ", isdone)
+  if(verbose) cat(ev$port, " ", isdone, "\n")
 }
 
 
@@ -1088,39 +1088,79 @@ simulateSystemStochastic = function(insilicosystem, insilicopopulation, simtime,
 }
 
 ##  !!! WARNING !!!    NOT WORKING FOR HIGH NUMBER OF INDIVIDUALS
-simulateSystemStochasticParallel = function(insilicosystem, insilicopopulation, simtime, nepochs = -1, ntrialsPerInd = 1, simalgorithm = "SSA", returnStochModel = F, ev = RJulia()){
+simulateSystemStochasticParallel = function(insilicosystem, insilicopopulation, simtime, nepochs = -1, ntrialsPerInd = 1, simalgorithm = "SSA", returnStochModel = F, no_cores = parallel::detectCores()-1, ev = RJulia()){
   
   cat("\n")
-  stochmodel = createStochSystem(insilicosystem, insilicopopulation$indargs, returnList = returnStochModel, ev = ev)
+  stochmodel = createStochSystem(insilicosystem, insilicopopulation$indargs, returnList = F, ev = ev)
+  cat("\n")
+  
   stochmodel_string = juliaEval("string(%s)", stochmodel$JuliaObject, evaluator = ev)
-  cat("\n")
   
-  
-  myinds = 1:length(insilicopopulation$individualsList)
-  names(myinds) = names(insilicopopulation$individualsList)
+  #myindsList = 1:length(insilicopopulation$individualsList)
+  #names(myindsList) = names(insilicopopulation$individualsList)
   
   mybaseport = ev$port
+  portList = sapply(1:no_cores, sum, mybaseport)
   
-  cat("Starting simulations at", format(Sys.time(), usetz = T), "\n")
-  
-  resTable = mclapply(myinds, function(i){
+  myfunction = function(i, portList, individualsList, nod, simtime, ntrialsPerInd, nepochs, simalgorithm, stochmodel_string){
 
-    myev = newJuliaEvaluator(port = mybaseport + i) ## create a new Julia evaluator with a port number equal to mybaseport + i (id of the simulation)
-    ind = names(myinds)[i] 
+    myev = newJuliaEvaluator(port = portList[i - 3*(i-1)%/%3])
+    ind = names(individualsList)[i]
+    
     mystochmodel = juliaEval("eval(parse(%s))", stochmodel_string, .get = F, evaluator = myev)
-    #tic()
-    simJuliaJ = juliaCall("stochasticsimulation", mystochmodel, insilicopopulation$individualsList[[ind]]$QTLeffects, insilicopopulation$individualsList[[ind]]$InitVar, df2list(insilicosystem$genes), simtime, modelname = ind, ntrials = ntrialsPerInd, nepochs = nepochs, simalgorithm = simalgorithm, evaluator = myev)
 
-    simJulia = juliaGet(simJuliaJ, evaluator = myev)
+    simJulia = callJuliastochasticsimulation(mystochmodel, individualsList[[ind]]$QTLeffects, individualsList[[ind]]$InitVar, nod, simtime, modelname = ind, ntrials = ntrialsPerInd, nepochs = nepochs, simalgorithm = simalgorithm, evaluator = myev)
+    
     mycolnames = names(sort(unlist(simJulia@fields$colindex@fields$lookup)))
     res = data.frame(matrix(unlist(simJulia@fields$columns), ncol = length(simJulia@fields$columns), dimnames = list(c(), mycolnames)))
-    removeJuliaEvaluator(myev)
+
+    removeJuliaEvaluator(myev, verbose = F)
     return(res)
-  }, mc.cores = detectCores()-1)
-  #names(resTable) = names(insilicopopulation$individualsList)
+  }
   
-  #cat("\nMean running time per simulation: ", mean(runningtime),"seconds. \n")
-  return(list("resTable" = resTable, "stochmodel" = stochmodel$JuliaObject))
+  mycluster = parallel::makeCluster(no_cores, outfile = "")
+  
+  clusterEvalQ(mycluster, library(XRJulia))
+  clusterExport(mycluster, "newJuliaEvaluator")
+  clusterExport(mycluster, "removeJuliaEvaluator")
+  clusterExport(mycluster, "callJuliastochasticsimulation")
+  
+  test = parallel::clusterApply(mycluster, 1:length(insilicopopulation$individualsList), myfunction, portList = portList, individualsList = insilicopopulation$individualsList, nod = df2list(insilicosystem$genes), simtime, ntrialsPerInd, nepochs, simalgorithm, stochmodel_string)
+  stopCluster(mycluster)
+  
+  return(test)
+  # cat("\n")
+  # stochmodel = createStochSystem(insilicosystem, insilicopopulation$indargs, returnList = returnStochModel, ev = ev)
+  # stochmodel_string = juliaEval("string(%s)", stochmodel$JuliaObject, evaluator = ev)
+  # cat("\n")
+  # 
+  # 
+  # myinds = 1:length(insilicopopulation$individualsList)
+  # names(myinds) = names(insilicopopulation$individualsList)
+  # 
+  # mybaseport = ev$port
+  # 
+  # cat("Starting simulations at", format(Sys.time(), usetz = T), "\n")
+  # 
+  # resTable = mclapply(myinds, function(i){
+  # 
+  #   myev = newJuliaEvaluator(port = mybaseport + i) ## create a new Julia evaluator with a port number equal to mybaseport + i (id of the simulation)
+  #   ind = names(myinds)[i] 
+  #   mystochmodel = juliaEval("eval(parse(%s))", stochmodel_string, .get = F, evaluator = myev)
+  #   #tic()
+  #   simJuliaJ = juliaCall("stochasticsimulation", mystochmodel, insilicopopulation$individualsList[[ind]]$QTLeffects, insilicopopulation$individualsList[[ind]]$InitVar, df2list(insilicosystem$genes), simtime, modelname = ind, ntrials = ntrialsPerInd, nepochs = nepochs, simalgorithm = simalgorithm, evaluator = myev)
+  # 
+  #   simJulia = juliaGet(simJuliaJ, evaluator = myev)
+  #   mycolnames = names(sort(unlist(simJulia@fields$colindex@fields$lookup)))
+  #   res = data.frame(matrix(unlist(simJulia@fields$columns), ncol = length(simJulia@fields$columns), dimnames = list(c(), mycolnames)))
+  #   removeJuliaEvaluator(myev)
+  #   return(res)
+  # }, mc.cores = detectCores()-1)
+  # #names(resTable) = names(insilicopopulation$individualsList)
+  # 
+  # #cat("\nMean running time per simulation: ", mean(runningtime),"seconds. \n")
+  # return(list("resTable" = resTable, "stochmodel" = stochmodel$JuliaObject))
+
 }
 
 

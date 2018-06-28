@@ -15,10 +15,13 @@ insilicosystem = createInSilicoSystem(mysystemargs)
 myindivargs = insilicoindividualargs()
 insilicopopulation = createPopulation(5, insilicosystem, myindivargs)
 
-res = simulateSystemStochastic(insilicosystem, insilicopopulation, simtime = 3600, nepochs = 20, ntrialsPerInd = 1, simalgorithm = "ODM", returnStochModel = F)
+tic()
+res = simulateSystemStochastic(insilicosystem, insilicopopulation, simtime = 100, nepochs = 20, ntrialsPerInd = 1, simalgorithm = "ODM", returnStochModel = F)
+toc()
 
-res = simulateSystemStochasticParallel(insilicosystem, insilicopopulation, simtime = 1, nepochs = 20, ntrialsPerInd = 1, simalgorithm = "ODM", returnStochModel = F)
-
+tic()
+res2 = simulateSystemStochasticParallel(insilicosystem, insilicopopulation, simtime = 100, nepochs = 20, ntrialsPerInd = 1, simalgorithm = "ODM", returnStochModel = F)
+toc()
 
 # resTable = res$resTable
 
@@ -201,11 +204,17 @@ mybaseport = RJulia()$port
 cat("Starting simulations at", format(Sys.time(), usetz = T), "\n")
 
 tic()
-mclapply(1:100, function(i){
+test = mclapply(1:20, function(i){
   myev = newJuliaEvaluator(port = mybaseport + i) ## create a new Julia evaluator with a port number equal to mybaseport + i (id of the simulation)
   sleeprand = sample(1:50, 1)
+  #print(paste0("Port ", mybaseport+i," sleeping ", sleeprand, " seconds\n"))
+  juliaCommand("println(\"port %s sleeping for %s seconds\")", mybaseport + i, sleeprand, evaluator = myev)
   juliaCommand("sleep(%s)", sleeprand, evaluator = myev)
+  juliaCommand("println(\"port %s done\")", mybaseport + i, evaluator = myev)
+  #print(paste0("Port ", mybaseport+i," done!"))
   removeJuliaEvaluator(myev)
   return(sleeprand)
 }, mc.cores = detectCores()-1)
 toc()
+
+
