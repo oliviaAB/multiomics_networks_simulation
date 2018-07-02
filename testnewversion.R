@@ -23,9 +23,6 @@ tic()
 res2 = simulateSystemStochasticParallel(insilicosystem, insilicopopulation, simtime = 0.1, nepochs = 20, ntrialsPerInd = 1, simalgorithm = "ODM", returnStochModel = F)
 toc()
 
-tic()
-res3 = simulateSystemStochasticParallel2(insilicosystem, insilicopopulation, simtime = 0.1, nepochs = 20, ntrialsPerInd = 1, simalgorithm = "ODM", returnStochModel = F)
-toc()
 
 sapply(1:length(insilicopopulation$individualsList), function(i){identical(res$resTable[[i]][1,], res2[[i]][1,])})
 

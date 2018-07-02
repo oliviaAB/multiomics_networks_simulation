@@ -1067,7 +1067,7 @@ simulateSystemStochastic = function(insilicosystem, insilicopopulation, simtime,
   
   ## Set a progress bar
   cat("Starting simulations at", format(Sys.time(), usetz = T), "\n")
-  progress = txtProgressBar(min = 0, max = length(insilicopopulation$individualsList)*ntrialsPerInd, style = 3)
+  progress = txtProgressBar(min = 0, max = length(insilicopopulation$individualsList), style = 3)
   resTable = vector("list", length(insilicopopulation$individualsList))
   names(resTable) = names(insilicopopulation$individualsList)
   
@@ -1187,12 +1187,12 @@ simulateSystemStochasticParallel = function(insilicosystem, insilicopopulation, 
     return(list("myev" = myev, "mystochmodelvar" = mystochmodel@.Data)) ## return the Julia evaluator ID and the name on the Julia process of the stochmodel object
   }
   
-  stopJuliaevs = function(myinfocore){
-    removeJuliaEvaluator(myinfocore$myev) ## terminate the corresponding Julia evaluator
-  }
+  # stopJuliaevs = function(myinfocore){
+  #   removeJuliaEvaluator(myinfocore$myev) ## terminate the corresponding Julia evaluator
+  # }
   
   myfunction = function(i, infocores, individualsList, nod, simtime, ntrialsPerInd, nepochs, simalgorithm){
-    myinfocore = infocores[[i - 3*(i-1)%/%3]] ## get the infos of the corresponding cluster node
+    myinfocore = infocores[[i - no_cores*(i-1)%/%no_cores]] ## get the infos of the corresponding cluster node
     myev = myinfocore$myev ## get the Julia evaluator corresponding to the current cluster node
     mystochmodel = juliaEval(paste0(myinfocore$mystochmodel), .get = F) ## get a proxy object corresponding to the stochmodel object on the Julia process using the variable name
     ind = names(individualsList)[i]
@@ -1201,6 +1201,10 @@ simulateSystemStochasticParallel = function(insilicosystem, insilicopopulation, 
     
     mycolnames = names(sort(unlist(simJulia@fields$colindex@fields$lookup)))
     res = data.frame(matrix(unlist(simJulia@fields$columns), ncol = length(simJulia@fields$columns), dimnames = list(c(), mycolnames)))
+    
+    if(i %%no_cores == 1){
+      setTxtProgressBar(progress, min(i + (no_cores-1), maxprogress))
+    }
     
     #removeJuliaEvaluator(myev, verbose = F)
     return(res)
@@ -1213,16 +1217,22 @@ simulateSystemStochasticParallel = function(insilicosystem, insilicopopulation, 
   clusterExport(mycluster, "removeJuliaEvaluator")
   clusterExport(mycluster, "callJuliastochasticsimulation")
   clusterExport(mycluster, "stochmodel_string", envir = environment())
+  clusterExport(mycluster, "no_cores", envir = environment())
   
   cat("\nStarting Julia evaluators on each cluster node ... \n")
   infocores = parallel::clusterApply(mycluster, portList, startJuliaevs, stochmodel_string = stochmodel_string)
   cat("Done.\n")
   
   cat("\nStarting simulations at", format(Sys.time(), usetz = T), "\n")
+  cat("Starting simulations at", format(Sys.time(), usetz = T), "\n")
+  maxprogress = length(insilicopopulation$individualsList)
+  progress = txtProgressBar(min = 0, max = maxprogress, style = 3)
+  clusterExport(mycluster, "progress", envir = environment())
+  clusterExport(mycluster, "maxprogress", envir = environment())
   startsim = tic()
   resTable = parallel::clusterApply(mycluster, 1:length(insilicopopulation$individualsList), myfunction, infocores = infocores, individualsList = insilicopopulation$individualsList, nod = df2list(insilicosystem$genes), simtime, ntrialsPerInd, nepochs, simalgorithm)
-  stopsim = toc()$toc
-  cat("Running time of parallel simulations: ", stopsim - startsim, "seconds\n")
+  stopsim = toc(quiet = T)$toc
+  cat("\nRunning time of parallel simulations: ", stopsim - startsim, "seconds\n")
 
   ## apparently no need to close the Julia evaluators
   #parallel::clusterApply(mycluster, infocores, stopJuliaevs)
