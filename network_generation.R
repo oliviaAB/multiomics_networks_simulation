@@ -267,7 +267,7 @@ insilicosystemargs = function( ## ----
                        TC.NC.twonodesloop = FALSE, ## Are 2-nodes loops authorised in the transcription network with noncoding regulators?
                        TCbindingrate_samplingfct = function(x){ runif(x, 0.001, 0.01) }, ## Function from which the binding rate of regulators on target are sampled (input x is the required sample size)
                        TCunbindingrate_samplingfct = function(x){ runif(x, 0.001, 0.01) }, ## Function from which the unbinding rate of regulators from target are sampled (input x is the required sample size)
-                       TCfoldchange_samplingfct = function(x){ sample(2:30, x, replace = T)  }, ## Function from which the fold change induced by a bound regulator are sampled (input x is the required sample size)
+                       TCfoldchange_samplingfct = function(x){ rtruncnorm(x, a = 1, mean = 3, sd = 10) }, ## Function from which the fold change induced by a bound regulator are sampled (input x is the required sample size)
                        #### TL reg. network properties
                        TL.PC.outdeg.distr = "powerlaw", ## Form of the distribution of the number of targets of translation factors (can be either "powerlaw" or "exponential")
                        TL.NC.outdeg.distr = "powerlaw", ## Form of the the distribution of the number of targets of noncoding RNAs regulating translation (can be either "powerlaw" or "exponential")
@@ -528,7 +528,7 @@ createVariants = function(genes, indargs){
   
 }
 
-createIndividual = function(variantsList, indargs){
+createIndividual = function(variantsList, indargs, sameInit = F){
 
   ## -------------------------- ##
   ## CREATE THE QTLeffects list ##
@@ -561,9 +561,16 @@ createIndividual = function(variantsList, indargs){
   InitVar = vector("list", indargs$ploidy)
   names(InitVar) = indargs$gcnList
   
-  for(gcn in indargs$gcnList){
-    InitVar[[gcn]] = list("R" = indargs$initvar_samplingfct(G),
-                          "P" = indargs$initvar_samplingfct(G))
+  if(sameInit){ ## if sameInit = T, we want the initial abundance of each molecule to be equal to the default value (no variation between individuals)
+    for(gcn in indargs$gcnList){
+      InitVar[[gcn]] = list("R" = rep(1.0, G),
+                            "P" = rep(1.0, G))
+    }
+  }else{
+    for(gcn in indargs$gcnList){
+      InitVar[[gcn]] = list("R" = indargs$initvar_samplingfct(G),
+                            "P" = indargs$initvar_samplingfct(G))
+    }
   }
   
   value = list("QTLeffects" = QTLeffects, "haplotype" = individualvariants, "InitVar" = InitVar)
@@ -572,7 +579,7 @@ createIndividual = function(variantsList, indargs){
   return(value)
 }
 
-createPopulation = function(nind, insilicosystem, indargs){
+createPopulation = function(nind, insilicosystem, indargs, sameInit = F){
   
   genvariants = createVariants(insilicosystem$genes, indargs)
   indnames = sapply(1:nind, function(x){paste0("Ind", x)})
@@ -580,12 +587,13 @@ createPopulation = function(nind, insilicosystem, indargs){
   names(individualsList) = indnames
   
   for(i in indnames){
-    individualsList[[i]] = createIndividual(genvariants, indargs)
+    individualsList[[i]] = createIndividual(genvariants, indargs, sameInit = sameInit)
   }
   
   value = list("GenesVariants" = genvariants, "individualsList" = individualsList, "indargs" = indargs)
   
 }
+
 
 # ------------------------------------------------------------------------------------------------------------ #
 #                                     GENERATE GENES FOR IN SILICO SYSTEM                                      #
@@ -1088,87 +1096,6 @@ simulateSystemStochastic = function(insilicosystem, insilicopopulation, simtime,
   return(list("resTable" = resTable, "runningtime" = runningtime, "stochmodel" = stochmodel$JuliaObject))
 }
 
-##  !!! WARNING !!!    NOT WORKING FOR HIGH NUMBER OF INDIVIDUALS
-# simulateSystemStochasticParallel = function(insilicosystem, insilicopopulation, simtime, nepochs = -1, ntrialsPerInd = 1, simalgorithm = "SSA", returnStochModel = F, no_cores = parallel::detectCores()-1, ev = RJulia()){
-#   
-#   cat("\n")
-#   stochmodel = createStochSystem(insilicosystem, insilicopopulation$indargs, returnList = F, ev = ev)
-#   cat("\n")
-#   
-#   stochmodel_string = juliaEval("string(%s)", stochmodel$JuliaObject, evaluator = ev)
-#   
-#   #myindsList = 1:length(insilicopopulation$individualsList)
-#   #names(myindsList) = names(insilicopopulation$individualsList)
-#   
-#   mybaseport = ev$port
-#   portList = sapply(1:no_cores, sum, mybaseport)
-#   
-#   myfunction = function(i, portList, individualsList, nod, simtime, ntrialsPerInd, nepochs, simalgorithm, stochmodel_string){
-# 
-#     myev = newJuliaEvaluator(port = portList[i - 3*(i-1)%/%3])
-#     ind = names(individualsList)[i]
-#     
-#     mystochmodel = juliaEval("eval(parse(%s))", stochmodel_string, .get = F, evaluator = myev)
-# 
-#     simJulia = callJuliastochasticsimulation(mystochmodel, individualsList[[ind]]$QTLeffects, individualsList[[ind]]$InitVar, nod, simtime, modelname = ind, ntrials = ntrialsPerInd, nepochs = nepochs, simalgorithm = simalgorithm, evaluator = myev)
-#     
-#     mycolnames = names(sort(unlist(simJulia@fields$colindex@fields$lookup)))
-#     res = data.frame(matrix(unlist(simJulia@fields$columns), ncol = length(simJulia@fields$columns), dimnames = list(c(), mycolnames)))
-# 
-#     removeJuliaEvaluator(myev, verbose = F)
-#     return(res)
-#   }
-#   
-#   mycluster = parallel::makeCluster(no_cores, outfile = "")
-#   
-#   clusterEvalQ(mycluster, library(XRJulia))
-#   clusterExport(mycluster, "newJuliaEvaluator")
-#   clusterExport(mycluster, "removeJuliaEvaluator")
-#   clusterExport(mycluster, "callJuliastochasticsimulation")
-#   
-#   startsim = tic()
-#   test = parallel::clusterApply(mycluster, 1:length(insilicopopulation$individualsList), myfunction, portList = portList, individualsList = insilicopopulation$individualsList, nod = df2list(insilicosystem$genes), simtime, ntrialsPerInd, nepochs, simalgorithm, stochmodel_string)
-#   stopsim = toc()$toc
-#   cat("Running time of parallel simulations: ", stopsim - startsim, "seconds\n")
-#   
-#   stopCluster(mycluster)
-#   
-#   return(test)
-#   # cat("\n")
-#   # stochmodel = createStochSystem(insilicosystem, insilicopopulation$indargs, returnList = returnStochModel, ev = ev)
-#   # stochmodel_string = juliaEval("string(%s)", stochmodel$JuliaObject, evaluator = ev)
-#   # cat("\n")
-#   # 
-#   # 
-#   # myinds = 1:length(insilicopopulation$individualsList)
-#   # names(myinds) = names(insilicopopulation$individualsList)
-#   # 
-#   # mybaseport = ev$port
-#   # 
-#   # cat("Starting simulations at", format(Sys.time(), usetz = T), "\n")
-#   # 
-#   # resTable = mclapply(myinds, function(i){
-#   # 
-#   #   myev = newJuliaEvaluator(port = mybaseport + i) ## create a new Julia evaluator with a port number equal to mybaseport + i (id of the simulation)
-#   #   ind = names(myinds)[i] 
-#   #   mystochmodel = juliaEval("eval(parse(%s))", stochmodel_string, .get = F, evaluator = myev)
-#   #   #tic()
-#   #   simJuliaJ = juliaCall("stochasticsimulation", mystochmodel, insilicopopulation$individualsList[[ind]]$QTLeffects, insilicopopulation$individualsList[[ind]]$InitVar, df2list(insilicosystem$genes), simtime, modelname = ind, ntrials = ntrialsPerInd, nepochs = nepochs, simalgorithm = simalgorithm, evaluator = myev)
-#   # 
-#   #   simJulia = juliaGet(simJuliaJ, evaluator = myev)
-#   #   mycolnames = names(sort(unlist(simJulia@fields$colindex@fields$lookup)))
-#   #   res = data.frame(matrix(unlist(simJulia@fields$columns), ncol = length(simJulia@fields$columns), dimnames = list(c(), mycolnames)))
-#   #   removeJuliaEvaluator(myev)
-#   #   return(res)
-#   # }, mc.cores = detectCores()-1)
-#   # #names(resTable) = names(insilicopopulation$individualsList)
-#   # 
-#   # #cat("\nMean running time per simulation: ", mean(runningtime),"seconds. \n")
-#   # return(list("resTable" = resTable, "stochmodel" = stochmodel$JuliaObject))
-# 
-# }
-
-
 simulateSystemStochasticParallel = function(insilicosystem, insilicopopulation, simtime, nepochs = -1, ntrialsPerInd = 1, simalgorithm = "SSA", returnStochModel = F, no_cores = parallel::detectCores()-1, ev = RJulia()){
   
   cat("\n")
@@ -1224,13 +1151,13 @@ simulateSystemStochasticParallel = function(insilicosystem, insilicopopulation, 
   cat("Done.\n")
   
   cat("\nStarting simulations at", format(Sys.time(), usetz = T), "\n")
-  cat("Starting simulations at", format(Sys.time(), usetz = T), "\n")
   maxprogress = length(insilicopopulation$individualsList)
   progress = txtProgressBar(min = 0, max = maxprogress, style = 3)
   clusterExport(mycluster, "progress", envir = environment())
   clusterExport(mycluster, "maxprogress", envir = environment())
   startsim = tic()
   resTable = parallel::clusterApply(mycluster, 1:length(insilicopopulation$individualsList), myfunction, infocores = infocores, individualsList = insilicopopulation$individualsList, nod = df2list(insilicosystem$genes), simtime, ntrialsPerInd, nepochs, simalgorithm)
+  names(resTable) = names(insilicopopulation$individualsList)
   stopsim = toc(quiet = T)$toc
   cat("\nRunning time of parallel simulations: ", stopsim - startsim, "seconds\n")
 
@@ -1242,6 +1169,22 @@ simulateSystemStochasticParallel = function(insilicosystem, insilicopopulation, 
   return(resTable)
 
 }
+
+mergeAllelesAbundance = function(resTable_ind){
+  mergedresTable = resTable_ind[, c("time", "trial")]
+  mols = setdiff(colnames(resTable_ind), c("time", "trial"))
+  mergedmols = sapply(mols, function(x){sub("GCN[[:digit:]]+", "", x)})
+  mergedmols = sapply(mergedmols, function(x){sub("m", "", x)}) ## the modified form of a protein will be included in the counts for the abundance of the protein
+  
+  for(i in unique(mergedmols)){
+    mergedresTable = cbind(mergedresTable, rowSums(resTable_ind[, names(mergedmols)[mergedmols == i]]))
+  }
+  colnames(mergedresTable) = c("time", "trial", unique(mergedmols))
+ 
+  return(mergedresTable)
+}
+
+
 
 # ############################################################################################################################
 #                                                 VISUALISATION

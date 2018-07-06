@@ -410,7 +410,8 @@ function createbindingpromreactions(edg, exprstep, promPrefix, nod, functform, c
       push!(inicond, "1")
     else
       #push!(inicond, :(($(nod["TCrate"][tarid]/nod["RDrate"][tarid])*QTLeffects[$(gcn)]["qtlTCrate"][$(tarid)]/QTLeffects[$(gcn)]["qtlRDrate"][$(tarid)])*InitVar[$(gcn)]["R"][$(tarid)]))
-        push!(inicond, """($(nod["TCrate"][tarid]/nod["RDrate"][tarid])*QTLeffects["$(gcn)"]["qtlTCrate"][$(tarid)]/QTLeffects["$(gcn)"]["qtlRDrate"][$(tarid)])*InitVar["$(gcn)"]["R"][$(tarid)]""")
+        #push!(inicond, """($(nod["TCrate"][tarid]/nod["RDrate"][tarid])*QTLeffects["$(gcn)"]["qtlTCrate"][$(tarid)]/QTLeffects["$(gcn)"]["qtlRDrate"][$(tarid)])*InitVar["$(gcn)"]["R"][$(tarid)]""")
+        push!(inicond, """$(nod["TCrate"][tarid]/nod["RDrate"][tarid])*InitVar["$(gcn)"]["R"][$(tarid)]""")
     end    
 
     for gcnreg in gcnList
@@ -464,7 +465,8 @@ function createbindingpromreactions(edg, exprstep, promPrefix, nod, functform, c
       push!(inicond, "1")
     else
       #push!(inicond, :(($(nod["TCrate"][tarid]/nod["RDrate"][tarid])*QTLeffects[$(gcn)]["qtlTCrate"][$(tarid)]/QTLeffects[$(gcn)]["qtlRDrate"][$(tarid)])*InitVar[$(gcn)]["R"][$(tarid)]))
-      push!(inicond, """($(nod["TCrate"][tarid]/nod["RDrate"][tarid])*QTLeffects["$(gcn)"]["qtlTCrate"][$(tarid)]/QTLeffects["$(gcn)"]["qtlRDrate"][$(tarid)])*InitVar["$(gcn)"]["R"][$(tarid)]""")
+      #push!(inicond, """($(nod["TCrate"][tarid]/nod["RDrate"][tarid])*QTLeffects["$(gcn)"]["qtlTCrate"][$(tarid)]/QTLeffects["$(gcn)"]["qtlRDrate"][$(tarid)])*InitVar["$(gcn)"]["R"][$(tarid)]""")
+      push!(inicond, """$(nod["TCrate"][tarid]/nod["RDrate"][tarid])*InitVar["$(gcn)"]["R"][$(tarid)]""")
     end 
 
     for t in 1:size(complexvariants)[1]
@@ -503,6 +505,11 @@ end
 
 function generateReactionList(nod, edgTCRN, edgTLRN, edgRDRN, edgPDRN, edgPTMRN, complexes, complexeskinetics, complexsize, gcnList)
   
+    ## ensures that gcnList is a vector (not true if there is only one allele for each gene)
+    if typeof(gcnList) == String
+      gcnList = [gcnList]
+    end
+
     ## Output of the function
     species = []
     initialconditions = []
@@ -566,7 +573,9 @@ function generateReactionList(nod, edgTCRN, edgTLRN, edgRDRN, edgPDRN, edgPTMRN,
             RNAform = ["R"*gname]
             push!(species, "R"*gname)
             #push!(initialconditions, :(($(nod["TCrate"][g]/nod["RDrate"][g])*QTLeffects[$(gcn)]["qtlTCrate"][$(g)]/QTLeffects[$(gcn)]["qtlRDrate"][$(g)])*InitVar[$(gcn)]["R"][$(g)]))
-            push!(initialconditions, """($(nod["TCrate"][g]/nod["RDrate"][g])*QTLeffects["$(gcn)"]["qtlTCrate"][$(g)]/QTLeffects["$(gcn)"]["qtlRDrate"][$(g)])*InitVar["$(gcn)"]["R"][$(g)]""")
+            #push!(initialconditions, """($(nod["TCrate"][g]/nod["RDrate"][g])*QTLeffects["$(gcn)"]["qtlTCrate"][$(g)]/QTLeffects["$(gcn)"]["qtlRDrate"][$(g)])*InitVar["$(gcn)"]["R"][$(g)]""")
+            push!(initialconditions, """$(nod["TCrate"][g]/nod["RDrate"][g])*InitVar["$(gcn)"]["R"][$(g)]""")
+
 
             transcriptforms = ["R"*gname] ## for RNA decay
         else
@@ -632,7 +641,8 @@ function generateReactionList(nod, edgTCRN, edgTLRN, edgRDRN, edgPDRN, edgPTMRN,
         push!(species, "P"*gname)
         ## Initial abundance of a protein = TCrate/RDrate * TLrate/PDrate (given the QTL effects as well)
         #push!(initialconditions, :(($(nod["TCrate"][g]*nod["TLrate"][g]/(nod["RDrate"][g]*nod["PDrate"][g]))*QTLeffects[$(gcn)]["qtlTCrate"][$(g)]*QTLeffects[$(gcn)]["qtlTLrate"][$(g)]/(QTLeffects[$(gcn)]["qtlRDrate"][$(g)]*QTLeffects[$(gcn)]["qtlPDrate"][$(g)]))*InitVar[$(gcn)]["P"][$(g)]))
-        push!(initialconditions, """($(nod["TCrate"][g]*nod["TLrate"][g]/(nod["RDrate"][g]*nod["PDrate"][g]))*QTLeffects["$(gcn)"]["qtlTCrate"][$(g)]*QTLeffects["$(gcn)"]["qtlTLrate"][$(g)]/(QTLeffects["$(gcn)"]["qtlRDrate"][$(g)]*QTLeffects["$(gcn)"]["qtlPDrate"][$(g)]))*InitVar["$(gcn)"]["P"][$(g)]""")
+        #push!(initialconditions, """($(nod["TCrate"][g]*nod["TLrate"][g]/(nod["RDrate"][g]*nod["PDrate"][g]))*QTLeffects["$(gcn)"]["qtlTCrate"][$(g)]*QTLeffects["$(gcn)"]["qtlTLrate"][$(g)]/(QTLeffects["$(gcn)"]["qtlRDrate"][$(g)]*QTLeffects["$(gcn)"]["qtlPDrate"][$(g)]))*InitVar["$(gcn)"]["P"][$(g)]""")
+        push!(initialconditions, """($(nod["TCrate"][g]*nod["TLrate"][g]/(nod["RDrate"][g]*nod["PDrate"][g])))*InitVar["$(gcn)"]["P"][$(g)]""")
 
 
         if length(TLreg) == 0
@@ -768,6 +778,8 @@ function generateReactionList(nod, edgTCRN, edgTLRN, edgRDRN, edgPDRN, edgPTMRN,
         end
     end
 
+
+
     return Dict("species" => species, "initialconditions" => initialconditions, "reactions" => reactions, "reactionsnames" => reactionsnames, "propensities" => propensities, "TCproms" => promallTC, "TLproms" => promallTL)
 end
 
@@ -881,6 +893,15 @@ function stochasticsimulation(stochmodel, QTLeffects, InitVar, nod, simtime; mod
             end
 
         end
+
+#=
+        for i in collect(keys(model.reaction_list))
+          print(model.reaction_list[i])
+          print("\t")
+          print(model.reaction_list[i].rate, "\n")
+        end
+
+=#
 
         #println("JULIA> Running simulation ...")
         #tic()

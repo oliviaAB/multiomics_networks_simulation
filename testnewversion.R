@@ -1,11 +1,15 @@
+
+####################################################################################################################################################3
+####################################################################################################################################################
+
 setwd("~/winData/multiomics_networks_simulation")
 #setwd("~/GitHub/multiomics_networks_simulation")
 
 source("network_generation.R")
 
 #anotherev = newJuliaEvaluator()
-mysystemargs = insilicosystemargs(G = 10, RD.NC.outdeg.exp = 3, PC.PTM.p = 0.5)
-insilicosystem = createInSilicoSystem(mysystemargs)
+mysystemargs = insilicosystemargs(G = 3, RD.NC.outdeg.exp = 3, PC.PTM.p = 0.5)
+insilicosystem = createInSilicoSystem(mysystemargs, empty = T)
 
 
 # plotGlobalSystem(insilicosystem, show = T)
@@ -13,14 +17,14 @@ insilicosystem = createInSilicoSystem(mysystemargs)
 # plotRegulationSystem(insilicosystem, show = T)
 
 myindivargs = insilicoindividualargs()
-insilicopopulation = createPopulation(6, insilicosystem, myindivargs)
+insilicopopulation = createPopulation(15, insilicosystem, myindivargs)
 
 tic()
-res = simulateSystemStochastic(insilicosystem, insilicopopulation, simtime = 0.1, nepochs = 20, ntrialsPerInd = 1, simalgorithm = "ODM", returnStochModel = F)
+res = simulateSystemStochastic(insilicosystem, insilicopopulation, simtime = 3600, nepochs = 20, ntrialsPerInd = 1, simalgorithm = "ODM", returnStochModel = F)
 toc()
 
 tic()
-res2 = simulateSystemStochasticParallel(insilicosystem, insilicopopulation, simtime = 0.1, nepochs = 20, ntrialsPerInd = 1, simalgorithm = "ODM", returnStochModel = F)
+res2 = simulateSystemStochasticParallel(insilicosystem, insilicopopulation, simtime = 1, nepochs = 20, ntrialsPerInd = 1, simalgorithm = "ODM", returnStochModel = F)
 toc()
 
 
@@ -28,7 +32,7 @@ sapply(1:length(insilicopopulation$individualsList), function(i){identical(res$r
 
 # resTable = res$resTable
 
-plotExpressionProfiles(insilicosystem, insilicopopulation, res$resTable)
+plotExpressionProfiles(insilicosystem, insilicopopulation, res2)
 
 
 myfunc = function(i){
