@@ -67,13 +67,41 @@ getlasttimepoint = function(res){
 # ------------------------------------------------------------------------------------------------------------------------------------ #
 # ------------------------------------------------------------------------------------------------------------------------------------ #
 
+# ------------------------------------------------------------------------------------- #
+##' 0: Test the default sampling distribution for the kinetic parameters of genes
+##' compare values to Schwanhausser, 2013 (in terms of steady-state concentration of
+##' RNAs and proteins given their synthesis rate and half-life)
+# ------------------------------------------------------------------------------------- #
+#----
+
+
+mysystemargs = insilicosystemargs(G = 1, PC.p = 1)
+
+ng = 10000
+kins = data.frame("TCrate" = mysystemargs$basal_transcription_rate_samplingfct(ng),
+                  "TLrate" = mysystemargs$basal_translation_rate_samplingfct(ng),
+                  "RDrate" = 1/mysystemargs$basal_RNAlifetime_samplingfct(ng),
+                  "PDrate" = 1/mysystemargs$basal_protlifetime_samplingfct(ng))
+
+
+kins$RNAss = sapply(1:ng, function(x){kins$TCrate[x]/kins$RDrate[x]})
+kins$Protss = sapply(1:ng, function(x){(kins$TCrate[x]/kins$RDrate[x]) * (kins$TLrate[x]/kins$PDrate[x])})
+
+ggplot(kins, aes(x = RNAss)) + geom_histogram() + scale_x_log10()
+ggplot(kins, aes(x = Protss)) + geom_histogram() + scale_x_log10()
+apply(kins, 2, median)
+
+##' Comment: we find a lognormal distribution of steady-state RNA/protein levels,
+##' in accordance to the article. We also find median values similar to the one 
+##' presented in the article
+
 
 # ------------------------------------------------------------------------------------- #
 ## 1: Create an system with only 1 protein-coding gene, no regulation
 ##    In the population each individual has only 1 QTL value !=1 to show the impact
 ##    of the different QTLs on the expression profiles
 # ------------------------------------------------------------------------------------- #
-
+#----
 
 mysystemargs = insilicosystemargs(G = 1, PC.p = 1)
 insilicosystem = createInSilicoSystem(mysystemargs, empty = T)
@@ -97,10 +125,13 @@ ggsave("/media/sf_data/Protplot.png", plot = molsplot[[2]])
 
 save(insilicosystem, insilicopopulation, file = "/home/oangelin/Documents/plots05_07_2018.RData")
 
+
+#----
 # ------------------------------------------------------------------------------------- #
 ## 2: Create an system with only 1 protein-coding gene, no regulation, ploidy of 2
 ##    2 alleles: 1 with default transcription rate, second with 0.5 transcription rate
 # ------------------------------------------------------------------------------------- #
+# ----
 
 mysystemargs = insilicosystemargs(G = 1, PC.p = 1)
 insilicosystem = createInSilicoSystem(mysystemargs, empty = T)
@@ -151,13 +182,13 @@ ggsave("/media/sf_data/Protplot2_hist.png", plot = molsplot.hist[[2]])
 
 save(insilicosystem, insilicopopulation, file = "/home/oangelin/Documents/plots2_05_07_2018.RData")
 
-
+# ----
 # ---------------------------------------------------------------------------------------- #
 #' 3: One protein-coding gene, 5 variants: one orginal and 4 mutated version each affecting
 #' a different QTL
-#' Diploid individuals, 25 individuals (each possible combinations of the variants)
+#' Diploid individuals, 15 individuals (each possible combinations of the variants)
 # ---------------------------------------------------------------------------------------- #
-
+# ----
 # source("network_generation.R")
 
 mysystemargs = insilicosystemargs(G = 1, PC.p = 1)
@@ -243,8 +274,8 @@ molsList = lapply(mols, function(m){
     quantile1Trials = sapply(1:nrow(timexTrial), function(x){quantile(timexTrial[x, ], probs = 0.25)})
     quantile3Trials = sapply(1:nrow(timexTrial), function(x){quantile(timexTrial[x, ], probs = 0.975)})
     molsummary = rbind(molsummary, data.frame("time" = resInd$time[1:nrow(timexTrial)], "ind" = rep(ind, nrow(timexTrial)), "mean" = meanTrials, "quantile1" = quantile1Trials, "quantile3" = quantile3Trials, "GCN1" = rep(variantseffects[allallelecomb[ind, 1]], nrow(timexTrial)), "GCN2" = rep(variantseffects[allallelecomb[ind, 2]], nrow(timexTrial))))
-    levels(molsummary$GCN1) = variantseffects = c("original", "reduced\nTC rate", "reduced\nTL rate", "reduced\nRD rate", "reduced\nPD rate")
-    levels(molsummary$GCN2) = variantseffects = c("original", "reduced\nTC rate", "reduced\nTL rate", "reduced\nRD rate", "reduced\nPD rate")
+    levels(molsummary$GCN1) = c("original", "reduced\nTC rate", "reduced\nTL rate", "reduced\nRD rate", "reduced\nPD rate")
+    levels(molsummary$GCN2) = c("original", "reduced\nTC rate", "reduced\nTL rate", "reduced\nRD rate", "reduced\nPD rate")
   }
   return(molsummary)
 })
@@ -252,23 +283,67 @@ names(molsList) = mols
 
 mylinetype = c("mean" = "solid", "quantile1" = "longdash", "quantile3" = "longdash")
 
+ytitlenames = c("RNA", "Protein")
+names(ytitlenames) = mols
+
 molsplot = lapply(mols, function(m){
   toplot = melt(molsList[[m]], id.vars = c("time", "ind", "GCN1", "GCN2"), measure.vars = c("mean", "quantile1", "quantile3"))
   myplot = ggplot() + geom_line(data = toplot, aes(x = time, y = value, color = ind, linetype = variable)) +
     geom_ribbon(data = molsList[[m]], aes(x = time, ymin=quantile1, ymax=quantile3, fill = ind), alpha=0.3) +
     scale_linetype_manual(values = mylinetype, guide = F) + facet_grid(GCN1 ~ GCN2) +
-    ggtitle(m) + ylab("Molecule abundance")
+    ggtitle(m) + ylab(paste0(ytitlenames[m], " abundance")) +
+    theme(axis.text.x = element_text(angle = 90, hjust = 1)) 
   print(myplot)
   return(myplot)
 })
 
+ggsave("/media/sf_data/ex3_RNA.png", plot = molsplot[[1]])
+ggsave("/media/sf_data/ex3_prot.png", plot = molsplot[[2]])
 
+
+
+# ---------------
+# plot histograms
+# ---------------
+
+molsList.hist = getlasttimepoint(res)
+mols = setdiff(colnames(res[[1]]), c("time", "trial"))
+variantseffects = c("original", "reduced\nTC rate", "reduced\nTL rate", "reduced\nRD rate", "reduced\nPD rate")
+variantseffects = factor(variantseffects, levels = variantseffects)
+allallelecomb = expand.grid("all1" = 1:5, "all2" = 1:5)
+allallelecomb = t(apply(allallelecomb, 1, sort))
+allallelecomb = allallelecomb[!duplicated(allallelecomb), ]
+rownames(allallelecomb) = sapply(1:nrow(allallelecomb), function(x){paste0("Ind", x)})
+
+
+molsplot = lapply(mols, function(m){ #rep(variantseffects[allallelecomb[ind, 1]], nrow(timexTrial))
+  toplot = melt(molsList.hist[[m]])
+  toplot = cbind(toplot, data.frame("GCN1" = sapply(toplot$Var2, function(x){variantseffects[allallelecomb[as.character(x), 1]]}), "GCN2" = sapply(toplot$Var2, function(x){variantseffects[allallelecomb[as.character(x), 2]]}), stringsAsFactors = F))
+  #levels(toplot$GCN1) = c("original", "reduced\nTC rate", "reduced\nTL rate", "reduced\nRD rate", "reduced\nPD rate")
+  #levels(toplot$GCN2) = c("original", "reduced\nTC rate", "reduced\nTL rate", "reduced\nRD rate", "reduced\nPD rate")
+  mybinwidth = min(sapply(levels(toplot$Var2), function(x){KernSmooth::dpih(toplot[toplot$Var2 == x, "value"])}))
+  myplot = ggplot() + 
+    geom_hline(data = data.frame("yintercept" = mean(toplot[toplot$Var2 == "Ind1", "value"])), aes(yintercept = yintercept), color = "red", linetype="dashed", size=0.5) + 
+    geom_boxplot(data = toplot, aes(x = "1", y = value, color = Var2)) +
+    facet_grid(GCN1 ~ GCN2) +
+    ggtitle(m) + xlab(paste0(ytitlenames[m], " abundance"))
+  print(myplot)
+  return(myplot)
+})
+
+ggsave("/media/sf_data/ex3_RNA_boxplot.png", plot = molsplot[[1]])
+ggsave("/media/sf_data/ex3_prot_boxplot.png", plot = molsplot[[2]])
+
+
+save(insilicosystem, insilicopopulation, file = "/home/oangelin/Documents/ex3_09_07_2018.RData")
+
+# ----
 # ---------------------------------------------------------------------------------------- #
 #' 4: One protein-coding gene, 2 variants: one orginal and 1 mutated version 
 #' with reduced transcription rate
 #' Tetraploid individuals, 25 individuals (each possible combinations of the variants)
 # ---------------------------------------------------------------------------------------- #
-
+# ----
 
 mysystemargs = insilicosystemargs(G = 1, PC.p = 1)
 insilicosystem = createInSilicoSystem(mysystemargs, empty = T)
@@ -343,15 +418,86 @@ molsList.hist = getlasttimepoint(res)
 
 mols = setdiff(colnames(res[[1]]), c("time", "trial"))
 
+xtitlenames = c("RNA", "Protein")
+names(xtitlenames) = mols
 molsplot.hist = lapply(mols, function(m){
   toplot = melt(molsList.hist[[m]])
   mybinwidth = min(sapply(levels(toplot$Var2), function(x){KernSmooth::dpih(toplot[toplot$Var2 == x, "value"])}))
   mymeans = data.frame("ind" = levels(toplot$Var2), "mean" = sapply(levels(toplot$Var2), function(x){mean(toplot[toplot$Var2 == x, "value"])}))
   myplot = ggplot() + geom_histogram(data = toplot, aes(x = value, fill = Var2), binwidth = mybinwidth, alpha = 0.8, position = "identity") + 
     geom_vline(data = mymeans, aes(xintercept = mean, color = ind), linetype="dashed", size=1) + 
-    scale_color_discrete(guide = F) +
+    scale_color_discrete(guide = F) + xlab(paste0(ytitlenames[m], " abundance")) + ylab("Simulations") + ggtitle(m) + 
+    labs(fill = "Individual")
   ggtitle(m)
   print(myplot)
   return(myplot)
 })
 
+ggsave("/media/sf_data/ex4_RNA.png", plot = molsplot.hist[[1]])
+ggsave("/media/sf_data/ex4_prot.png", plot = molsplot.hist[[2]])
+
+save(insilicosystem, insilicopopulation, file = "/home/oangelin/Documents/ex4_09_07_2018.RData")
+
+# ------------------------------------------------------------------------------------- #
+##'                            5: 2 genes, G1 -> g2
+##'  Individuals: Test every possible mutation of G1 and check their impact on g2
+# ------------------------------------------------------------------------------------- #
+#----
+
+mysystemargs = insilicosystemargs(G = 2, PC.p = 1)
+insilicosystem = createInSilicoSystem(mysystemargs, empty = T)
+
+#### VERSION 1 - G1 RARE
+# ----
+## change the kinetics of gene 1 (regulatory gene)
+insilicosystem$genes[1, "TCrate"] = 0.001
+insilicosystem$genes[1, "RDrate"] = 0.0001
+insilicosystem$genes[1, "TLrate"] = 0.0005
+insilicosystem$genes[1, "PDrate"] = 0.0001
+
+## change the kinetics of gene 2 (regulatory gene)
+insilicosystem$genes[2, "TCrate"] = 0.01
+insilicosystem$genes[2, "RDrate"] = 0.0001
+insilicosystem$genes[2, "TLrate"] = 0.01
+insilicosystem$genes[2, "PDrate"] = 0.00001
+
+
+#### VERSION 2 - G1 MORE ABUNDANT
+# ----
+## change the kinetics of gene 1 (regulatory gene)
+insilicosystem$genes[1, "TCrate"] = 0.01
+insilicosystem$genes[1, "RDrate"] = 0.0001
+insilicosystem$genes[1, "TLrate"] = 0.0005
+insilicosystem$genes[1, "PDrate"] = 0.0001
+
+## change the kinetics of gene 2 (regulatory gene)
+insilicosystem$genes[2, "TCrate"] = 0.01
+insilicosystem$genes[2, "RDrate"] = 0.0001
+insilicosystem$genes[2, "TLrate"] = 0.01
+insilicosystem$genes[2, "PDrate"] = 0.00001
+
+
+insilicosystem = addEdg(insilicosystem, regulator = 1, target = 2, targetreaction = "TC", regsign = "1")
+insilicosystem$mosystem$TCRN.edg[1, "TCbindingrate"] = 0.1
+insilicosystem$mosystem$TCRN.edg[1, "TCunbindingrate"] = 500
+insilicosystem$mosystem$TCRN.edg[1, "TCfoldchange"] = 10
+
+myindivargs = insilicoindividualargs(ploidy = 1, ngenevariants = 1)
+insilicopopulation = createPopulation(7, insilicosystem, myindivargs, sameInit = T)
+
+## Manually change the value of the QTLs for each individual
+qtlvals = c("qtlTCrate", "qtlTLrate", "qtlRDrate", "qtlPDrate", "qtlactivity", "qtlTCregbind")
+qtlgenes = c(1,1,1,1,1,2) ## which gene is affected by the mutation
+
+for(i in 2:7){
+  insilicopopulation$individualsList[[i]]$QTLeffects$GCN1[[qtlvals[i-1]]][qtlgenes[i-1]] = 0.5 ## set the corresponding QTL value to 0.5
+}
+
+res = simulateSystemStochasticParallel(insilicosystem, insilicopopulation, simtime = 10000, nepochs = 20, ntrialsPerInd = 50, simalgorithm = "SSA", returnStochModel = F)
+
+molsplot = plotexpprof(res)
+
+ggsave("/media/sf_data/RNAplot.png", plot = molsplot[[1]])
+ggsave("/media/sf_data/Protplot.png", plot = molsplot[[2]])
+
+save(insilicosystem, insilicopopulation, file = "/home/oangelin/Documents/plots05_07_2018.RData")

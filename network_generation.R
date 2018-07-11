@@ -250,10 +250,14 @@ insilicosystemargs = function( ## ----
                        PTM.PC.pos.p = 0.5, ## PTM.PC.pos.p: probability that the protein regulators transform the original protein into its modified form (as opposed to back transforming the modified protein into its original form)
                        PTM.NC.pos.p = 0.5, ## PTM.NC.pos.p: probability that the noncoding regulators transform the original protein into its modified form (as opposed to back transforming the modified protein into its original form)
                        #### Distribution of the different kinetic parameters of genes 
-                       basal_transcription_rate_samplingfct = function(x){ runif(x, 0.01, 0.1) }, ## Function from which the transcription rates of genes are sampled (input x is the required sample size)
-                       basal_translation_rate_samplingfct = function(x){ runif(x, 0.5, 5) }, ## Function from which the translation rates of genes are sampled (input x is the required sample size)
-                       basal_RNAlifetime_samplingfct = function(x){ sample(60:3600, x, replace = T) }, ## Function from which the transcript lifetimes are sampled (input x is the required sample size)
-                       basal_protlifetime_samplingfct = function(x){ sample(5400:14400, x, replace = T) }, ## Function from which the protein lifetime are sampled (input x is the required sample size)
+                       basal_transcription_rate_samplingfct = function(x){ logval = rnorm(x, mean = 0.5, sd = 0.5); val = 10^logval; return(val/3600) }, ## Function from which the transcription rates of genes are sampled (input x is the required sample size)
+                       #' Values from Schwanhausser et al., 2013: transcription rate distribution log-normal, from 0.1 to 100 mRNA/hour -> we want the transcription rate in seconds
+                       basal_translation_rate_samplingfct = function(x){ logval = rnorm(x, mean = 2.5, sd = 0.8); val = 10^logval; return(val/3600) }, ## Function from which the translation rates of genes are sampled (input x is the required sample size)
+                       #' Values from Schwanhausser et al., 2013: translation rate distribution log-normal, from 0.1 to 10^5 protein/mRNA/hour -> we want the transcription rate in seconds
+                       basal_RNAlifetime_samplingfct = function(x){ logval = rnorm(x, mean = 0, sd = 0.5); val = 10^logval; return(val/3600) }, ## Function from which the transcript lifetimes are sampled (input x is the required sample size)
+                       #' Values from Schwanhausser et al., 2013: RNAs half-life distribution log-normal (chose boundary values to be from 1 min to 100 hours) -> we want the half-life in seconds
+                       basal_protlifetime_samplingfct = function(x){ logval = rnorm(x, mean = 1.75, sd = 0.5); val = 10^logval; return(val/3600) }, ## Function from which the protein lifetime are sampled (input x is the required sample size)
+                       #' Values from Schwanhausser et al., 2013: proteins half-life distribution log-normal (chose boundary values to be from 1 hour to 1000 hours) -> we want the half-life in seconds
                        #### TC reg. network properties
                        TC.PC.outdeg.distr = "powerlaw", ## Form of the distribution of the number of targets of transcription factors (can be either "powerlaw" or "exponential")
                        TC.NC.outdeg.distr = "powerlaw", ## Form of the the distribution of the number of targets of noncoding RNAs regulating transcription (can be either "powerlaw" or "exponential")
@@ -984,6 +988,89 @@ createInSilicoSystem = function(sysargs, empty = F, ev = RJulia()){
   return(value)
 }
 
+addEdg = function(insilicosystem, regulator, target, targetreaction, regsign, kinetics = NULL){
+  
+  if(!(regulator %in% insilicosystem$genes$id)){
+    error("Regulator id does not exist in the system")
+  }
+  
+  if(!(target %in% insilicosystem$genes$id)){
+    error("target id does not exist in the system")
+  }
+  
+  if(!(targetreaction %in% c("TC", "TL", "RD", "PD", "PTM"))){
+    error("target reaction unknown")
+  }
+
+  insilicosystem$mosystem$edg = rbind(insilicosystem$mosystem$edg, data.frame("from" = as.character(regulator), "to" = as.integer(target), "TargetReaction" = targetreaction, "RegSign" = regsign, "RegBy" = insilicosystem$genes[insilicosystem$genes$id == regulator, "coding"], stringsAsFactors = F))
+  
+  if(targetreaction == "TC"){
+    if(is.null(kinetics)){ ## if no values are given for the kinetic parameters
+      myTCbindingrate = insilicosystem$sysargs[["TCbindingrate_samplingfct"]](1)
+      myTCunbindingrate = insilicosystem$sysargs[["TCunbindingrate_samplingfct"]](1)
+      myTCfoldchange = insilicosystem$sysargs[["TCfoldchange_samplingfct"]](1) * (regsign == "1") ## if regsign = "-1" (repression) the fold change is 0
+    }else if(length(setdiff(c("TCbindingrate", "TCunbindingrate", "TCfoldchange"), names(kinetics))) == 0){ ## if values are given for the appropriate kinetic parameters
+      myTCbindingrate = kinetics$TCbindingrate
+      myTCunbindingrate = kinetics$TCunbindingrate
+      myTCfoldchange = kinetics$TCfoldchange
+    }else{ ## if the kinetic vector does not provide values with appropriate kinetic parameter names
+      error("Vector kinetics does not provide the correct parameters: TCbindingrate, TCunbindingrate, TCfoldchange")
+    }
+    insilicosystem$mosystem[["TCRN.edg"]] = rbind(insilicosystem$mosystem[["TCRN.edg"]], data.frame("from" = as.character(regulator), "to" = as.integer(target), "TargetReaction" = targetreaction, "RegSign" = regsign, "TCbindingrate" = myTCbindingrate, "TCunbindingrate" = myTCunbindingrate, "TCfoldchange" = myTCfoldchange, stringsAsFactors = F))
+  }
+  
+  if(targetreaction == "TL"){
+    if(is.null(kinetics)){x ## if no values are given for the kinetic parameters
+      myTLbindingrate = insilicosystem$sysargs[["TLbindingrate_samplingfct"]](1)
+      myTLunbindingrate = insilicosystem$sysargs[["TLunbindingrate_samplingfct"]](1)
+      myTLfoldchange = insilicosystem$sysargs[["TLfoldchange_samplingfct"]](1) * (regsign == "1") ## if regsign = "-1" (repression) the fold change is 0
+    }else if(length(setdiff(c("TLbindingrate", "TLunbindingrate", "TLfoldchange"), names(kinetics))) == 0){ ## if values are given for the appropriate kinetic parameters
+      myTLbindingrate = kinetics$TLbindingrate
+      myTLunbindingrate = kinetics$TLunbindingrate
+      myTLfoldchange = kinetics$TLfoldchange
+    }else{ ## if the kinetic vector does not provide values with appropriate kinetic parameter names
+      error("Vector kinetics does not provide the correct parameters: TLbindingrate, TLunbindingrate, TLfoldchange")
+    }
+    insilicosystem$mosystem[["TLRN.edg"]] = rbind(insilicosystem$mosystem[["TLRN.edg"]], data.frame("from" = as.character(regulator), "to" = as.integer(target), "TargetReaction" = targetreaction, "RegSign" = regsign, "TLbindingrate" = myTLbindingrate, "TLunbindingrate" = myTLunbindingrate, "TLfoldchange" = myTLfoldchange, stringsAsFactors = F))
+  }
+ 
+  if(targetreaction == "RD"){
+    if(is.null(kinetics)){ ## if no values are given for the kinetic parameters
+      myRDbindingrate = insilicosystem$sysargs[["RDbindingrate_samplingfct"]](1)
+    }else if(length(setdiff(c("RDbindingrate"), names(kinetics))) == 0){ ## if values are given for the appropriate kinetic parameters
+      myRDbindingrate = kinetics$RDbindingrate
+    }else{ ## if the kinetic vector does not provide values with appropriate kinetic parameter names
+      error("Vector kinetics does not provide the correct parameters: RDbindingrate")
+    }
+    insilicosystem$mosystem[["RDRN.edg"]] = rbind(insilicosystem$mosystem[["RDRN.edg"]], data.frame("from" = as.character(regulator), "to" = as.integer(target), "TargetReaction" = targetreaction, "RegSign" = regsign, "RDbindingrate" = myRDbindingrate, stringsAsFactors = F))
+  } 
+  
+  if(targetreaction == "PD"){
+    if(is.null(kinetics)){ ## if no values are given for the kinetic parameters
+      myPDbindingrate = insilicosystem$sysargs[["PDbindingrate_samplingfct"]](1)
+    }else if(length(setdiff(c("PDbindingrate"), names(kinetics))) == 0){ ## if values are given for the appropriate kinetic parameters
+      myPDbindingrate = kinetics$PDbindingrate
+    }else{ ## if the kinetic vector does not provide values with appropriate kinetic parameter names
+      error("Vector kinetics does not provide the correct parameters: PDbindingrate")
+    }
+    insilicosystem$mosystem[["PDRN.edg"]] = rbind(insilicosystem$mosystem[["PDRN.edg"]], data.frame("from" = as.character(regulator), "to" = as.integer(target), "TargetReaction" = targetreaction, "RegSign" = regsign, "PDbindingrate" = myPDbindingrate, stringsAsFactors = F))
+  } 
+  
+  
+  if(targetreaction == "PTM"){
+    if(is.null(kinetics)){ ## if no values are given for the kinetic parameters
+      myPTMrate = insilicosystem$sysargs[["PTMrate_samplingfct"]](1)
+    }else if(length(setdiff(c("PTMrate"), names(kinetics))) == 0){ ## if values are given for the appropriate kinetic parameters
+      myPTMrate = kinetics$PTMrate
+    }else{ ## if the kinetic vector does not provide values with appropriate kinetic parameter names
+      error("Vector kinetics does not provide the correct parameters: PTMrate")
+    }
+    insilicosystem$mosystem[["PTMRN.edg"]] = rbind(insilicosystem$mosystem[["PTMRN.edg"]], data.frame("from" = as.character(regulator), "to" = as.integer(target), "TargetReaction" = targetreaction, "RegSign" = regsign, "PTMrate" = myPTMrate, stringsAsFactors = F))
+  } 
+  
+  return(insilicosystem)
+  
+}
 
 # ------------------------------------------------------------------------------------------------------------ #
 #                   GENERATE THE LIST OF SPECIES AND REACTIONS FOR THE STOCHASTIC SIMULATION                   #
