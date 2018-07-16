@@ -254,9 +254,9 @@ insilicosystemargs = function( ## ----
                        #' Values from Schwanhausser et al., 2013: transcription rate distribution log-normal, from 0.1 to 100 mRNA/hour -> we want the transcription rate in seconds
                        basal_translation_rate_samplingfct = function(x){ logval = rnorm(x, mean = 2.5, sd = 0.8); val = 10^logval; return(val/3600) }, ## Function from which the translation rates of genes are sampled (input x is the required sample size)
                        #' Values from Schwanhausser et al., 2013: translation rate distribution log-normal, from 0.1 to 10^5 protein/mRNA/hour -> we want the transcription rate in seconds
-                       basal_RNAlifetime_samplingfct = function(x){ logval = rnorm(x, mean = 0, sd = 0.5); val = 10^logval; return(val/3600) }, ## Function from which the transcript lifetimes are sampled (input x is the required sample size)
+                       basal_RNAlifetime_samplingfct = function(x){ logval = rnorm(x, mean = 0, sd = 0.5); val = 10^logval; return(val*3600) }, ## Function from which the transcript lifetimes are sampled (input x is the required sample size)
                        #' Values from Schwanhausser et al., 2013: RNAs half-life distribution log-normal (chose boundary values to be from 1 min to 100 hours) -> we want the half-life in seconds
-                       basal_protlifetime_samplingfct = function(x){ logval = rnorm(x, mean = 1.75, sd = 0.5); val = 10^logval; return(val/3600) }, ## Function from which the protein lifetime are sampled (input x is the required sample size)
+                       basal_protlifetime_samplingfct = function(x){ logval = rnorm(x, mean = 1.75, sd = 0.5); val = 10^logval; return(val*3600) }, ## Function from which the protein lifetime are sampled (input x is the required sample size)
                        #' Values from Schwanhausser et al., 2013: proteins half-life distribution log-normal (chose boundary values to be from 1 hour to 1000 hours) -> we want the half-life in seconds
                        #### TC reg. network properties
                        TC.PC.outdeg.distr = "powerlaw", ## Form of the distribution of the number of targets of transcription factors (can be either "powerlaw" or "exponential")

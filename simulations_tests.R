@@ -3,7 +3,6 @@ rm(list = ls(all = T))
 #setwd("~/GitHub/multiomics_networks_simulation")
 
 source("network_generation.R")
-library(reshape2)
 
 
 ## TEMPLATE
@@ -19,7 +18,7 @@ plotexpprof = function(res){
       resInd = res[[ind]]
       timexTrial = matrix(resInd[, m], ncol = max(resInd$trial), nrow = length(unique(resInd$time)))
       meanTrials = rowMeans(timexTrial)
-      quantile1Trials = sapply(1:nrow(timexTrial), function(x){quantile(timexTrial[x, ], probs = 0.25)})
+      quantile1Trials = sapply(1:nrow(timexTrial), function(x){quantile(timexTrial[x, ], probs = 0.025)})
       quantile3Trials = sapply(1:nrow(timexTrial), function(x){quantile(timexTrial[x, ], probs = 0.975)})
       #molsummary = rbind(molsummary, data.frame("time" = resInd$time[1:nrow(timexTrial)], "ind" = rep(ind, nrow(timexTrial)), "mol" = rep(m, nrow(timexTrial)), "mean" = meanTrials, "quantile1" = quantile1Trials, "quantile3" = quantile3Trials))
       molsummary = rbind(molsummary, data.frame("time" = resInd$time[1:nrow(timexTrial)], "ind" = rep(ind, nrow(timexTrial)), "mean" = meanTrials, "quantile1" = quantile1Trials, "quantile3" = quantile3Trials))
@@ -95,7 +94,7 @@ apply(kins, 2, median)
 ##' in accordance to the article. We also find median values similar to the one 
 ##' presented in the article
 
-
+# ----
 # ------------------------------------------------------------------------------------- #
 ## 1: Create an system with only 1 protein-coding gene, no regulation
 ##    In the population each individual has only 1 QTL value !=1 to show the impact
@@ -341,7 +340,7 @@ save(insilicosystem, insilicopopulation, file = "/home/oangelin/Documents/ex3_09
 # ---------------------------------------------------------------------------------------- #
 #' 4: One protein-coding gene, 2 variants: one orginal and 1 mutated version 
 #' with reduced transcription rate
-#' Tetraploid individuals, 25 individuals (each possible combinations of the variants)
+#' Tetraploid individuals, 5 individuals (each possible allele dosage)
 # ---------------------------------------------------------------------------------------- #
 # ----
 
@@ -426,7 +425,7 @@ molsplot.hist = lapply(mols, function(m){
   mymeans = data.frame("ind" = levels(toplot$Var2), "mean" = sapply(levels(toplot$Var2), function(x){mean(toplot[toplot$Var2 == x, "value"])}))
   myplot = ggplot() + geom_histogram(data = toplot, aes(x = value, fill = Var2), binwidth = mybinwidth, alpha = 0.8, position = "identity") + 
     geom_vline(data = mymeans, aes(xintercept = mean, color = ind), linetype="dashed", size=1) + 
-    scale_color_discrete(guide = F) + xlab(paste0(ytitlenames[m], " abundance")) + ylab("Simulations") + ggtitle(m) + 
+    scale_color_discrete(guide = F) + xlab(paste0(xtitlenames[m], " abundance")) + ylab("Simulations") + ggtitle(m) + 
     labs(fill = "Individual")
   ggtitle(m)
   print(myplot)
@@ -438,6 +437,159 @@ ggsave("/media/sf_data/ex4_prot.png", plot = molsplot.hist[[2]])
 
 save(insilicosystem, insilicopopulation, file = "/home/oangelin/Documents/ex4_09_07_2018.RData")
 
+
+
+# ----
+# ---------------------------------------------------------------------------------------- #
+#' 4': One protein-coding gene, 2 variants: one orginal and 1 mutated version 
+#' with reduced transcription rate - CHANGE THE VALUE OF THE QTL EFFECT
+#' Tetraploid individuals, 5 individuals (each possible combinations of the variants)
+# ---------------------------------------------------------------------------------------- #
+# ----
+
+mysystemargs = insilicosystemargs(G = 1, PC.p = 1)
+insilicosystem = createInSilicoSystem(mysystemargs, empty = T)
+
+qtleffectrange = seq(from = 2, to = 0.1, by = -0.1)
+myvariants = list("1" = matrix(1.0, nrow = 9, ncol = length(qtleffectrange) + 1, dimnames = list(c("qtlTCrate", "qtlRDrate", "qtlTCregbind", "qtlRDbindreg", "qtlactivity", "qtlTLrate", "qtlPDrate", "qtlTLregbind", "qtlPDregbind"), 1:(length(qtleffectrange) + 1))))
+
+## Manually change the value of the QTLs for each individual
+
+for(i in 1:length(qtleffectrange)){
+  myvariants$`1`["qtlTCrate", i+1] = qtleffectrange[i]
+}
+
+myindivargs = insilicoindividualargs(ploidy = 4, ngenevariants = length(qtleffectrange) + 1)
+
+## function to create an individual with the given allele combination
+createmyindiv = function(allelecomb, variantsList, indargs){
+  G = 1
+  QTLeffects = vector("list", indargs$ploidy)
+  names(QTLeffects) = indargs$gcnList
+  individualvariants = as.data.frame(matrix(allelecomb, nrow = G, ncol = indargs$ploidy))
+  names(individualvariants) = indargs$gcnList
+  qtlnames = c("qtlTCrate", "qtlRDrate", "qtlTCregbind", "qtlRDbindreg", "qtlactivity", "qtlTLrate", "qtlPDrate", "qtlTLregbind", "qtlPDregbind")
+  for(gcn in indargs$gcnList){
+    QTLeffects[[gcn]] = vector("list", length(qtlnames))
+    names(QTLeffects[[gcn]]) = qtlnames
+    for(q in qtlnames){
+      for(g in 1:G){
+        QTLeffects[[gcn]][[q]][g] = variantsList[[g]][q, individualvariants[g, gcn][[1]]]
+      }
+    }
+  }
+  
+  InitVar = vector("list", indargs$ploidy)
+  names(InitVar) = indargs$gcnList
+  for(gcn in indargs$gcnList){
+    InitVar[[gcn]] = list("R" = rep(1.0, G),
+                          "P" = rep(1.0, G))
+  }
+  value = list("QTLeffects" = QTLeffects, "haplotype" = individualvariants, "InitVar" = InitVar)
+  attr(value, "class") = "insilicoindividual"
+  
+  return(value)
+}
+
+createmypop = function(myvariants, allallelecomb, indargs){
+  nind = nrow(allallelecomb)
+  genvariants = myvariants
+  indnames = sapply(1:nind, function(x){paste0("Ind", x)})
+  individualsList = vector("list", nind)
+  names(individualsList) = indnames
+  
+  for(i in indnames){
+    individualsList[[i]] = createmyindiv(allallelecomb[i,], genvariants, indargs)
+  }
+  
+  value = list("GenesVariants" = genvariants, "individualsList" = individualsList, "indargs" = indargs)
+  return(value)
+}
+
+allallelecomb = vector()
+
+for(i in 2:(length(qtleffectrange)+1)){
+  allallelecomb = rbind(allallelecomb, as.data.frame(matrix(c(1,1,1,1,
+                                                              1,1,1,i,
+                                                              1,1,i,i,
+                                                              1,i,i,i,
+                                                              i,i,i,i), byrow = T, ncol = 4)))
+}
+
+names(allallelecomb) = c("GCN1", "GCN2", "GCN3", "GCN4")
+rownames(allallelecomb) = sapply(1:nrow(allallelecomb), function(x){paste0("Ind", x)})
+insilicopopulation = createmypop(myvariants, allallelecomb, myindivargs)
+
+restemp = simulateSystemStochasticParallel(insilicosystem, insilicopopulation, simtime = 5000, nepochs = 20, ntrialsPerInd = 100, simalgorithm = "SSA", returnStochModel = F)
+res = lapply(restemp, mergeAllelesAbundance)
+
+plotexpprof(res)
+
+molsList.hist = getlasttimepoint(res)
+
+mols = setdiff(colnames(res[[1]]), c("time", "trial"))
+
+qtleffectval = rep(qtleffectrange, rep(5, length(qtleffectrange)))
+dosage = rep(c("AAAA", "AAAa", "AAaa", "Aaaa", "aaaa"), length(qtleffectrange))
+newtable = lapply(mols, function(m){
+  means = apply(molsList.hist[[m]], 2, mean)
+  quant1 = apply(molsList.hist[[m]], 2, quantile, probs = 0.025)
+  quant3 = apply(molsList.hist[[m]], 2, quantile, probs = 0.975)
+  return(data.frame("Ind" = colnames(molsList.hist[[m]]), "mean" = means, "quantile1" = quant1, "quantile3" = quant3, "QTLeffect" = qtleffectval, "dosage" = dosage))
+})
+names(newtable) = mols
+
+mylinetype = c("mean" = "solid", "quantile1" = "longdash", "quantile3" = "longdash")
+xtitlenames = c("RNA", "Protein")
+names(xtitlenames) = mols
+molsplot.hist = lapply(mols, function(m){
+  #myplot = ggplot() + geom_pointrange(data = newtable[[m]], aes(x = QTLeffect, y = mean, ymin = quantile1, ymax = quantile3, color = dosage)) + 
+  #  xlab(paste0(xtitlenames[m], " abundance")) + ylab("Simulations") + ggtitle(m) + 
+  #  labs(colot = "Allele dosage") + ggtitle(m)
+  toplot = melt(newtable[[m]], id.vars = c("Ind", "QTLeffect", "dosage"), measure.vars = c("mean", "quantile1", "quantile3"))
+  myplot = ggplot() + 
+    geom_ribbon(data = newtable[[m]], aes(x = QTLeffect, ymin=quantile1, ymax=quantile3, fill = dosage), alpha=0.3) +
+    scale_linetype_manual(values = mylinetype, guide = F) +
+    geom_line(data = toplot, aes(x = QTLeffect, y = value, color = dosage, linetype = variable)) + 
+    scale_color_discrete(guide = F) + xlab(paste0(xtitlenames[m], " abundance")) + ylab("Simulations") + ggtitle(m) + 
+    labs(fill = "Allele dosage") + ggtitle(m)
+  print(myplot)
+  return(myplot)
+})
+
+ggsave("/media/sf_data/ex4_RNA.png", plot = molsplot.hist[[1]])
+ggsave("/media/sf_data/ex4_prot.png", plot = molsplot.hist[[2]])
+
+save(insilicosystem, insilicopopulation, file = "/home/oangelin/Documents/ex4_09_07_2018.RData")
+
+library(ggridges)
+
+qtleffectval = rep(qtleffectrange, each = 5)
+dosage = rep(c("AAAA", "AAAa", "AAaa", "Aaaa", "aaaa"), length(qtleffectrange))
+names(qtleffectval) = names(dosage) = colnames(molsList.hist[[1]])
+
+#mycols = brewer.pal(5, "YlOrRd")
+mycols = c("#c7e9b4","#7fcdbb","#41b6c4","#2c7fb8","#253494")
+names(mycols) = c("aaaa", "Aaaa", "AAaa", "AAAa", "AAAA")
+
+xtitlenames = c("RNA", "Protein")
+names(xtitlenames) = mols
+
+molsplot.ridg = lapply(mols, function(m){
+  pretoplot = melt(molsList.hist[[m]])
+  toplot = data.frame("Rep" = pretoplot$Var1, "Ind" = pretoplot$Var2, "Value" = pretoplot$value, "QTLeffect" = factor(qtleffectval[pretoplot$Var2], levels = sort(qtleffectrange), labels = sapply(sort(qtleffectrange), as.character)), "dosage" = dosage[pretoplot$Var2])
+  
+  myplot = ggplot(toplot, aes(x = Value, y = QTLeffect, fill = dosage, color = dosage)) + geom_density_ridges(alpha = 0.8, rel_min_height = 0.01, scale = 1.5) + 
+    scale_fill_manual(values = mycols) + scale_color_manual(values = mycols) + xlab(paste0(xtitlenames[m], " abundance")) + ggtitle(m)
+  
+  print(myplot)
+  return(myplot)
+})
+
+ggsave("/media/sf_data/ex4prim_RNA_ridg_2.png", plot = molsplot.ridg[[1]])
+ggsave("/media/sf_data/ex4prim_prot_ridg_2.png", plot = molsplot.ridg[[2]])
+
+# ----
 # ------------------------------------------------------------------------------------- #
 ##'                            5: 2 genes, G1 -> g2
 ##'  Individuals: Test every possible mutation of G1 and check their impact on g2
@@ -475,12 +627,17 @@ insilicosystem$genes[2, "TCrate"] = 0.01
 insilicosystem$genes[2, "RDrate"] = 0.0001
 insilicosystem$genes[2, "TLrate"] = 0.01
 insilicosystem$genes[2, "PDrate"] = 0.00001
-
+# ----
 
 insilicosystem = addEdg(insilicosystem, regulator = 1, target = 2, targetreaction = "TC", regsign = "1")
+
+#template_system = insilicosystem
+
 insilicosystem$mosystem$TCRN.edg[1, "TCbindingrate"] = 0.1
-insilicosystem$mosystem$TCRN.edg[1, "TCunbindingrate"] = 500
+insilicosystem$mosystem$TCRN.edg[1, "TCunbindingrate"] = 5
 insilicosystem$mosystem$TCRN.edg[1, "TCfoldchange"] = 10
+
+#insilicosystem$mosystem$TCRN.edg[1, "TCunbindingrate"] = 0.28589
 
 myindivargs = insilicoindividualargs(ploidy = 1, ngenevariants = 1)
 insilicopopulation = createPopulation(7, insilicosystem, myindivargs, sameInit = T)
@@ -493,11 +650,115 @@ for(i in 2:7){
   insilicopopulation$individualsList[[i]]$QTLeffects$GCN1[[qtlvals[i-1]]][qtlgenes[i-1]] = 0.5 ## set the corresponding QTL value to 0.5
 }
 
-res = simulateSystemStochasticParallel(insilicosystem, insilicopopulation, simtime = 10000, nepochs = 20, ntrialsPerInd = 50, simalgorithm = "SSA", returnStochModel = F)
+res = simulateSystemStochasticParallel(insilicosystem, insilicopopulation, simtime = 100000, nepochs = 20, ntrialsPerInd = 1000, simalgorithm = "SSA", returnStochModel = F)
+resPC = res
+molsplot = plotexpprof(res)
+
+molsList.hist = getlasttimepoint(res)
+qtlvals = c("original", "qtlTCrate", "qtlTLrate", "qtlRDrate", "qtlPDrate", "qtlactivity", "qtlTCregbind")
+names(qtlvals) = colnames(molsList.hist[[1]])
+
+mols = setdiff(colnames(res[[1]]), c("time", "trial"))
+
+xtitlenames = c("RNA 1", "Protein 1", "RNA 2", "Protein 2")
+names(xtitlenames) = mols
+
+molsplot = lapply(mols, function(m){
+  pretoplot = melt(molsList.hist[[m]])
+  toplot = data.frame("Rep" = pretoplot$Var1, "Ind" = pretoplot$Var2, "Value" = pretoplot$value, "Allele" = factor(qtlvals[pretoplot$Var2], levels = qtlvals), row.names = NULL)
+  
+  myplot = ggplot(toplot, aes(x = Value, y = Allele, fill = Allele, color = Allele)) + geom_density_ridges(alpha = 0.8, rel_min_height = 0.01, scale = 1.5) + #, stat = "binline"
+    scale_fill_discrete(guide = "none") + scale_color_discrete(guide = "none") + xlab(paste0(xtitlenames[m], " abundance")) + ggtitle(m)
+  print(myplot)
+  return(myplot)
+})
+
+
+ggsave("/media/sf_data/ex5_RNA1.png", plot = molsplot[[1]])
+ggsave("/media/sf_data/ex5_prot1.png", plot = molsplot[[2]])
+ggsave("/media/sf_data/ex5_RNA2.png", plot = molsplot[[3]])
+ggsave("/media/sf_data/ex5_prot2.png", plot = molsplot[[4]])
+
+save(insilicosystem, insilicopopulation, file = "/home/oangelin/Documents/plots16_07_2018.RData")
+
+# ----
+# ------------------------------------------------------------------------------------- #
+##'                            5prim: 2 genes, G1 -> g2
+##'                             G1 is a noncoding gene
+##'  Individuals: Test every possible mutation of G1 and check their impact on g2
+# ------------------------------------------------------------------------------------- #
+#----
+
+mysystemargs = insilicosystemargs(G = 2, PC.p = 1)
+insilicosystem = createInSilicoSystem(mysystemargs, empty = T)
+
+
+insilicosystem$genes[insilicosystem$genes$id ==1, "coding"] = "NC"
+insilicosystem$genes[insilicosystem$genes$id ==1, "ActiveForm"] = "R1"
+
+## change the kinetics of gene 1 (regulatory gene)
+insilicosystem$genes[1, "TCrate"] = 0.001
+insilicosystem$genes[1, "RDrate"] = 0.0001
+insilicosystem$genes[1, "TLrate"] = 0
+insilicosystem$genes[1, "PDrate"] = 0
+
+## change the kinetics of gene 2 (regulatory gene)
+insilicosystem$genes[2, "TCrate"] = 0.01
+insilicosystem$genes[2, "RDrate"] = 0.0001
+insilicosystem$genes[2, "TLrate"] = 0.01
+insilicosystem$genes[2, "PDrate"] = 0.00001
+
+insilicosystem = addEdg(insilicosystem, regulator = 1, target = 2, targetreaction = "TC", regsign = "1")
+
+#template_system = insilicosystem
+
+insilicosystem$mosystem$TCRN.edg[1, "TCbindingrate"] = 0.1
+insilicosystem$mosystem$TCRN.edg[1, "TCunbindingrate"] = 5
+insilicosystem$mosystem$TCRN.edg[1, "TCfoldchange"] = 10
+
+#insilicosystem$mosystem$TCRN.edg[1, "TCunbindingrate"] = 0.28589
+
+myindivargs = insilicoindividualargs(ploidy = 1, ngenevariants = 1)
+insilicopopulation = createPopulation(7, insilicosystem, myindivargs, sameInit = T)
+
+## Manually change the value of the QTLs for each individual
+qtlvals = c("qtlTCrate", "qtlTLrate", "qtlRDrate", "qtlPDrate", "qtlactivity", "qtlTCregbind")
+qtlgenes = c(1,1,1,1,1,2) ## which gene is affected by the mutation
+
+for(i in 2:7){
+  insilicopopulation$individualsList[[i]]$QTLeffects$GCN1[[qtlvals[i-1]]][qtlgenes[i-1]] = 0.5 ## set the corresponding QTL value to 0.5
+}
+
+res = simulateSystemStochasticParallel(insilicosystem, insilicopopulation, simtime = 100000, nepochs = 20, ntrialsPerInd = 1000, simalgorithm = "SSA", returnStochModel = F)
+resNC = res
 
 molsplot = plotexpprof(res)
 
-ggsave("/media/sf_data/RNAplot.png", plot = molsplot[[1]])
-ggsave("/media/sf_data/Protplot.png", plot = molsplot[[2]])
+molsList.hist = getlasttimepoint(res)
+qtlvals = c("original", "qtlTCrate", "qtlTLrate", "qtlRDrate", "qtlPDrate", "qtlactivity", "qtlTCregbind")
+names(qtlvals) = colnames(molsList.hist[[1]])
 
-save(insilicosystem, insilicopopulation, file = "/home/oangelin/Documents/plots05_07_2018.RData")
+mols = setdiff(colnames(res[[1]]), c("time", "trial"))
+
+xtitlenames = c("RNA 1", "Protein 1", "RNA 2", "Protein 2")
+names(xtitlenames) = mols
+
+molsplot = lapply(mols, function(m){
+  pretoplot = melt(molsList.hist[[m]])
+  toplot = data.frame("Rep" = pretoplot$Var1, "Ind" = pretoplot$Var2, "Value" = pretoplot$value, "Allele" = factor(qtlvals[pretoplot$Var2], levels = qtlvals), row.names = NULL)
+  
+  myplot = ggplot(toplot, aes(x = Value, y = Allele, fill = Allele, color = Allele)) + geom_density_ridges(alpha = 0.8, rel_min_height = 0.01, scale = 1.5) + #, stat = "binline"
+    scale_fill_discrete(guide = "none") + scale_color_discrete(guide = "none") + xlab(paste0(xtitlenames[m], " abundance")) + ggtitle(m)
+  print(myplot)
+  return(myplot)
+})
+
+
+ggsave("/media/sf_data/ex5_RNA1.png", plot = molsplot[[1]])
+ggsave("/media/sf_data/ex5_prot1.png", plot = molsplot[[2]])
+ggsave("/media/sf_data/ex5_RNA2.png", plot = molsplot[[3]])
+ggsave("/media/sf_data/ex5_prot2.png", plot = molsplot[[4]])
+
+save(insilicosystem, insilicopopulation, file = "/home/oangelin/Documents/plots16_07_2018.RData")
+
+
