@@ -595,7 +595,9 @@ createPopulation = function(nind, insilicosystem, indargs, sameInit = F){
   }
   
   value = list("GenesVariants" = genvariants, "individualsList" = individualsList, "indargs" = indargs)
+  attr(value, "class") = "insilicopopulation"
   
+  return(value)
 }
 
 
