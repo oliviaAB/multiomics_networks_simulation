@@ -3,7 +3,7 @@ rm(list = ls(all = T))
 #setwd("~/GitHub/multiomics_networks_simulation")
 
 source("network_generation.R")
-
+library(ggridges)
 
 ## TEMPLATE
 #' when getting a list of dataframes with simulated expression profiles
@@ -338,7 +338,7 @@ save(insilicosystem, insilicopopulation, file = "/home/oangelin/Documents/ex3_09
 
 # ----
 # ---------------------------------------------------------------------------------------- #
-#' 4: One protein-coding gene, 2 variants: one orginal and 1 mutated version 
+#' 4: One protein-coding gene, 2 variants: one original and 1 mutated version 
 #' with reduced transcription rate
 #' Tetraploid individuals, 5 individuals (each possible allele dosage)
 # ---------------------------------------------------------------------------------------- #
@@ -652,6 +652,7 @@ for(i in 2:7){
 
 res = simulateSystemStochasticParallel(insilicosystem, insilicopopulation, simtime = 100000, nepochs = 20, ntrialsPerInd = 1000, simalgorithm = "SSA", returnStochModel = F)
 resPC = res
+save(resPC, file = "/home/oangelin/Documents/resPC_16_07_18.RData")
 molsplot = plotexpprof(res)
 
 molsList.hist = getlasttimepoint(res)

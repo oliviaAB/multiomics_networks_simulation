@@ -1022,7 +1022,7 @@ addEdg = function(insilicosystem, regulator, target, targetreaction, regsign, ki
   }
   
   if(targetreaction == "TL"){
-    if(is.null(kinetics)){x ## if no values are given for the kinetic parameters
+    if(is.null(kinetics)){ ## if no values are given for the kinetic parameters
       myTLbindingrate = insilicosystem$sysargs[["TLbindingrate_samplingfct"]](1)
       myTLunbindingrate = insilicosystem$sysargs[["TLunbindingrate_samplingfct"]](1)
       myTLfoldchange = insilicosystem$sysargs[["TLfoldchange_samplingfct"]](1) * (regsign == "1") ## if regsign = "-1" (repression) the fold change is 0
