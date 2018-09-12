@@ -11,7 +11,7 @@ library(ggridges)
 
 plotexpprof = function(res){
   mols = setdiff(colnames(res[[1]]), c("time", "trial"))
-  
+
   molsList = lapply(mols, function(m){
     molsummary = vector()
     for(ind in names(res)){
@@ -26,9 +26,9 @@ plotexpprof = function(res){
     return(molsummary)
   })
   names(molsList) = mols
-  
+
   mylinetype = c("mean" = "solid", "quantile1" = "longdash", "quantile3" = "longdash")
-  
+
   molsplot = lapply(mols, function(m){
     toplot = melt(molsList[[m]], id.vars = c("time", "ind"), measure.vars = c("mean", "quantile1", "quantile3"))
     myplot = ggplot() + geom_line(data = toplot, aes(x = time, y = value, color = ind, linetype = variable)) +
@@ -38,15 +38,15 @@ plotexpprof = function(res){
     print(myplot)
     return(myplot)
   })
-  
+
   return(molsplot)
 }
 
 
 getlasttimepoint = function(res){6
-  
+
   mols = setdiff(colnames(res[[1]]), c("time", "trial"))
-  
+
   molsList.hist = lapply(mols, function(m){
     molsummary = vector()
     for(ind in names(res)){
@@ -58,9 +58,9 @@ getlasttimepoint = function(res){6
     return(molsummary)
   })
   names(molsList.hist) = mols
-  
+
   return(molsList.hist)
-  
+
 }
 
 
@@ -461,8 +461,8 @@ save(res1rna, res1prot, file = "/media/sf_data/confirmation_results/conf_rep_res
 # ggsave("/media/sf_data/confirmation_results/plot1_decay.pdf", plot = plot1tot_decay, device = "pdf")
 
 #### -------------------------------------------------------------------------------------------- ####
-##                               Illustrating the genetic variants: 
-## System 1 of simulation_tests: In the population each individual has only 1 QTL value !=1 to 
+##                               Illustrating the genetic variants:
+## System 1 of simulation_tests: In the population each individual has only 1 QTL value !=1 to
 ##  show the impact of the different QTLs on the expression profiles
 #### -------------------------------------------------------------------------------------------- ####
 #----
@@ -493,18 +493,18 @@ molsList.hist = getlasttimepoint(resmut)
 
 molsList = lapply(mols, function(m){
   melted = melt(molsList.hist[[m]])
-  return(data.frame("mol" = rep(substr(m, 1, 1), nrow(melted)), "Ind" = melted$Var2, "Value" = melted$value))  
+  return(data.frame("mol" = rep(substr(m, 1, 1), nrow(melted)), "Ind" = melted$Var2, "Value" = melted$value))
 })
 names(molsList) = mols
 molsall = do.call("rbind", molsList)
 
 plotmut = ggplot(molsall, aes(x = Value, y = Ind, fill = mol, colour = mol)) + geom_density_ridges(alpha = 0.8, rel_min_height = 0.01, scale = 1.5) +
-  facet_wrap(~mol, scale = "free_x", labeller = as_labeller(c("R" = "Transcript abundance density\nat t = 1 hour (5000 simulations)", "P" = "Protein abundance density\nat t = 1 hour (5000 simulations)"))) + 
-  scale_colour_manual(values = c("R" = "darkgoldenrod1", "P" = "dodgerblue"), guide = F) + 
-  scale_fill_manual(values = c("R" = "darkgoldenrod1", "P" = "dodgerblue"), guide = F) + 
+  facet_wrap(~mol, scale = "free_x", labeller = as_labeller(c("R" = "Transcript abundance density\nat t = 1 hour (5000 simulations)", "P" = "Protein abundance density\nat t = 1 hour (5000 simulations)"))) +
+  scale_colour_manual(values = c("R" = "darkgoldenrod1", "P" = "dodgerblue"), guide = F) +
+  scale_fill_manual(values = c("R" = "darkgoldenrod1", "P" = "dodgerblue"), guide = F) +
   scale_y_discrete(limits = rev(levels(molsall$Ind)), labels = c("Ind1" = "Ind1\n(Original\nallele)", "Ind2" = "Ind2\n(Reduced\ntranscription rate)", "Ind3" = "Ind3\n(Reduced\ntranslation rate)",
                               "Ind4" = "Ind4\n(Reduced\nRNA decay rate)", "Ind5" = "Ind5\n(Reduced\nprotein decay rate)")) +
-  xlab("Molecule abundance (# molecules)") + ylab("Simulated individuals") + 
+  xlab("Molecule abundance (# molecules)") + ylab("Simulated individuals") +
   theme_bw() + theme(plot.title = element_text(hjust = 0.5), panel.border = element_blank(), panel.spacing = unit(1, "lines"),
                                                        panel.grid.minor = element_blank(), axis.line = element_line(colour = "grey45"),
                                                        strip.text.x = element_text(size=12), strip.background = element_rect(colour = "white", fill = "white"))
@@ -517,9 +517,9 @@ save(resmut, file = "/media/sf_data/confirmation_results/conf_rep_res2mut.RData"
 
 
 #### -------------------------------------------------------------------------------------------- ####
-##                               Illustrating the ploidy level: 
+##                               Illustrating the ploidy level:
 ## System 4 and 4' of simulation_tests: One protein-coding gene, 2 variants: one original and 1
-## mutated version with reduced transcription rate. Tetraploid individuals, 5 individuals 
+## mutated version with reduced transcription rate. Tetraploid individuals, 5 individuals
 ## (each possible allele dosage)
 #### -------------------------------------------------------------------------------------------- ####
 #----
@@ -541,7 +541,7 @@ createmyindiv = function(allelecomb, variantsList, indargs){
       }
     }
   }
-  
+
   InitVar = vector("list", indargs$ploidy)
   names(InitVar) = indargs$gcnList
   for(gcn in indargs$gcnList){
@@ -550,7 +550,7 @@ createmyindiv = function(allelecomb, variantsList, indargs){
   }
   value = list("QTLeffects" = QTLeffects, "haplotype" = individualvariants, "InitVar" = InitVar)
   attr(value, "class") = "insilicoindividual"
-  
+
   return(value)
 }
 
@@ -560,11 +560,11 @@ createmypop = function(myvariants, allallelecomb, indargs){
   indnames = sapply(1:nind, function(x){paste0("Ind", x)})
   individualsList = vector("list", nind)
   names(individualsList) = indnames
-  
+
   for(i in indnames){
     individualsList[[i]] = createmyindiv(allallelecomb[i,], genvariants, indargs)
   }
-  
+
   value = list("GenesVariants" = genvariants, "individualsList" = individualsList, "indargs" = indargs)
   return(value)
 }
@@ -607,7 +607,7 @@ temp = lapply(mols, function(m){
   return(data.frame("mol" = rep(m, nrow(melted)), "ind" = melted$Var2, "value" = melted$value))
 })
 
-molsall = do.call(rbind, temp) 
+molsall = do.call(rbind, temp)
 mycols = c("#c7e9b4","#7fcdbb","#41b6c4","#2c7fb8","#253494")
 names(mycols) = c("Ind5", "Ind4", "Ind3", "Ind2", "Ind1")
   # c("aaaa", "Aaaa", "AAaa", "AAAa", "AAAA")
@@ -619,10 +619,10 @@ temp = lapply(mols, function(m){
 meanstoplot = do.call(rbind, temp)
 
 plotploidy = ggplot() + geom_histogram(data = molsall, aes(x = value, color = ind, fill = ind), alpha = 0.8, position = "identity") +
-  geom_vline(data = meanstoplot, aes(xintercept = mean, color = ind), linetype="dashed", size=1) + 
+  geom_vline(data = meanstoplot, aes(xintercept = mean, color = ind), linetype="dashed", size=1) +
   scale_color_manual(name = "Simulated individuals", values = mycols, labels = c("Ind1" = "Ind1\n(AAAA)", "Ind2" = "Ind2\n(AAAa)", "Ind3" = "Ind3\n(AAaa)", "Ind4" = "Ind4\n(Aaaa)", "Ind5" = "Ind5\n(aaaa)"), guide = F) +
   scale_fill_manual(name = "Simulated individuals",values = mycols, labels = c("Ind1" = "Ind1\n(AAAA)", "Ind2" = "Ind2\n(AAAa)", "Ind3" = "Ind3\n(AAaa)", "Ind4" = "Ind4\n(Aaaa)", "Ind5" = "Ind5\n(aaaa)")) +
-  facet_wrap(~mol, scale = "free", labeller = as_labeller(c("R1" = "Transcript abundance density\nat t = 1 hour (5000 simulations)", "P1" = "Protein abundance density\nat t = 1 hour (5000 simulations)"))) + 
+  facet_wrap(~mol, scale = "free", labeller = as_labeller(c("R1" = "Transcript abundance density\nat t = 1 hour (5000 simulations)", "P1" = "Protein abundance density\nat t = 1 hour (5000 simulations)"))) +
   theme_bw() + theme(legend.position = "top", legend.direction = "horizontal", plot.title = element_text(hjust = 0.5), panel.border = element_blank(), panel.spacing = unit(1, "lines"),
                                                                                          panel.grid.minor = element_blank(), axis.line = element_line(colour = "grey45"),
                                                                                          strip.text.x = element_text(size=12), strip.background = element_rect(colour = "white", fill = "white")) +
@@ -692,7 +692,7 @@ names(mycols) = c("aaaa", "Aaaa", "AAaa", "AAAa", "AAAA")
 pretoplot = melt(molsList.hist[["R1"]])
 toplot = data.frame("Rep" = pretoplot$Var1, "Ind" = pretoplot$Var2, "Value" = pretoplot$value, "QTLeffect" = factor(qtleffectval[pretoplot$Var2], levels = sort(qtleffectrange), labels = sapply(sort(qtleffectrange), as.character)), "dosage" = dosage[pretoplot$Var2])
 
-plotploidy2 = ggplot(toplot, aes(x = Value, y = QTLeffect, fill = dosage, color = dosage)) + geom_density_ridges(alpha = 0.8, rel_min_height = 0.01, scale = 1.5) + 
+plotploidy2 = ggplot(toplot, aes(x = Value, y = QTLeffect, fill = dosage, color = dosage)) + geom_density_ridges(alpha = 0.8, rel_min_height = 0.01, scale = 1.5) +
   scale_color_manual(limits = rev(levels(toplot$dosage)), name = "Simulated individuals", values = mycols, labels = c("AAAA" = "Ind1 (AAAA)", "AAAa" = "Ind2 (AAAa)", "AAaa" = "Ind3 (AAaa)", "Aaaa" = "Ind4 (Aaaa)", "aaaa" = "Ind5 (aaaa)")) +
   scale_fill_manual(limits = rev(levels(toplot$dosage)), name = "Simulated individuals",values = mycols, labels = c("AAAA" = "Ind1 (AAAA)", "AAAa" = "Ind2 (AAAa)", "AAaa" = "Ind3 (AAaa)", "Aaaa" = "Ind4 (Aaaa)", "aaaa" = "Ind5 (aaaa)")) +
   theme_bw() + theme(plot.title = element_text(hjust = 0.5), panel.border = element_blank(), panel.spacing = unit(1, "lines"),
@@ -729,3 +729,81 @@ print(plotoutdeg)
 
 ggsave("/media/sf_data/confirmation_results/plotoutdegs.pdf", plot = plotoutdeg, device = "pdf")
 
+# ------
+
+outdeg = 1:50
+l = 1:5
+toplot = data.frame("kout" = numeric(), "l" = numeric(), "proba" = numeric())
+
+for(coef in l){
+  exp = (1/coef)*exp(-outdeg/coef)
+  exp = exp/sum(exp)
+  toplot = rbind(toplot, data.frame("kout" = outdeg, "l" = rep(coef, length(outdeg)), "proba" = exp))
+}
+toplot$l = factor(toplot$l, levels = paste0(l))
+ggplot(toplot, aes(x = kout, y = proba, colour = l)) + geom_line()
+
+
+toplot2 = data.frame("kout" = numeric(), "l" = numeric(), "proba" = numeric())
+
+for(coef in l){
+  pow = outdeg^(-coef)
+  pow = pow/sum(pow)
+  toplot2 = rbind(toplot2, data.frame("kout" = outdeg, "l" = rep(coef, length(outdeg)), "proba" = pow))
+}
+toplot2$l = factor(toplot2$l, levels = paste0(l))
+ggplot(toplot2, aes(x = kout, y = proba, colour = l)) + geom_line()
+
+
+# _____________________________________________________
+## Simulate stochastic expression profiles
+res = list()
+t = seq(1, 50, by = 0.1)
+x1 = 50 + 100*t/(t + 3)
+x1rand = x1 + rnorm(length(x2), mean = 0, sd = 2)
+res[[1]] = data.frame("t" = t, "mol" = paste0(1), "level" = x1rand, stringsAsFactors = F)
+
+x2 = 80 - 20*t/(t + 8)
+x2rand = x2 + rnorm(length(x2), mean = 0, sd = 1)
+res[[2]] = data.frame("t" = t, "mol" = paste0(2), "level" = x2rand, stringsAsFactors = F)
+
+x3rand = 110 + rnorm(length(x2), mean = 0, sd = 3)
+res[[3]] = data.frame("t" = t, "mol" = paste0(3), "level" = x3rand, stringsAsFactors = F)
+
+toplot = do.call(rbind, res)
+
+exprplot = ggplot(toplot, aes(x = t, y = level, colour = mol)) + geom_line(size = 1) + scale_colour_discrete(guide = F) +
+  xlab("Time") + ylab("Abundance") +
+  theme_bw() + theme(panel.border = element_blank(), panel.spacing = unit(1, "lines"),
+                     panel.grid.minor = element_blank(), axis.line = element_line(colour = "grey45"), axis.title = element_text(size = 18), axis.text	= element_text(size = 14))
+print(exprplot)
+
+ggsave("C:\\Users\\oangelin\\OneDrive - Massey University\\Documents\\Confirmation\\Presentation\\exprprofiles.png", exprplot, device = "png")
+
+
+# _____________________________________________________
+## Simulate deterministic vs stochastic expression profile
+
+t = seq(1, 50, by = 0.1)
+x1 = 50 + 100*t/(t + 3)
+x1rand = x1 + rnorm(length(x1), mean = 0, sd = 2)
+
+toplotdet = data.frame("t" = t, "level" = x1, stringsAsFactors = F)
+
+exprplotdet = ggplot(toplotdet, aes(x = t, y = level)) + geom_line(size = 1, colour = "red") +
+  xlab("Time") + ylab("Abundance") +
+  theme_bw() + theme(panel.border = element_blank(), panel.spacing = unit(1, "lines"),
+                     panel.grid.minor = element_blank(), axis.line = element_line(colour = "grey45"), axis.title = element_text(size = 18), axis.text	= element_text(size = 14))
+print(exprplotdet)
+
+ggsave("C:\\Users\\oangelin\\OneDrive - Massey University\\Documents\\Confirmation\\Presentation\\detprofile.png", exprplotdet, device = "png")
+
+toplotsto = data.frame("t" = t, "level" = x1rand, stringsAsFactors = F)
+
+exprplotsto = ggplot(toplotsto, aes(x = t, y = level)) + geom_line(size = 1, colour = "red") +
+  xlab("Time") + ylab("Abundance") +
+  theme_bw() + theme(panel.border = element_blank(), panel.spacing = unit(1, "lines"),
+                     panel.grid.minor = element_blank(), axis.line = element_line(colour = "grey45"), axis.title = element_text(size = 18), axis.text	= element_text(size = 14))
+print(exprplotsto)
+
+ggsave("C:\\Users\\oangelin\\OneDrive - Massey University\\Documents\\Confirmation\\Presentation\\stoprofile.png", exprplotsto, device = "png")
