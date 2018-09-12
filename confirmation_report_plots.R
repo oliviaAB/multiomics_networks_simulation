@@ -783,6 +783,7 @@ ggsave("C:\\Users\\oangelin\\OneDrive - Massey University\\Documents\\Confirmati
 
 # _____________________________________________________
 ## Simulate deterministic vs stochastic expression profile
+## first deterministic, then stochastic
 
 t = seq(1, 50, by = 0.1)
 x1 = 50 + 100*t/(t + 3)
